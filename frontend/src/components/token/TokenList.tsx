@@ -1,0 +1,64 @@
+import { useNavigate } from 'react-router-dom';
+import type { Token } from '@/types/token';
+import { TokenBadge } from './TokenBadge';
+import { formatPrice, formatPercent, formatBtc } from '@/lib/format';
+import { cn } from '@/lib/cn';
+
+interface TokenListProps {
+  tokens: Token[];
+}
+
+export function TokenList({ tokens }: TokenListProps) {
+  const navigate = useNavigate();
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-text-muted text-xs border-b border-border">
+            <th className="text-left py-3 px-2">Token</th>
+            <th className="text-right py-3 px-2">Price</th>
+            <th className="text-right py-3 px-2">24h</th>
+            <th className="text-right py-3 px-2 hidden sm:table-cell">Volume</th>
+            <th className="text-right py-3 px-2 hidden md:table-cell">Holders</th>
+            <th className="text-right py-3 px-2 hidden md:table-cell">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {tokens.map((token) => (
+            <tr
+              key={token.address}
+              onClick={() => navigate(`/token/${token.address}`)}
+              className="border-b border-border/50 hover:bg-elevated cursor-pointer transition-colors"
+            >
+              <td className="py-3 px-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{token.image}</span>
+                  <div>
+                    <span className="font-medium text-text-primary">{token.name}</span>
+                    <span className="ml-1.5 text-xs text-text-muted">${token.symbol}</span>
+                  </div>
+                </div>
+              </td>
+              <td className="text-right py-3 px-2 font-mono text-text-primary">
+                {formatPrice(token.currentPriceSats)}
+              </td>
+              <td className={cn('text-right py-3 px-2 font-mono', token.priceChange24h >= 0 ? 'text-bull' : 'text-bear')}>
+                {formatPercent(token.priceChange24h)}
+              </td>
+              <td className="text-right py-3 px-2 font-mono text-text-secondary hidden sm:table-cell">
+                {formatBtc(token.volume24hSats)}
+              </td>
+              <td className="text-right py-3 px-2 font-mono text-text-secondary hidden md:table-cell">
+                {token.holderCount.toLocaleString()}
+              </td>
+              <td className="text-right py-3 px-2 hidden md:table-cell">
+                <TokenBadge status={token.status} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

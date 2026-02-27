@@ -1,0 +1,56 @@
+export interface Token {
+  address: string;
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+  creatorAddress: string;
+  createdAt: number; // timestamp ms
+
+  // Reserves (in sats / token-units)
+  virtualBtcReserve: string; // BigNumber string
+  virtualTokenSupply: string;
+  realBtcReserve: string;
+
+  // Derived
+  currentPriceSats: number; // price per 1 token in sats
+  marketCapSats: number;
+  volume24hSats: number;
+  priceChange24h: number; // percent
+  tradeCount24h: number;
+  holderCount: number;
+
+  // Config
+  creatorAllocationPercent: number;
+  buyTaxPercent: number;
+  sellTaxPercent: number;
+
+  // Socials
+  website?: string;
+  twitter?: string;
+  telegram?: string;
+  discord?: string;
+  github?: string;
+
+  // Status
+  status: TokenStatus;
+  graduationProgress: number; // 0-100
+
+  // Personality for mock behavior
+  personality: TokenPersonality;
+}
+
+export type TokenStatus = 'active' | 'graduated' | 'new';
+
+export type TokenPersonality = 'pumping' | 'dumping' | 'stable' | 'volatile' | 'new' | 'graduated';
+
+export interface TokenSortOption {
+  label: string;
+  value: 'volume' | 'marketCap' | 'price' | 'change' | 'newest';
+}
+
+export interface TokenFilter {
+  search: string;
+  status: TokenStatus | 'all';
+  sort: TokenSortOption['value'];
+}

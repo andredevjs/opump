@@ -1,0 +1,81 @@
+import { Link, useLocation } from 'react-router-dom';
+import { Menu, X } from 'lucide-react';
+import { WalletButton } from './WalletButton';
+import { useUIStore } from '@/stores/ui-store';
+import { cn } from '@/lib/cn';
+
+const NAV_LINKS = [
+  { label: 'Home', path: '/' },
+  { label: 'Launch', path: '/launch' },
+  { label: 'Trenches', path: '/trenches' },
+];
+
+export function Header() {
+  const location = useLocation();
+  const { mobileMenuOpen, toggleMobileMenu, closeMobileMenu } = useUIStore();
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-8">
+          <Link to="/" className="flex items-center gap-2" onClick={closeMobileMenu}>
+            <span className="text-2xl">🟠</span>
+            <span className="text-xl font-bold text-text-primary">
+              O<span className="text-accent">Pump</span>
+            </span>
+          </Link>
+
+          <nav className="hidden md:flex items-center gap-1">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={cn(
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  location.pathname === link.path
+                    ? 'text-accent bg-accent/10'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-elevated',
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <WalletButton />
+          <button
+            className="md:hidden text-text-secondary hover:text-text-primary"
+            onClick={toggleMobileMenu}
+          >
+            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-border bg-card">
+          <nav className="flex flex-col p-4 gap-1">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                onClick={closeMobileMenu}
+                className={cn(
+                  'px-3 py-3 rounded-lg text-sm font-medium transition-colors',
+                  location.pathname === link.path
+                    ? 'text-accent bg-accent/10'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-elevated',
+                )}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+      )}
+    </header>
+  );
+}
