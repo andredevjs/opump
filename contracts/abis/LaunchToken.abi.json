@@ -1,0 +1,307 @@
+{
+    "functions": [
+        {
+            "name": "buy",
+            "type": "Function",
+            "payable": true,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "btcAmount",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tokensOut",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "sell",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "tokenAmount",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "btcOut",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "reserve",
+            "type": "Function",
+            "payable": true,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "btcAmount",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "expiryBlock",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "cancelReservation",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "claimCreatorFees",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "claimMinterReward",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getReserves",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "virtualBtc",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "virtualToken",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "realBtc",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "k",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getPrice",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "priceSatsPerToken",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getConfig",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "creatorBps",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "buyTax",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "sellTax",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "destination",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "threshold",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "isGraduated",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "isGraduated",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "getMinterInfo",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "addr",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "shares",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "buyBlock",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "eligible",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "getReservation",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "addr",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "expiryBlock",
+                    "type": "UINT256"
+                }
+            ]
+        }
+    ],
+    "events": [
+        {
+            "name": "Buy",
+            "values": [
+                {
+                    "name": "buyer",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "btcIn",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "tokensOut",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "newPrice",
+                    "type": "UINT256"
+                }
+            ],
+            "type": "Event"
+        },
+        {
+            "name": "Sell",
+            "values": [
+                {
+                    "name": "seller",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "tokensIn",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "btcOut",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "newPrice",
+                    "type": "UINT256"
+                }
+            ],
+            "type": "Event"
+        },
+        {
+            "name": "Reservation",
+            "values": [
+                {
+                    "name": "user",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "expiryBlock",
+                    "type": "UINT256"
+                }
+            ],
+            "type": "Event"
+        },
+        {
+            "name": "FeeClaimed",
+            "values": [
+                {
+                    "name": "claimer",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "feeType",
+                    "type": "UINT256"
+                }
+            ],
+            "type": "Event"
+        }
+    ]
+}

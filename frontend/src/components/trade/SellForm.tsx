@@ -7,7 +7,11 @@ import type { TradeSimulation } from '@/types/trade';
 import { useTradeSimulation } from '@/hooks/use-trade-simulation';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
+import BigNumber from 'bignumber.js';
 import { formatBtc, formatTokenAmount, tokensToUnits } from '@/lib/format';
+import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
+
+const QUICK_PERCENTS = [25, 50, 75, 100];
 
 interface SellFormProps {
   token: Token;
@@ -16,9 +20,27 @@ interface SellFormProps {
 export function SellForm({ token }: SellFormProps) {
   const [amount, setAmount] = useState('');
   const [simulation, setSimulation] = useState<TradeSimulation | null>(null);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
   const { simulateSell, executeSell, executing } = useTradeSimulation(token);
-  const { connected } = useWalletStore();
+  const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
   const holding = useTradeStore((s) => s.getHolding(token.address));
+  const setHolding = useTradeStore((s) => s.setHolding);
+
+  // Fetch on-chain balance in real mode
+  useEffect(() => {
+    if (!connected || !hashedMLDSAKey || !publicKey) return;
+    let cancelled = false;
+    setBalanceError(null);
+    import('@/services/contract').then(({ fetchBalanceOf }) =>
+      fetchBalanceOf(token.address, hashedMLDSAKey, publicKey)
+        .then((balance) => { if (!cancelled) setHolding(token.address, balance); })
+        .catch((err) => { if (!cancelled) setBalanceError(err instanceof Error ? err.message : 'Failed to fetch balance'); }),
+    );
+    return () => { cancelled = true; };
+  }, [token.address, connected, hashedMLDSAKey, publicKey, setHolding]);
+
+  const holdingBn = new BigNumber(holding);
+  const hasHolding = holdingBn.isGreaterThan(0);
 
   useEffect(() => {
     const tokens = parseFloat(amount);
@@ -38,25 +60,25 @@ export function SellForm({ token }: SellFormProps) {
     }
   };
 
-  const QUICK_PERCENTS = [25, 50, 75, 100];
-
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-xs text-text-muted mb-1.5 block">Amount ({token.symbol})</label>
+        <label htmlFor="sell-amount" className="text-xs text-text-muted mb-1.5 block">Amount ({token.symbol})</label>
         <Input
+          id="sell-amount"
           type="number"
           placeholder="0.00"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           min="0"
         />
-        {holding > 0 && (
+        {hasHolding && (
           <div className="flex gap-2 mt-2">
             {QUICK_PERCENTS.map((pct) => (
               <button
+                type="button"
                 key={pct}
-                onClick={() => setAmount(((holding / 100_000_000) * pct / 100).toString())}
+                onClick={() => setAmount(holdingBn.div(TOKEN_UNITS_PER_TOKEN).times(pct).div(100).toFixed(8))}
                 className="flex-1 py-1.5 text-xs rounded bg-elevated hover:bg-input text-text-secondary font-mono transition-colors"
               >
                 {pct}%
@@ -85,18 +107,21 @@ export function SellForm({ token }: SellFormProps) {
         size="lg"
         className="w-full"
         onClick={handleSell}
-        disabled={!connected || !simulation || executing || holding <= 0}
+        disabled={!connected || !simulation || executing || !hasHolding}
       >
         {!connected
           ? 'Connect Wallet'
           : executing
           ? 'Executing...'
-          : holding <= 0
+          : !hasHolding
           ? 'No Holdings'
           : `Sell ${token.symbol}`}
       </Button>
 
-      {connected && holding > 0 && (
+      {balanceError && (
+        <p className="text-xs text-bear text-center">{balanceError}</p>
+      )}
+      {connected && hasHolding && (
         <p className="text-xs text-text-muted text-center">
           Holdings: {formatTokenAmount(holding)} {token.symbol}
         </p>

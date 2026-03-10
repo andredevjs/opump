@@ -3,7 +3,8 @@ export interface LaunchFormData {
   name: string;
   symbol: string;
   description: string;
-  image: string | null;
+  image: string | null; // emoji fallback
+  imageFile: File | null; // uploaded image file
 
   // Step 2: Socials
   website: string;

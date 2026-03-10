@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:vibecode.finance)",
+      "mcp__opnet-bob__opnet_opnet_dev",
+      "Bash(wc:*)",
+      "mcp__opnet-bob__opnet_knowledge_search",
+      "mcp__opnet-bob__opnet_contract_addresses",
+      "mcp__opnet-bob__opnet_full_doc",
+      "mcp__opnet-bob__opnet_opnet_audit",
+      "mcp__opnet-bob__opnet_incident_query",
+      "Bash(python3:*)",
+      "Bash(npm install:*)",
+      "Bash(npm view:*)",
+      "Bash(ls:*)",
+      "Bash(npm run:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(node:*)",
+      "mcp__opnet-bob__opnet_skill_catalog",
+      "mcp__opnet-bob__opnet_rpc",
+      "mcp__opnet-bob__opnet_skill_doc",
+      "Bash(grep:*)",
+      "Bash(npx:*)",
+      "Bash(nvm ls:*)",
+      "Bash(grep \"\"version\"\":*)",
+      "Bash(source:*)",
+      "mcp__opnet-bob__opnet_incident_report",
+      "Bash(npm test:*)"
+    ]
+  }
+}

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn';
-import type { TimeframeKey } from '@/mock/ohlcv';
+import type { TimeframeKey } from '@/types/api';
 
 interface ChartControlsProps {
   timeframe: TimeframeKey;
@@ -20,8 +20,10 @@ export function ChartControls({ timeframe, onTimeframeChange }: ChartControlsPro
     <div className="flex items-center gap-1">
       {TIMEFRAMES.map((tf) => (
         <button
+          type="button"
           key={tf.value}
           onClick={() => onTimeframeChange(tf.value)}
+          aria-pressed={timeframe === tf.value}
           className={cn(
             'px-2.5 py-1 rounded text-xs font-medium transition-colors',
             timeframe === tf.value

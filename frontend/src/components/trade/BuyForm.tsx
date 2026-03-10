@@ -6,8 +6,8 @@ import type { Token } from '@/types/token';
 import type { TradeSimulation } from '@/types/trade';
 import { useTradeSimulation } from '@/hooks/use-trade-simulation';
 import { useWalletStore } from '@/stores/wallet-store';
-import { formatBtc, formatTokenAmount } from '@/lib/format';
-import { btcToSats } from '@/lib/format';
+import { formatBtc, formatTokenAmount, btcToSats } from '@/lib/format';
+import BigNumber from 'bignumber.js';
 
 const QUICK_AMOUNTS = [0.001, 0.005, 0.01, 0.05]; // BTC
 
@@ -25,7 +25,7 @@ export function BuyForm({ token }: BuyFormProps) {
     const btc = parseFloat(amount);
     if (!isNaN(btc) && btc > 0) {
       const sats = btcToSats(btc);
-      setSimulation(simulateBuy(sats));
+      setSimulation(simulateBuy(String(sats)));
     } else {
       setSimulation(null);
     }
@@ -34,18 +34,19 @@ export function BuyForm({ token }: BuyFormProps) {
   const handleBuy = () => {
     const btc = parseFloat(amount);
     if (!isNaN(btc) && btc > 0) {
-      executeBuy(btcToSats(btc));
+      executeBuy(String(btcToSats(btc)));
       setAmount('');
     }
   };
 
-  const insufficientBalance = simulation && simulation.inputAmount > balanceSats;
+  const insufficientBalance = simulation && new BigNumber(simulation.inputAmount).isGreaterThan(balanceSats);
 
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-xs text-text-muted mb-1.5 block">Amount (BTC)</label>
+        <label htmlFor="buy-amount" className="text-xs text-text-muted mb-1.5 block">Amount (BTC)</label>
         <Input
+          id="buy-amount"
           type="number"
           placeholder="0.00"
           value={amount}
@@ -56,6 +57,7 @@ export function BuyForm({ token }: BuyFormProps) {
         <div className="flex gap-2 mt-2">
           {QUICK_AMOUNTS.map((qa) => (
             <button
+              type="button"
               key={qa}
               onClick={() => setAmount(qa.toString())}
               className="flex-1 py-1.5 text-xs rounded bg-elevated hover:bg-input text-text-secondary font-mono transition-colors"

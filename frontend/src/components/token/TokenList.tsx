@@ -16,24 +16,36 @@ export function TokenList({ tokens }: TokenListProps) {
       <table className="w-full text-sm">
         <thead>
           <tr className="text-text-muted text-xs border-b border-border">
-            <th className="text-left py-3 px-2">Token</th>
-            <th className="text-right py-3 px-2">Price</th>
-            <th className="text-right py-3 px-2">24h</th>
-            <th className="text-right py-3 px-2 hidden sm:table-cell">Volume</th>
-            <th className="text-right py-3 px-2 hidden md:table-cell">Holders</th>
-            <th className="text-right py-3 px-2 hidden md:table-cell">Status</th>
+            <th scope="col" className="text-left py-3 px-2">Token</th>
+            <th scope="col" className="text-right py-3 px-2">Price</th>
+            <th scope="col" className="text-right py-3 px-2">24h</th>
+            <th scope="col" className="text-right py-3 px-2 hidden sm:table-cell">Volume</th>
+            <th scope="col" className="text-right py-3 px-2 hidden md:table-cell">Holders</th>
+            <th scope="col" className="text-right py-3 px-2 hidden md:table-cell">Status</th>
           </tr>
         </thead>
         <tbody>
           {tokens.map((token) => (
             <tr
               key={token.address}
+              role="link"
+              tabIndex={0}
               onClick={() => navigate(`/token/${token.address}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  navigate(`/token/${token.address}`);
+                }
+              }}
               className="border-b border-border/50 hover:bg-elevated cursor-pointer transition-colors"
             >
               <td className="py-3 px-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xl">{token.image}</span>
+                  {token.imageUrl ? (
+                    <img src={token.imageUrl} alt={token.name} className="w-7 h-7 rounded-md object-cover" />
+                  ) : (
+                    <span className="text-xl">{token.image}</span>
+                  )}
                   <div>
                     <span className="font-medium text-text-primary">{token.name}</span>
                     <span className="ml-1.5 text-xs text-text-muted">${token.symbol}</span>

@@ -1,30 +1,41 @@
 import { create } from 'zustand';
 import type { Token, TokenFilter } from '@/types/token';
-import { MOCK_TOKENS } from '@/mock/tokens';
+import * as api from '@/services/api';
+import { mapApiTokenToToken } from '@/lib/mappers';
 
 interface TokenStore {
   tokens: Token[];
   selectedToken: Token | null;
   filter: TokenFilter;
   loading: boolean;
+  error: string | null;
+  pagination: { page: number; totalPages: number; total: number };
   setSelectedToken: (token: Token | null) => void;
   setFilter: (filter: Partial<TokenFilter>) => void;
   updateTokenPrice: (address: string, priceSats: number, change24h: number) => void;
   getToken: (address: string) => Token | undefined;
+  fetchTokens: () => Promise<void>;
+  fetchToken: (address: string) => Promise<Token | null>;
 }
 
+let _fetchGeneration = 0;
+
 export const useTokenStore = create<TokenStore>((set, get) => ({
-  tokens: MOCK_TOKENS,
+  tokens: [],
   selectedToken: null,
   filter: { search: '', status: 'all', sort: 'volume' },
   loading: false,
+  error: null,
+  pagination: { page: 1, totalPages: 1, total: 0 },
 
   setSelectedToken: (token) => set({ selectedToken: token }),
 
-  setFilter: (partial) =>
+  setFilter: (partial) => {
     set((state) => ({
       filter: { ...state.filter, ...partial },
-    })),
+    }));
+    get().fetchTokens();
+  },
 
   updateTokenPrice: (address, priceSats, change24h) =>
     set((state) => ({
@@ -40,4 +51,59 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     })),
 
   getToken: (address) => get().tokens.find((t) => t.address === address),
+
+  fetchTokens: async () => {
+    const gen = ++_fetchGeneration;
+    set({ loading: true, error: null });
+    try {
+      const { filter } = get();
+      const sortMap: Record<string, 'volume24h' | 'marketCap' | 'price' | 'newest'> = {
+        volume: 'volume24h',
+        marketCap: 'marketCap',
+        price: 'price',
+        newest: 'newest',
+      };
+
+      const result = await api.getTokens({
+        search: filter.search || undefined,
+        status: filter.status === 'all' ? undefined : filter.status as 'active' | 'graduated',
+        sort: sortMap[filter.sort] || 'volume24h',
+        order: 'desc',
+      });
+
+      // Discard stale response from a superseded fetch
+      if (gen !== _fetchGeneration) return;
+
+      const tokens: Token[] = result.tokens.map(mapApiTokenToToken);
+
+      set({
+        tokens,
+        loading: false,
+        pagination: {
+          page: result.pagination.page,
+          totalPages: result.pagination.totalPages,
+          total: result.pagination.total,
+        },
+      });
+    } catch (err) {
+      if (gen !== _fetchGeneration) return;
+      set({
+        loading: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch tokens',
+      });
+    }
+  },
+
+  fetchToken: async (address) => {
+    try {
+      const t = await api.getToken(address);
+      const token = mapApiTokenToToken(t);
+      set({ selectedToken: token });
+      return token;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch token';
+      set({ error: message });
+      return null;
+    }
+  },
 }));

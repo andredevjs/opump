@@ -18,12 +18,24 @@ export function TokenCard({ token, compact }: TokenCardProps) {
   return (
     <Card
       hover
+      role="link"
+      tabIndex={0}
       onClick={() => navigate(`/token/${token.address}`)}
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          navigate(`/token/${token.address}`);
+        }
+      }}
       className={cn(compact && 'p-3')}
     >
       <div className="flex items-start gap-3">
-        <div className="w-12 h-12 rounded-lg bg-elevated flex items-center justify-center text-2xl shrink-0">
-          {token.image}
+        <div className="w-12 h-12 rounded-lg bg-elevated flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+          {token.imageUrl ? (
+            <img src={token.imageUrl} alt={token.name} className="w-full h-full object-cover" />
+          ) : (
+            token.image
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -54,7 +66,7 @@ export function TokenCard({ token, compact }: TokenCardProps) {
 
           <GraduationProgress
             progress={token.graduationProgress}
-            realBtcSats={parseInt(token.realBtcReserve)}
+            realBtcSats={Number(token.realBtcReserve)}
             compact
             className="mt-3"
           />

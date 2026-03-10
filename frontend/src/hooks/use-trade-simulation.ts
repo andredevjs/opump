@@ -1,33 +1,78 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Token } from '@/types/token';
 import type { PendingTransaction, TradeSimulation } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
-import { TX_MEMPOOL_DELAY_MS, TX_CONFIRM_DELAY_MS } from '@/config/constants';
 import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
-  const { simulateBuy, simulateSell } = useBondingCurve(token);
-  const { connected } = useWalletStore();
+  const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
+  const { connected, address: walletAddress } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
   const { addPending, updatePendingStatus, removePending, addHolding, removeHolding } = useTradeStore();
   const [executing, setExecuting] = useState(false);
 
+  // Track pending timeouts for cleanup on unmount
+  const timeoutIds = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      for (const id of timeoutIds.current) clearTimeout(id);
+      timeoutIds.current.clear();
+    };
+  }, []);
+
+  function scheduleTimeout(fn: () => void, ms: number): void {
+    const id = setTimeout(() => {
+      timeoutIds.current.delete(id);
+      fn();
+    }, ms);
+    timeoutIds.current.add(id);
+  }
+
+  /**
+   * Simulate a buy. Uses local BigNumber math for instant preview.
+   */
+  const simulateBuy = useCallback(
+    (btcSats: string): TradeSimulation | null => {
+      return localSimBuy(btcSats);
+    },
+    [localSimBuy],
+  );
+
+  /**
+   * Simulate a sell using local bonding curve math.
+   */
+  const simulateSell = useCallback(
+    (tokenUnits: string): TradeSimulation | null => {
+      return localSimSell(tokenUnits);
+    },
+    [localSimSell],
+  );
+
+  /**
+   * Execute a buy transaction via contract call through OPWallet.
+   */
   const executeBuy = useCallback(
-    async (btcSats: number) => {
-      if (!token || !connected || btcSats <= 0) return;
+    async (btcSats: string) => {
+      if (!token || !connected || !btcSats || btcSats === '0') return;
+      if (!walletAddress) {
+        toast.error('Wallet not connected');
+        return;
+      }
       const sim = simulateBuy(btcSats);
       if (!sim) return;
 
       setExecuting(true);
-      const txId = `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const txId = `tx-${Date.now()}-${crypto.randomUUID()}`;
+      const btcSatsNum = Number(btcSats);
 
       const pending: PendingTransaction = {
         id: txId,
         type: 'buy',
         status: 'broadcasted',
-        btcAmount: btcSats,
+        btcAmount: btcSatsNum,
         tokenAmount: sim.outputAmount,
         tokenSymbol: token.symbol,
         tokenAddress: token.address,
@@ -35,43 +80,68 @@ export function useTradeSimulation(token: Token | null) {
       };
 
       addPending(pending);
-      deductBalance(btcSats);
-      toast.success(`Buy broadcasted: ${(btcSats / 100_000_000).toFixed(6)} BTC`);
+      deductBalance(btcSatsNum);
+      toast.success(`Buy broadcasted: ${(btcSatsNum / 100_000_000).toFixed(6)} BTC`);
 
-      // Mempool after 2s
-      setTimeout(() => {
+      try {
+        const { getLaunchTokenContract, sendContractCall, setupPayableCall, waitForConfirmation } = await import('@/services/contract');
+        const contract = getLaunchTokenContract(token.address);
+        const btcSatsBigInt = BigInt(btcSats);
+
+        if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error('Amount exceeds safe range for extra outputs');
+        }
+
+        // @payable: declare the BTC output BEFORE simulate
+        setupPayableCall(contract, token.address, btcSatsBigInt);
+
+        const simResult = await contract.buy(btcSatsBigInt);
+        const result = await sendContractCall(simResult, {
+          refundTo: walletAddress,
+          maximumAllowedSatToSpend: btcSatsBigInt + 50000n,
+          extraOutputs: [{ address: token.address, value: Number(btcSatsBigInt) }],
+        });
+
         updatePendingStatus(txId, 'mempool');
         toast(`Buy detected in mempool`, { icon: '📡' });
-      }, TX_MEMPOOL_DELAY_MS);
 
-      // Confirmed after 15s
-      setTimeout(() => {
+        await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
         addHolding(token.address, sim.outputAmount);
-        toast.success(`Buy confirmed!`);
+        toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
-
-        // Remove from pending after showing confirmed state
-        setTimeout(() => removePending(txId), 5000);
-      }, TX_CONFIRM_DELAY_MS);
+        scheduleTimeout(() => removePending(txId), 5000);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Buy failed');
+        addBalance(btcSatsNum); // Refund on failure
+        removePending(txId);
+        setExecuting(false);
+      }
     },
-    [token, connected, simulateBuy],
+    [token, connected, walletAddress, simulateBuy],
   );
 
+  /**
+   * Execute a sell transaction.
+   */
   const executeSell = useCallback(
-    async (tokenUnits: number) => {
-      if (!token || !connected || tokenUnits <= 0) return;
+    async (tokenUnits: string) => {
+      if (!token || !connected || !tokenUnits || tokenUnits === '0') return;
+      if (!walletAddress) {
+        toast.error('Wallet not connected');
+        return;
+      }
       const sim = simulateSell(tokenUnits);
       if (!sim) return;
 
       setExecuting(true);
-      const txId = `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const txId = `tx-${Date.now()}-${crypto.randomUUID()}`;
 
       const pending: PendingTransaction = {
         id: txId,
         type: 'sell',
         status: 'broadcasted',
-        btcAmount: sim.outputAmount,
+        btcAmount: Number(sim.outputAmount),
         tokenAmount: tokenUnits,
         tokenSymbol: token.symbol,
         tokenAddress: token.address,
@@ -82,20 +152,31 @@ export function useTradeSimulation(token: Token | null) {
       removeHolding(token.address, tokenUnits);
       toast.success(`Sell broadcasted`);
 
-      setTimeout(() => {
+      try {
+        const { getLaunchTokenContract, sendContractCall, waitForConfirmation } = await import('@/services/contract');
+        const contract = getLaunchTokenContract(token.address);
+        const simResult = await contract.sell(BigInt(tokenUnits));
+        const result = await sendContractCall(simResult, {
+          refundTo: walletAddress,
+        });
+
         updatePendingStatus(txId, 'mempool');
         toast(`Sell detected in mempool`, { icon: '📡' });
-      }, TX_MEMPOOL_DELAY_MS);
 
-      setTimeout(() => {
+        await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
-        addBalance(sim.outputAmount);
-        toast.success(`Sell confirmed!`);
+        addBalance(Number(sim.outputAmount));
+        toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
-        setTimeout(() => removePending(txId), 5000);
-      }, TX_CONFIRM_DELAY_MS);
+        scheduleTimeout(() => removePending(txId), 5000);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Sell failed');
+        addHolding(token.address, tokenUnits); // Refund on failure
+        removePending(txId);
+        setExecuting(false);
+      }
     },
-    [token, connected, simulateSell],
+    [token, connected, walletAddress, simulateSell],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

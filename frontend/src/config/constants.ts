@@ -34,9 +34,3 @@ export const MINTER_HOLD_BLOCKS = 4320; // ~30 days
 export const TOKENS_PER_PAGE = 12;
 export const TRADES_PER_PAGE = 20;
 export const PRICE_UPDATE_INTERVAL_MS = 2500;
-export const TX_MEMPOOL_DELAY_MS = 2000;
-export const TX_CONFIRM_DELAY_MS = 15000;
-
-// Mock wallet
-export const MOCK_WALLET_ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
-export const MOCK_WALLET_BALANCE_SATS = 250_000_000; // 2.5 BTC

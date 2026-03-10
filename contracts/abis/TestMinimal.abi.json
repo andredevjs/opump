@@ -1,0 +1,18 @@
+{
+    "functions": [
+        {
+            "name": "getTest",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "result",
+                    "type": "UINT256"
+                }
+            ]
+        }
+    ],
+    "events": []
+}

@@ -14,6 +14,7 @@ interface LaunchStore {
   startDeploy: () => void;
   advanceDeployPhase: (index: number) => void;
   setDeployedAddress: (address: string) => void;
+  abortDeploy: () => void;
   reset: () => void;
 }
 
@@ -22,6 +23,7 @@ const INITIAL_FORM: LaunchFormData = {
   symbol: '',
   description: '',
   image: null,
+  imageFile: null,
   website: '',
   twitter: '',
   telegram: '',
@@ -44,6 +46,8 @@ const DEPLOY_PHASES: DeployPhase[] = [
   { label: 'Confirming on Bitcoin...', status: 'pending' },
 ];
 
+const STEPS: LaunchStep[] = [1, 2, 3, 4, 5, 6];
+
 export const useLaunchStore = create<LaunchStore>((set) => ({
   currentStep: 1,
   formData: { ...INITIAL_FORM },
@@ -52,8 +56,14 @@ export const useLaunchStore = create<LaunchStore>((set) => ({
   deployedAddress: null,
 
   setStep: (step) => set({ currentStep: step }),
-  nextStep: () => set((s) => ({ currentStep: Math.min(6, s.currentStep + 1) as LaunchStep })),
-  prevStep: () => set((s) => ({ currentStep: Math.max(1, s.currentStep - 1) as LaunchStep })),
+  nextStep: () => set((s) => {
+    const idx = STEPS.indexOf(s.currentStep);
+    return { currentStep: STEPS[Math.min(STEPS.length - 1, idx + 1)] };
+  }),
+  prevStep: () => set((s) => {
+    const idx = STEPS.indexOf(s.currentStep);
+    return { currentStep: STEPS[Math.max(0, idx - 1)] };
+  }),
   updateForm: (data) => set((s) => ({ formData: { ...s.formData, ...data } })),
   startDeploy: () => set({ isDeploying: true }),
 
@@ -70,6 +80,12 @@ export const useLaunchStore = create<LaunchStore>((set) => ({
       deployedAddress: address,
       isDeploying: false,
       deployPhases: DEPLOY_PHASES.map((p) => ({ ...p, status: 'completed' })),
+    }),
+
+  abortDeploy: () =>
+    set({
+      isDeploying: false,
+      deployPhases: DEPLOY_PHASES.map((p) => ({ ...p })),
     }),
 
   reset: () =>
