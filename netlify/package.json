@@ -1,0 +1,11 @@
+{
+  "name": "opump-functions",
+  "type": "module",
+  "dependencies": {
+    "@netlify/functions": "^2.8.0",
+    "@upstash/redis": "^1.34.0",
+    "@btc-vision/bitcoin": "rc",
+    "opnet": "rc",
+    "@netlify/blobs": "^8.1.0"
+  }
+}

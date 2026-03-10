@@ -27,7 +27,8 @@
       "Bash(grep \"\"version\"\":*)",
       "Bash(source:*)",
       "mcp__opnet-bob__opnet_incident_report",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "mcp__opnet-bob__opnet_opnet_cli"
     ]
   }
 }

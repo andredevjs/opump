@@ -23,7 +23,7 @@ import type {
   UploadImageResponse,
 } from '@shared/types/api';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9850';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 class ApiError extends Error {
   constructor(
