@@ -1,12 +1,31 @@
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
-import { getPlatformStats } from '@/mock/stats';
 import { formatBtc, formatNumber } from '@/lib/format';
+import * as api from '@/services/api';
 
 export function PlatformStats() {
-  const stats = getPlatformStats();
+  const [stats, setStats] = useState({
+    totalTokens: 0,
+    totalGraduated: 0,
+    totalVolumeSats: 0,
+    totalTrades: 0,
+  });
+
+  useEffect(() => {
+    api.getStats().then((s) => {
+      setStats({
+        totalTokens: s.totalTokens,
+        totalGraduated: s.totalGraduated,
+        totalVolumeSats: Number(s.totalVolumeSats),
+        totalTrades: s.totalTrades,
+      });
+    }).catch((err) => {
+      console.error('[PlatformStats] API error:', err);
+    });
+  }, []);
 
   const items = [
-    { label: 'Tokens Launched', value: formatNumber(stats.totalTokensLaunched) },
+    { label: 'Tokens Launched', value: formatNumber(stats.totalTokens) },
     { label: 'Graduated to DEX', value: formatNumber(stats.totalGraduated) },
     { label: 'Total Volume', value: formatBtc(stats.totalVolumeSats) },
     { label: 'Total Trades', value: formatNumber(stats.totalTrades) },

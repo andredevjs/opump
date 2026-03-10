@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -7,7 +7,6 @@ import { TokenList } from '@/components/token/TokenList';
 import { useTokenStore } from '@/stores/token-store';
 import { useUIStore } from '@/stores/ui-store';
 import { cn } from '@/lib/cn';
-import { TOKENS_PER_PAGE } from '@/config/constants';
 import type { TokenStatus, TokenSortOption } from '@/types/token';
 
 const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
@@ -21,45 +20,23 @@ const SORT_OPTIONS: TokenSortOption[] = [
   { label: 'Volume', value: 'volume' },
   { label: 'Market Cap', value: 'marketCap' },
   { label: 'Price', value: 'price' },
-  { label: '24h Change', value: 'change' },
   { label: 'Newest', value: 'newest' },
 ];
 
 export function TrenchesPage() {
-  const { tokens, filter, setFilter } = useTokenStore();
+  const { tokens, filter, setFilter, loading, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
   const [page, setPage] = useState(1);
+
+  // Fetch tokens on mount
+  useEffect(() => {
+    fetchTokens();
+  }, []);
 
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [filter.search, filter.status, filter.sort]);
 
-  const filteredTokens = useMemo(() => {
-    let result = [...tokens];
-
-    if (filter.search) {
-      const q = filter.search.toLowerCase();
-      result = result.filter(
-        (t) => t.name.toLowerCase().includes(q) || t.symbol.toLowerCase().includes(q),
-      );
-    }
-
-    if (filter.status !== 'all') {
-      result = result.filter((t) => t.status === filter.status);
-    }
-
-    switch (filter.sort) {
-      case 'volume': result.sort((a, b) => b.volume24hSats - a.volume24hSats); break;
-      case 'marketCap': result.sort((a, b) => b.marketCapSats - a.marketCapSats); break;
-      case 'price': result.sort((a, b) => b.currentPriceSats - a.currentPriceSats); break;
-      case 'change': result.sort((a, b) => b.priceChange24h - a.priceChange24h); break;
-      case 'newest': result.sort((a, b) => b.createdAt - a.createdAt); break;
-    }
-
-    return result;
-  }, [tokens, filter]);
-
-  const totalPages = Math.ceil(filteredTokens.length / TOKENS_PER_PAGE);
-  const pageTokens = filteredTokens.slice((page - 1) * TOKENS_PER_PAGE, page * TOKENS_PER_PAGE);
+  const totalPages = pagination.totalPages;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -79,7 +56,7 @@ export function TrenchesPage() {
         <div className="flex items-center gap-2">
           <select
             value={filter.sort}
-            onChange={(e) => setFilter({ sort: e.target.value as any })}
+            onChange={(e) => setFilter({ sort: e.target.value as TokenSortOption['value'] })}
             className="h-10 px-3 rounded-lg bg-input border border-border text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
           >
             {SORT_OPTIONS.map((opt) => (
@@ -122,19 +99,19 @@ export function TrenchesPage() {
       </div>
 
       {/* Token display */}
-      {pageTokens.length === 0 ? (
+      {tokens.length === 0 ? (
         <div className="text-center py-16 text-text-muted">
           <p className="text-lg">No tokens found</p>
           <p className="text-sm mt-1">Try adjusting your search or filters.</p>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {pageTokens.map((token) => (
+          {tokens.map((token) => (
             <TokenCard key={token.address} token={token} />
           ))}
         </div>
       ) : (
-        <TokenList tokens={pageTokens} />
+        <TokenList tokens={tokens} />
       )}
 
       {/* Pagination */}

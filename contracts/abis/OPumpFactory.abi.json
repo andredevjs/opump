@@ -1,0 +1,128 @@
+{
+    "functions": [
+        {
+            "name": "registerToken",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "name",
+                    "type": "STRING"
+                },
+                {
+                    "name": "symbol",
+                    "type": "STRING"
+                },
+                {
+                    "name": "creatorAllocationBps",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "buyTaxBps",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "sellTaxBps",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "flywheelDestination",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tokenIndex",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getTokenCount",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "count",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getTokenAtIndex",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "index",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "tokenCreator",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getTokensByCreator",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "creator",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "count",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getStats",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "totalTokens",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "totalGraduated",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "totalVolume",
+                    "type": "UINT256"
+                }
+            ]
+        }
+    ],
+    "events": [
+        {
+            "name": "TokenRegistered",
+            "values": [
+                {
+                    "name": "creator",
+                    "type": "ADDRESS"
+                },
+                {
+                    "name": "tokenIndex",
+                    "type": "UINT256"
+                }
+            ],
+            "type": "Event"
+        }
+    ]
+}

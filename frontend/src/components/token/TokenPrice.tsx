@@ -6,9 +6,10 @@ interface TokenPriceProps {
   change24h: number;
   size?: 'sm' | 'md' | 'lg';
   showChange?: boolean;
+  isOptimistic?: boolean;
 }
 
-export function TokenPrice({ priceSats, change24h, size = 'md', showChange = true }: TokenPriceProps) {
+export function TokenPrice({ priceSats, change24h, size = 'md', showChange = true, isOptimistic = false }: TokenPriceProps) {
   const isPositive = change24h >= 0;
 
   return (
@@ -20,7 +21,7 @@ export function TokenPrice({ priceSats, change24h, size = 'md', showChange = tru
           'text-xl': size === 'lg',
         })}
       >
-        {formatPrice(priceSats)}
+        {isOptimistic ? '~' : ''}{formatPrice(priceSats)}
       </span>
       {showChange && (
         <span
@@ -31,6 +32,15 @@ export function TokenPrice({ priceSats, change24h, size = 'md', showChange = tru
           }, isPositive ? 'text-bull' : 'text-bear')}
         >
           {formatPercent(change24h)}
+        </span>
+      )}
+      {isOptimistic && (
+        <span className={cn('text-accent/60 italic', {
+          'text-[10px]': size === 'sm',
+          'text-xs': size === 'md',
+          'text-sm': size === 'lg',
+        })}>
+          pending
         </span>
       )}
     </div>

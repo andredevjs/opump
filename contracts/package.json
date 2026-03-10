@@ -1,0 +1,30 @@
+{
+  "name": "opump-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OPump LaunchToken and Factory smart contracts for OPNet",
+  "scripts": {
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "build": "asc src/index.ts --config asconfig.json --target debug",
+    "build:factory": "asc src/factory-index.ts --config asconfig.json --target factory",
+    "build:all": "npm run build && npm run build:factory",
+    "clean": "rm -rf build/*"
+  },
+  "dependencies": {
+    "@assemblyscript/loader": "^0.28.9",
+    "@btc-vision/as-bignum": "^0.1.2",
+    "@btc-vision/btc-runtime": "^1.11.0-rc.10"
+  },
+  "devDependencies": {
+    "@btc-vision/assemblyscript": "^0.29.2",
+    "@btc-vision/opnet-transform": "^1.2.0",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.0",
+    "typescript-eslint": "^8.56.0"
+  },
+  "overrides": {
+    "@noble/hashes": "2.0.1"
+  }
+}

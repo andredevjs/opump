@@ -1,0 +1,21 @@
+{
+  "name": "opump-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@btc-vision/unit-test-framework": "beta",
+    "@btc-vision/transaction": "rc"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "tsx": "latest",
+    "@types/node": "latest"
+  },
+  "overrides": {},
+  "scripts": {
+    "test": "npx tsx LaunchToken.test.ts && npx tsx OPumpFactory.test.ts",
+    "test:token": "npx tsx LaunchToken.test.ts",
+    "test:factory": "npx tsx OPumpFactory.test.ts"
+  }
+}

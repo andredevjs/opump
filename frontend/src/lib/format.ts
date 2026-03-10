@@ -1,3 +1,4 @@
+import BigNumber from 'bignumber.js';
 import { SATS_PER_BTC, TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 
 export function satsToBtc(sats: number): number {
@@ -8,20 +9,26 @@ export function btcToSats(btc: number): number {
   return Math.round(btc * SATS_PER_BTC);
 }
 
-export function tokenUnitsToTokens(units: number): number {
+export function tokenUnitsToTokens(units: number | string): number {
+  if (typeof units === 'string') return new BigNumber(units).div(TOKEN_UNITS_PER_TOKEN).toNumber();
   return units / TOKEN_UNITS_PER_TOKEN;
 }
 
-export function tokensToUnits(tokens: number): number {
-  return Math.round(tokens * TOKEN_UNITS_PER_TOKEN);
+/**
+ * Convert human-readable token count to on-chain units (string).
+ * Uses BigNumber to avoid precision loss for amounts exceeding Number.MAX_SAFE_INTEGER.
+ */
+export function tokensToUnits(tokens: number): string {
+  return new BigNumber(tokens).times(TOKEN_UNITS_PER_TOKEN).integerValue().toFixed(0);
 }
 
-export function formatBtc(sats: number, decimals = 4): string {
-  const btc = satsToBtc(sats);
+export function formatBtc(sats: number | string, decimals = 4): string {
+  const s = Number(sats);
+  const btc = satsToBtc(s);
   if (btc >= 1) return `${btc.toFixed(decimals)} BTC`;
-  if (sats >= 1_000_000) return `${(sats / 1_000_000).toFixed(2)}M sats`;
-  if (sats >= 1_000) return `${(sats / 1_000).toFixed(1)}k sats`;
-  return `${sats.toLocaleString()} sats`;
+  if (s >= 1_000_000) return `${(s / 1_000_000).toFixed(2)}M sats`;
+  if (s >= 1_000) return `${(s / 1_000).toFixed(1)}k sats`;
+  return `${s.toLocaleString()} sats`;
 }
 
 export function formatSats(sats: number): string {
@@ -31,12 +38,17 @@ export function formatSats(sats: number): string {
   return sats.toLocaleString();
 }
 
-export function formatTokenAmount(units: number): string {
-  const tokens = tokenUnitsToTokens(units);
-  if (tokens >= 1_000_000_000) return `${(tokens / 1_000_000_000).toFixed(2)}B`;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(2)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-  return tokens.toLocaleString(undefined, { maximumFractionDigits: 2 });
+/**
+ * Format token units for display. Accepts string to preserve precision
+ * for amounts exceeding Number.MAX_SAFE_INTEGER (~9 * 10^15).
+ */
+export function formatTokenAmount(units: number | string): string {
+  const bn = new BigNumber(units);
+  const tokens = bn.div(TOKEN_UNITS_PER_TOKEN);
+  if (tokens.gte(1_000_000_000)) return `${tokens.div(1_000_000_000).toFixed(2)}B`;
+  if (tokens.gte(1_000_000)) return `${tokens.div(1_000_000).toFixed(2)}M`;
+  if (tokens.gte(1_000)) return `${tokens.div(1_000).toFixed(1)}k`;
+  return tokens.toFormat(2);
 }
 
 export function formatPrice(sats: number): string {

@@ -1,42 +1,110 @@
 import { create } from 'zustand';
-import { MOCK_WALLET_ADDRESS, MOCK_WALLET_BALANCE_SATS } from '@/config/constants';
+import { clearContractCache } from '@/services/contract';
+
+/**
+ * Bridge function set by the WalletConnectProvider integration.
+ * In real mode, a component using useWalletConnect() registers itself here
+ * so the Zustand store can trigger wallet connection.
+ */
+let _walletBridge: (() => void) | null = null;
+export function setWalletConnectBridge(openConnect: () => void): void {
+  _walletBridge = openConnect;
+}
+export function clearWalletConnectBridge(): void {
+  _walletBridge = null;
+}
+
+interface WalletSyncData {
+  address: string | null;
+  balanceSats: number;
+  network: string | null;
+  connected: boolean;
+  hashedMLDSAKey?: string | null;
+  publicKey?: string | null;
+}
 
 interface WalletStore {
   connected: boolean;
   address: string | null;
+  /** Hashed ML-DSA public key (hex) — first param for Address.fromString() */
+  hashedMLDSAKey: string | null;
+  /** Classical public key (hex) — second param for Address.fromString() */
+  publicKey: string | null;
   balanceSats: number;
-  connect: () => void;
+  network: string | null;
+  isConnecting: boolean;
+  connect: () => Promise<void>;
   disconnect: () => void;
   deductBalance: (sats: number) => void;
   addBalance: (sats: number) => void;
+  setAddress: (address: string) => void;
+  setBalance: (sats: number) => void;
+  /** Sync wallet state from WalletConnectProvider context */
+  syncWallet: (data: WalletSyncData) => void;
 }
 
-export const useWalletStore = create<WalletStore>((set) => ({
+export const useWalletStore = create<WalletStore>((set, get) => ({
   connected: false,
   address: null,
+  hashedMLDSAKey: null,
+  publicKey: null,
   balanceSats: 0,
+  network: null,
+  isConnecting: false,
 
-  connect: () =>
+  connect: async () => {
+    if (get().isConnecting) return;
+
+    // Trigger the WalletConnectProvider modal.
+    // The actual state sync happens via syncWallet() called from the bridge component.
+    set({ isConnecting: true });
+    if (_walletBridge) {
+      _walletBridge();
+    } else {
+      console.error('[Wallet] No wallet bridge registered. Wrap app in WalletConnectProvider.');
+      set({ isConnecting: false });
+    }
+  },
+
+  syncWallet: (data) => {
     set({
-      connected: true,
-      address: MOCK_WALLET_ADDRESS,
-      balanceSats: MOCK_WALLET_BALANCE_SATS,
-    }),
+      connected: data.connected,
+      address: data.address,
+      hashedMLDSAKey: data.hashedMLDSAKey ?? null,
+      publicKey: data.publicKey ?? null,
+      balanceSats: Math.max(0, Math.floor(data.balanceSats)),
+      network: data.network,
+      isConnecting: false,
+    });
+  },
 
-  disconnect: () =>
+  disconnect: () => {
+    clearContractCache();
     set({
       connected: false,
       address: null,
+      hashedMLDSAKey: null,
+      publicKey: null,
       balanceSats: 0,
-    }),
+      network: null,
+      isConnecting: false,
+    });
+  },
 
-  deductBalance: (sats) =>
+  deductBalance: (sats) => {
+    if (!Number.isInteger(sats) || sats < 0) return;
     set((state) => ({
       balanceSats: Math.max(0, state.balanceSats - sats),
-    })),
+    }));
+  },
 
-  addBalance: (sats) =>
+  addBalance: (sats) => {
+    if (!Number.isInteger(sats) || sats < 0) return;
     set((state) => ({
       balanceSats: state.balanceSats + sats,
-    })),
+    }));
+  },
+
+  setAddress: (address) => set({ address }),
+  setBalance: (sats) => set({ balanceSats: sats }),
 }));

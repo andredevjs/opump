@@ -3,7 +3,8 @@ export interface Token {
   name: string;
   symbol: string;
   description: string;
-  image: string;
+  image: string; // first char of name
+  imageUrl?: string; // base64 or URL
   creatorAddress: string;
   createdAt: number; // timestamp ms
 
@@ -35,18 +36,13 @@ export interface Token {
   // Status
   status: TokenStatus;
   graduationProgress: number; // 0-100
-
-  // Personality for mock behavior
-  personality: TokenPersonality;
 }
 
 export type TokenStatus = 'active' | 'graduated' | 'new';
 
-export type TokenPersonality = 'pumping' | 'dumping' | 'stable' | 'volatile' | 'new' | 'graduated';
-
 export interface TokenSortOption {
   label: string;
-  value: 'volume' | 'marketCap' | 'price' | 'change' | 'newest';
+  value: 'volume' | 'marketCap' | 'price' | 'newest';
 }
 
 export interface TokenFilter {

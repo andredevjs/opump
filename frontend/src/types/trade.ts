@@ -4,7 +4,7 @@ export interface Trade {
   traderAddress: string;
   type: 'buy' | 'sell';
   btcAmount: number; // sats
-  tokenAmount: number; // token-units
+  tokenAmount: string; // token-units as string (can exceed Number.MAX_SAFE_INTEGER)
   priceSats: number; // price at time of trade
   fee: number; // sats
   timestamp: number; // ms
@@ -16,8 +16,8 @@ export type TransactionStatus = 'broadcasted' | 'mempool' | 'confirmed';
 
 export interface TradeSimulation {
   type: 'buy' | 'sell';
-  inputAmount: number;
-  outputAmount: number;
+  inputAmount: string; // sats or token-units as string
+  outputAmount: string; // sats or token-units as string
   pricePerToken: number;
   priceImpactPercent: number;
   fee: number;
@@ -30,8 +30,8 @@ export interface PendingTransaction {
   id: string;
   type: 'buy' | 'sell';
   status: TransactionStatus;
-  btcAmount: number;
-  tokenAmount: number;
+  btcAmount: number; // sats (always within Number.MAX_SAFE_INTEGER)
+  tokenAmount: string; // token-units as string (can exceed Number.MAX_SAFE_INTEGER)
   tokenSymbol: string;
   tokenAddress: string;
   timestamp: number;

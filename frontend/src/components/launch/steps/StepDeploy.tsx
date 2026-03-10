@@ -1,14 +1,44 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { useLaunchStore } from '@/stores/launch-store';
+import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/cn';
 import { Check, Loader2, Circle, Rocket, ExternalLink } from 'lucide-react';
-import { MOCK_TOKENS } from '@/mock/tokens';
+import { createToken, uploadImage } from '@/services/api';
+import toast from 'react-hot-toast';
+import type { TaxDestination } from '@/types/launch';
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip data URI prefix (e.g. "data:image/png;base64,")
+      resolve(result.split(',')[1] ?? '');
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
+
+const flywheelDestMap: Record<TaxDestination, number> = {
+  burn: 0,
+  community_pool: 1,
+  creator_wallet: 2,
+};
+
+function PhaseIcon({ status }: { status: string }) {
+  if (status === 'completed') return <Check size={16} className="text-bull" />;
+  if (status === 'active') return <Loader2 size={16} className="text-accent animate-spin" />;
+  return <Circle size={16} className="text-text-muted" />;
+}
 
 export function StepDeploy() {
   const navigate = useNavigate();
+  const { connected, address: walletAddress } = useWalletStore();
   const {
     formData,
     deployPhases,
@@ -18,33 +48,101 @@ export function StepDeploy() {
     startDeploy,
     advanceDeployPhase,
     setDeployedAddress,
+    abortDeploy,
   } = useLaunchStore();
 
+  const previewUrl = useMemo(
+    () => (formData.imageFile ? URL.createObjectURL(formData.imageFile) : null),
+    [formData.imageFile],
+  );
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
   const handleDeploy = useCallback(async () => {
+    if (!connected || !walletAddress) {
+      toast.error('Connect your wallet first');
+      return;
+    }
+
     startDeploy();
 
-    // Phase 1: Compiling (2s)
-    advanceDeployPhase(0);
-    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      // Phase 1: Get factory contract
+      advanceDeployPhase(0);
 
-    // Phase 2: Broadcasting (3s)
-    advanceDeployPhase(1);
-    await new Promise((r) => setTimeout(r, 3000));
+      if (!FACTORY_ADDRESS) {
+        throw new Error('Factory contract address not configured (VITE_FACTORY_ADDRESS)');
+      }
+      const { getFactoryContract, sendContractCall } = await import('@/services/contract');
+      const factory = getFactoryContract(FACTORY_ADDRESS);
 
-    // Phase 3: Confirming (4s)
-    advanceDeployPhase(2);
-    await new Promise((r) => setTimeout(r, 4000));
+      // Phase 2: Deploy via factory contract
+      advanceDeployPhase(1);
 
-    // Done — pick a random mock token address
-    const randomToken = MOCK_TOKENS[Math.floor(Math.random() * MOCK_TOKENS.length)];
-    setDeployedAddress(randomToken.address);
-  }, []);
+      const sim = await factory.deployToken(
+        formData.name,
+        formData.symbol,
+        BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+        BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
+        BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
+        BigInt(flywheelDestMap[formData.taxDestination]),
+      );
+      const result = await sendContractCall(sim, {
+        refundTo: walletAddress,
+        maximumAllowedSatToSpend: 100000n,
+      });
 
-  const PhaseIcon = ({ status }: { status: string }) => {
-    if (status === 'completed') return <Check size={16} className="text-bull" />;
-    if (status === 'active') return <Loader2 size={16} className="text-accent animate-spin" />;
-    return <Circle size={16} className="text-text-muted" />;
-  };
+      const contractAddress = result.txHash;
+
+      // Phase 3: Register metadata in backend
+      advanceDeployPhase(2);
+
+      // Upload image if a file was selected
+      let imageUrl = '';
+      if (formData.imageFile) {
+        const base64 = await fileToBase64(formData.imageFile);
+        const uploaded = await uploadImage({
+          data: base64,
+          contentType: formData.imageFile.type,
+        });
+        imageUrl = uploaded.url;
+      }
+
+      const flywheelDestNames = ['burn', 'communityPool', 'creator'] as const;
+
+      await createToken({
+        name: formData.name,
+        symbol: formData.symbol,
+        description: formData.description,
+        imageUrl,
+        socials: {
+          website: formData.website || undefined,
+          twitter: formData.twitter || undefined,
+          telegram: formData.telegram || undefined,
+          discord: formData.discord || undefined,
+          github: formData.github || undefined,
+        },
+        creatorAddress: walletAddress,
+        contractAddress,
+        config: {
+          creatorAllocationBps: Math.round(formData.creatorAllocationPercent * 100),
+          buyTaxBps: formData.flywheelEnabled ? Math.round(formData.buyTaxPercent * 100) : 0,
+          sellTaxBps: formData.flywheelEnabled ? Math.round(formData.sellTaxPercent * 100) : 0,
+          flywheelDestination: flywheelDestNames[flywheelDestMap[formData.taxDestination]],
+        },
+        deployTxHash: result.txHash,
+      });
+
+      setDeployedAddress(contractAddress);
+      toast.success('Token deployed successfully!');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Deployment failed');
+      abortDeploy();
+    }
+  }, [connected, walletAddress, formData]);
 
   return (
     <div className="space-y-6 max-w-md mx-auto">
@@ -56,8 +154,12 @@ export function StepDeploy() {
       {/* Summary */}
       <div className="p-4 rounded-lg bg-elevated space-y-3">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-lg bg-input flex items-center justify-center text-2xl">
-            {formData.image || '🪙'}
+          <div className="w-12 h-12 rounded-lg bg-input flex items-center justify-center text-2xl overflow-hidden">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Token" className="w-full h-full object-cover" />
+            ) : (
+              formData.image || '🪙'
+            )}
           </div>
           <div>
             <p className="font-semibold text-text-primary">{formData.name || 'Untitled Token'}</p>
@@ -73,7 +175,7 @@ export function StepDeploy() {
           <div className="p-2 rounded bg-input">
             <span className="text-text-muted">Airdrop</span>
             <p className="font-mono text-text-primary">
-              {formData.airdropEnabled ? `${formData.airdropPercent}%` : 'None'}
+              None
             </p>
           </div>
           <div className="p-2 rounded bg-input">
@@ -138,12 +240,19 @@ export function StepDeploy() {
           <Button variant="secondary" onClick={prevStep} disabled={isDeploying} className="flex-1" size="lg">
             Back
           </Button>
-          <Button onClick={handleDeploy} disabled={isDeploying} className="flex-1" size="lg">
+          <Button
+            onClick={handleDeploy}
+            disabled={isDeploying || !connected || !FACTORY_ADDRESS}
+            className="flex-1"
+            size="lg"
+          >
             {isDeploying ? (
               <>
                 <Loader2 size={16} className="mr-2 animate-spin" />
                 Deploying...
               </>
+            ) : !FACTORY_ADDRESS ? (
+              'Factory Not Configured'
             ) : (
               <>
                 <Rocket size={16} className="mr-2" />

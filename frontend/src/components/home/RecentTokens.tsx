@@ -1,13 +1,22 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { TokenCard } from '@/components/token/TokenCard';
-import { MOCK_TOKENS } from '@/mock/tokens';
 import { Button } from '@/components/ui/Button';
 import { ArrowRight } from 'lucide-react';
+import type { Token } from '@/types/token';
+import * as api from '@/services/api';
+import { mapApiTokenToToken } from '@/lib/mappers';
 
 export function RecentTokens() {
-  const recent = [...MOCK_TOKENS]
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 4);
+  const [tokens, setTokens] = useState<Token[]>([]);
+
+  useEffect(() => {
+    api.getTokens({ sort: 'newest', order: 'desc', limit: 6 }).then((res) => {
+      setTokens(res.tokens.map(mapApiTokenToToken));
+    }).catch(() => {
+      // Keep empty on error
+    });
+  }, []);
 
   return (
     <section className="max-w-7xl mx-auto px-4 py-12">
@@ -20,7 +29,7 @@ export function RecentTokens() {
         </Link>
       </div>
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {recent.map((token) => (
+        {tokens.map((token) => (
           <TokenCard key={token.address} token={token} />
         ))}
       </div>

@@ -1,15 +1,37 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTradeStore } from '@/stores/trade-store';
+import BigNumber from 'bignumber.js';
+import { useTradeStore, getKnownTokenAddresses } from '@/stores/trade-store';
 import { useTokenStore } from '@/stores/token-store';
+import { useWalletStore } from '@/stores/wallet-store';
 import { formatTokenAmount, formatBtc } from '@/lib/format';
 import { Card } from '@/components/ui/Card';
 
 export function Holdings() {
   const navigate = useNavigate();
   const holdings = useTradeStore((s) => s.holdings);
+  const setHolding = useTradeStore((s) => s.setHolding);
   const getToken = useTokenStore((s) => s.getToken);
+  const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
 
-  const entries = Object.entries(holdings).filter(([, v]) => v > 0);
+  // Refresh all known holdings from on-chain in real mode
+  useEffect(() => {
+    if (!connected || !hashedMLDSAKey || !publicKey) return;
+    let cancelled = false;
+    const addresses = getKnownTokenAddresses();
+    if (addresses.length === 0) return;
+
+    import('@/services/contract').then(({ fetchBalanceOf }) => {
+      for (const addr of addresses) {
+        fetchBalanceOf(addr, hashedMLDSAKey, publicKey)
+          .then((balance) => { if (!cancelled) setHolding(addr, balance); })
+          .catch(() => {});
+      }
+    });
+    return () => { cancelled = true; };
+  }, [connected, hashedMLDSAKey, publicKey, setHolding]);
+
+  const entries = Object.entries(holdings).filter(([, v]) => v !== '0' && v !== undefined);
 
   if (entries.length === 0) {
     return (
@@ -24,7 +46,7 @@ export function Holdings() {
       {entries.map(([address, units]) => {
         const token = getToken(address);
         if (!token) return null;
-        const valueSats = units * token.currentPriceSats;
+        const valueSats = new BigNumber(units).times(token.currentPriceSats).toNumber();
 
         return (
           <Card

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
 
@@ -83,7 +83,7 @@ export function PriceChart({ candles, className }: PriceChartProps) {
     if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) return;
 
     const candleData = candles.map((c) => ({
-      time: c.time as any,
+      time: c.time as UTCTimestamp,
       open: c.open,
       high: c.high,
       low: c.low,
@@ -91,7 +91,7 @@ export function PriceChart({ candles, className }: PriceChartProps) {
     }));
 
     const volumeData = candles.map((c) => ({
-      time: c.time as any,
+      time: c.time as UTCTimestamp,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)',
     }));
