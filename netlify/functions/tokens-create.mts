@@ -3,15 +3,14 @@ import { json, error, corsHeaders } from "./_shared/response.mts";
 import { getToken, saveToken } from "./_shared/redis-queries.mts";
 import { checkCreateRateLimit } from "./_shared/rate-limit.mts";
 import { verifyTokenOnChain } from "./_shared/on-chain-verify.mts";
-import type { CreateTokenRequest } from "../../shared/types/api.js";
-import type { TokenDocument } from "../../shared/types/token.js";
+import type { CreateTokenRequest, TokenDocument } from "./_shared/constants.mts";
 import {
   INITIAL_VIRTUAL_BTC_SATS,
   INITIAL_VIRTUAL_TOKEN_SUPPLY,
   K_CONSTANT,
   GRADUATION_THRESHOLD_SATS,
   TOKEN_DECIMALS,
-} from "../../shared/constants/bonding-curve.js";
+} from "./_shared/constants.mts";
 
 export default async (req: Request, _context: Context) => {
   if (req.method === "OPTIONS") {

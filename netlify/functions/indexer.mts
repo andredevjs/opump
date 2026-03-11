@@ -22,8 +22,8 @@ import {
   TOKEN_KEY,
   TIMEFRAME_SECONDS,
 } from "./_shared/redis-queries.mts";
-import { TOKEN_DECIMALS } from "../../shared/constants/bonding-curve.js";
-import type { TradeDocument } from "../../shared/types/trade.js";
+import { TOKEN_DECIMALS } from "./_shared/constants.mts";
+import type { TradeDocument } from "./_shared/constants.mts";
 
 const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
 const MAX_BLOCKS_PER_RUN = 2;

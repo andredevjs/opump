@@ -2,7 +2,7 @@ import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { getToken } from "./_shared/redis-queries.mts";
 import { BondingCurveSimulator } from "./_shared/bonding-curve.mts";
-import { MIN_TRADE_SATS } from "../../shared/constants/bonding-curve.js";
+import { MIN_TRADE_SATS } from "./_shared/constants.mts";
 
 const simulator = new BondingCurveSimulator();
 

@@ -5,8 +5,8 @@
 
 import type { Redis } from "@upstash/redis";
 import { getRedis } from "./redis.mts";
-import type { TokenDocument, TokenStatus } from "../../../shared/types/token.js";
-import type { TradeDocument } from "../../../shared/types/trade.js";
+import type { TokenDocument, TokenStatus } from "./constants.mts";
+import type { TradeDocument } from "./constants.mts";
 
 // ─── Key helpers ────────────────────────────────────────────
 

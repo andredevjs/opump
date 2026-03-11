@@ -14,7 +14,7 @@ import {
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
   TOKEN_DECIMALS,
-} from "../../../shared/constants/bonding-curve.js";
+} from "./constants.mts";
 
 const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
 
