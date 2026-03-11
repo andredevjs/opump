@@ -73,7 +73,7 @@ export function getLaunchTokenContract(address: string) {
 
 /**
  * Get the OPumpFactory contract instance (cached).
- * Uses OPUMP_FACTORY_ABI for typed deployToken/getStats calls.
+ * Uses OPUMP_FACTORY_ABI for typed registerToken/getStats calls.
  */
 export function getFactoryContract(address: string) {
   const cached = factoryCache.get(address);

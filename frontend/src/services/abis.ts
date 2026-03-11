@@ -229,7 +229,7 @@ export interface ILaunchTokenContract extends IOP20Contract {
 
 export const OPUMP_FACTORY_ABI: BitcoinInterfaceAbi = [
   {
-    name: 'deployToken',
+    name: 'registerToken',
     type: BitcoinAbiTypes.Function,
     inputs: [
       { name: 'name', type: ABIDataTypes.STRING },
@@ -285,21 +285,21 @@ export const OPUMP_FACTORY_ABI: BitcoinInterfaceAbi = [
 
 // ============ Factory Result Types ============
 
-export type DeployTokenResult = CallResult<{ tokenIndex: bigint }, []>;
+export type RegisterTokenResult = CallResult<{ tokenIndex: bigint }, []>;
 export type GetTokenCountResult = CallResult<{ count: bigint }, []>;
 export type GetStatsResult = CallResult<{ totalTokens: bigint; totalGraduated: bigint; totalVolume: bigint }, []>;
 
 // ============ Factory Interface ============
 
 export interface IOPumpFactoryContract extends BaseContractProperties {
-  deployToken(
+  registerToken(
     name: string,
     symbol: string,
     creatorAllocationBps: bigint,
     buyTaxBps: bigint,
     sellTaxBps: bigint,
     flywheelDestination: bigint,
-  ): Promise<DeployTokenResult>;
+  ): Promise<RegisterTokenResult>;
   getTokenCount(): Promise<GetTokenCountResult>;
   getTokenAtIndex(index: bigint): Promise<CallResult<{ tokenCreator: bigint }, []>>;
   getTokensByCreator(creator: Address): Promise<CallResult<{ count: bigint }, []>>;

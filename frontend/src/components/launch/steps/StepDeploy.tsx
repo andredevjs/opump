@@ -82,7 +82,7 @@ export function StepDeploy() {
       // Phase 2: Deploy via factory contract
       advanceDeployPhase(1);
 
-      const sim = await factory.deployToken(
+      const sim = await factory.registerToken(
         formData.name,
         formData.symbol,
         BigInt(Math.round(formData.creatorAllocationPercent * 100)),
