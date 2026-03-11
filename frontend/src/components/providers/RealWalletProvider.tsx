@@ -4,7 +4,7 @@
  */
 
 import { useEffect, type ReactNode } from 'react';
-import { WalletConnectProvider, useWalletConnect } from '@btc-vision/walletconnect';
+import { WalletConnectProvider, useWalletConnect, SupportedWallets } from '@btc-vision/walletconnect';
 import { useWalletStore, setWalletConnectBridge } from '@/stores/wallet-store';
 import { clearContractCache } from '@/services/contract';
 
@@ -23,7 +23,7 @@ function WalletBridge() {
     network,
     hashedMLDSAKey,
     publicKey,
-    openConnectModal,
+    connectToWallet,
     disconnect: wcDisconnect,
   } = useWalletConnect();
 
@@ -41,10 +41,10 @@ function WalletBridge() {
     });
   }, [walletAddress, walletBalance, network, hashedMLDSAKey, publicKey, syncWallet]);
 
-  // Register the bridge so store.connect() opens the WalletConnect modal
+  // Register the bridge so store.connect() connects directly to OP Wallet
   useEffect(() => {
-    setWalletConnectBridge(openConnectModal);
-  }, [openConnectModal]);
+    setWalletConnectBridge(() => connectToWallet(SupportedWallets.OP_WALLET));
+  }, [connectToWallet]);
 
   // Wire store.disconnect() to also call walletconnect disconnect
   useEffect(() => {
