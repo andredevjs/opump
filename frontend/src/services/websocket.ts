@@ -20,12 +20,14 @@ class WebSocketClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connected = false;
   private _intentionalDisconnect = false;
+  private _hasAttempted = false;
 
   connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
     this._intentionalDisconnect = false;
+    this._hasAttempted = true;
 
     try {
       this.ws = new WebSocket(WS_URL);
@@ -120,6 +122,10 @@ class WebSocketClient {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  hasAttemptedConnection(): boolean {
+    return this._hasAttempted;
   }
 
   onConnectionChange(listener: ConnectionListener): () => void {

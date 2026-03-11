@@ -30,7 +30,7 @@ export function ConnectionStatus() {
     );
   }
 
-  if (!wsConnected) {
+  if (!wsConnected && wsClient.hasAttemptedConnection()) {
     return (
       <Banner variant="warning">
         Live updates unavailable — reconnecting...
