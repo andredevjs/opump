@@ -19,7 +19,7 @@ export function useBondingCurve(token: Token | null) {
       if (!token || !btcSats || btcSats === '0') return null;
       return calculateBuy(virtualBtc, virtualToken, btcSats);
     },
-    [token?.address, virtualBtc, virtualToken],
+    [token, virtualBtc, virtualToken],
   );
 
   const simulateSell = useCallback(
@@ -27,7 +27,7 @@ export function useBondingCurve(token: Token | null) {
       if (!token || !tokenUnits || tokenUnits === '0') return null;
       return calculateSell(virtualBtc, virtualToken, tokenUnits);
     },
-    [token?.address, virtualBtc, virtualToken],
+    [token, virtualBtc, virtualToken],
   );
 
   return { simulateBuy, simulateSell };

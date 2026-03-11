@@ -52,7 +52,7 @@ export function ProfilePage() {
     displayName: shortenAddress(address, 6),
     tokensLaunched: createdTokens.length,
     totalVolumeSats: createdTokens.reduce((sum, t) => sum + t.volume24hSats, 0),
-    joinedAt: createdTokens.length > 0 ? Math.min(...createdTokens.map(t => t.createdAt)) : Date.now(),
+    joinedAt: createdTokens.length > 0 ? Math.min(...createdTokens.map(t => t.createdAt)) : 0,
   };
 
   return (
