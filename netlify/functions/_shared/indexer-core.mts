@@ -391,11 +391,17 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
       await rebuildHoldersSet(redis, tokenAddress);
       const holderCount = await getHolderCount(tokenAddress);
 
+      // Calculate 24h and total volume from trades
+      const volume24h = await calculateVolume24h(redis, tokenAddress);
+      const volumeTotal = await calculateVolumeTotal(redis, tokenAddress);
+
       const token = await getToken(tokenAddress);
       if (token) {
         await updateToken(tokenAddress, {
           tradeCount,
           holderCount,
+          volume24h,
+          volumeTotal,
           status: token.status,
         });
       }
@@ -403,6 +409,46 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
       console.error(`[Indexer] Failed to update stats for ${tokenAddress}:`, err instanceof Error ? err.message : err);
     }
   }
+}
+
+async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<string> {
+  const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
+  // Trade index is scored by createdAtMs — get only trades from last 24h
+  const txHashes: string[] = await redis.zrangebyscore(
+    `op:idx:trade:token:${tokenAddress}`,
+    oneDayAgoMs,
+    "+inf",
+  );
+  if (txHashes.length === 0) return "0";
+
+  const pipe = redis.pipeline();
+  for (const hash of txHashes) {
+    pipe.hget(`op:trade:${hash}`, "btcAmount");
+  }
+  const results = await pipe.exec();
+
+  let totalSats = 0n;
+  for (const raw of results) {
+    if (raw) totalSats += BigInt(String(raw));
+  }
+  return totalSats.toString();
+}
+
+async function calculateVolumeTotal(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<string> {
+  const txHashes: string[] = await redis.zrange(`op:idx:trade:token:${tokenAddress}`, 0, -1);
+  if (txHashes.length === 0) return "0";
+
+  const pipe = redis.pipeline();
+  for (const hash of txHashes) {
+    pipe.hget(`op:trade:${hash}`, "btcAmount");
+  }
+  const results = await pipe.exec();
+
+  let totalSats = 0n;
+  for (const raw of results) {
+    if (raw) totalSats += BigInt(String(raw));
+  }
+  return totalSats.toString();
 }
 
 async function rebuildHoldersSet(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<void> {
