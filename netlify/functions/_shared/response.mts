@@ -22,12 +22,3 @@ export function json(data: unknown, status = 200): Response {
 export function error(message: string, status = 400, errorCode = "BadRequest"): Response {
   return json({ error: errorCode, message, statusCode: status }, status);
 }
-
-/**
- * Extract a parameter from the URL — tries query string first, then falls back
- * to a path segment. Netlify Functions v2 receives the original request URL,
- * so `:param` substitution in redirect `to` query strings doesn't propagate.
- */
-export function getParam(url: URL, name: string, pathIndex: number): string | null {
-  return url.searchParams.get(name) ?? url.pathname.split("/")[pathIndex] ?? null;
-}

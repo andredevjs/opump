@@ -1,10 +1,8 @@
 import { getStore } from "@netlify/blobs";
-import type { Context } from "@netlify/functions";
-import { getParam } from "./_shared/response.mts";
+import type { Config, Context } from "@netlify/functions";
 
 export default async (req: Request, context: Context) => {
-  const url = new URL(req.url);
-  const key = getParam(url, "key", 3); // /api/images/:key
+  const key = context.params.key;
 
   if (!key) {
     return new Response("Missing key", { status: 400 });
@@ -27,4 +25,9 @@ export default async (req: Request, context: Context) => {
       "Access-Control-Allow-Origin": "*",
     },
   });
+};
+
+export const config: Config = {
+  path: "/api/images/:key",
+  method: ["GET", "OPTIONS"],
 };
