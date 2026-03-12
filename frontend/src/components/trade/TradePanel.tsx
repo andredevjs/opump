@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { BuyForm } from './BuyForm';
 import { SellForm } from './SellForm';
@@ -12,8 +12,10 @@ interface TradePanelProps {
 }
 
 export function TradePanel({ token }: TradePanelProps) {
-  const pendingTransactions = useTradeStore((s) =>
-    s.pendingTransactions.filter((tx) => tx.tokenAddress === token.address),
+  const allPending = useTradeStore((s) => s.pendingTransactions);
+  const pendingTransactions = useMemo(
+    () => allPending.filter((tx) => tx.tokenAddress === token.address),
+    [allPending, token.address],
   );
 
   return (
