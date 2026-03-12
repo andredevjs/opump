@@ -479,13 +479,24 @@ async function updatePlatformStats(redis: import("@upstash/redis").Redis, lastBl
   try {
     const totalTokens = await redis.zcard("op:idx:token:all:newest");
     const totalGraduated = await redis.zcard("op:idx:token:graduated:newest");
-    const currentStats = await getStats();
+
+    // Aggregate total trades and volume across all tokens
+    const allTokenAddrs: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
+    let totalTrades = 0;
+    let totalVolumeSats = 0n;
+    for (const addr of allTokenAddrs) {
+      const token = await getToken(addr);
+      if (token) {
+        totalTrades += token.tradeCount || 0;
+        totalVolumeSats += BigInt(token.volumeTotal || "0");
+      }
+    }
 
     await updateStats({
       totalTokens,
       totalGraduated,
-      totalVolumeSats: currentStats.totalVolumeSats,
-      totalTrades: currentStats.totalTrades,
+      totalVolumeSats: totalVolumeSats.toString(),
+      totalTrades,
       lastBlockIndexed: lastBlock,
     });
   } catch (err) {

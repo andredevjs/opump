@@ -7,7 +7,7 @@
 import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { runIndexer } from "./_shared/indexer-core.mts";
-import { getLastBlockIndexed, getStats } from "./_shared/redis-queries.mts";
+import { getLastBlockIndexed, getStats, getToken, getHolderCount } from "./_shared/redis-queries.mts";
 import { getRedis } from "./_shared/redis.mts";
 
 export default async (req: Request, _context: Context) => {
@@ -21,11 +21,31 @@ export default async (req: Request, _context: Context) => {
       const redis = getRedis();
       const lastBlock = await getLastBlockIndexed();
       const stats = await getStats();
-      const knownTokens: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
+      const knownTokenAddrs: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
+
+      // Per-token debug info
+      const tokenDetails = [];
+      for (const addr of knownTokenAddrs) {
+        const token = await getToken(addr);
+        const tradeCount = await redis.zcard(`op:idx:trade:token:${addr}`);
+        const holderCount = await getHolderCount(addr);
+        tokenDetails.push({
+          address: addr,
+          name: token?.name,
+          symbol: token?.symbol,
+          volume24h: token?.volume24h,
+          volumeTotal: token?.volumeTotal,
+          tradeCount,
+          holderCount,
+          currentPriceSats: token?.currentPriceSats,
+          marketCapSats: token?.marketCapSats,
+        });
+      }
+
       return json({
         lastBlockIndexed: lastBlock,
-        knownTokens,
-        knownTokenCount: knownTokens.length,
+        knownTokens: tokenDetails,
+        knownTokenCount: knownTokenAddrs.length,
         stats,
       });
     } catch (err) {
