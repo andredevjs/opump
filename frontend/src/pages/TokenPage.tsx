@@ -31,6 +31,7 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const [claiming, setClaiming] = useState(false);
   const [minterInfo, setMinterInfo] = useState<{ shares: string; eligible: boolean } | null>(null);
+  const [minterPoolSats, setMinterPoolSats] = useState<number | null>(null);
   const [claimResult, setClaimResult] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,6 +53,23 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
       }
     })();
   }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
+
+  // Fetch total minter fees from trade history
+  useEffect(() => {
+    if (!connected) return;
+    let cancelled = false;
+    import('@/services/api').then(({ getTrades }) =>
+      getTrades(tokenAddress, 1, 200).then((res) => {
+        if (cancelled) return;
+        let total = 0;
+        for (const t of res.trades) {
+          total += parseInt(String(t.fees?.minter ?? 0), 10) || 0;
+        }
+        setMinterPoolSats(total);
+      }).catch(() => {}),
+    );
+    return () => { cancelled = true; };
+  }, [tokenAddress, connected]);
 
   if (!connected) return null;
   if (minterInfo && minterInfo.shares === '0') return null;
@@ -80,9 +98,19 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
         <Gift size={16} className="text-accent" />
         <h3 className="text-sm font-medium text-text-secondary">Minter Rewards</h3>
       </div>
-      <p className="text-xs text-text-muted mb-3">
+      <p className="text-xs text-text-muted mb-2">
         Early buyers in the first ~30 days earn a share of minter fees proportional to their purchase.
       </p>
+      {minterPoolSats !== null && (
+        <p className="text-sm font-mono text-text-primary mb-2">
+          Pool: {formatBtc(minterPoolSats)}
+        </p>
+      )}
+      {minterInfo && minterInfo.shares !== '0' && (
+        <p className="text-xs text-text-secondary mb-2">
+          Your shares: {formatNumber(parseInt(minterInfo.shares, 10))}
+        </p>
+      )}
       {minterInfo && !minterInfo.eligible && (
         <p className="text-xs text-yellow-400 mb-2">Hold period not yet met. Keep holding!</p>
       )}
@@ -106,9 +134,28 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
   const { connected, address: walletAddress } = useWalletStore();
   const [claiming, setClaiming] = useState(false);
   const [claimResult, setClaimResult] = useState<string | null>(null);
+  const [claimableSats, setClaimableSats] = useState<number | null>(null);
 
-  // Only show to the token creator
-  if (!connected || walletAddress !== creatorAddress) return null;
+  const isCreator = connected && walletAddress === creatorAddress;
+
+  // Fetch total creator fees from trade history
+  useEffect(() => {
+    if (!isCreator) return;
+    let cancelled = false;
+    import('@/services/api').then(({ getTrades }) =>
+      getTrades(tokenAddress, 1, 200).then((res) => {
+        if (cancelled) return;
+        let total = 0;
+        for (const t of res.trades) {
+          total += parseInt(String(t.fees?.creator ?? 0), 10) || 0;
+        }
+        setClaimableSats(total);
+      }).catch(() => {}),
+    );
+    return () => { cancelled = true; };
+  }, [tokenAddress, isCreator]);
+
+  if (!isCreator) return null;
 
   const handleClaim = async () => {
     setClaiming(true);
@@ -121,6 +168,7 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
         refundTo: walletAddress!,
       });
       setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
+      setClaimableSats(0);
     } catch (err) {
       setClaimResult(err instanceof Error ? err.message : 'Claim failed');
     } finally {
@@ -128,15 +176,25 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
     }
   };
 
+  const nothingToClaim = claimableSats !== null && claimableSats === 0;
+
   return (
     <Card>
       <div className="flex items-center gap-2 mb-3">
         <Coins size={16} className="text-accent" />
         <h3 className="text-sm font-medium text-text-secondary">Creator Fees</h3>
       </div>
-      <p className="text-xs text-text-muted mb-3">
-        As the token creator, you earn 0.25% of every trade. Claim your accumulated fees here.
+      <p className="text-xs text-text-muted mb-2">
+        As the token creator, you earn 0.25% of every trade.
       </p>
+      <p className="text-sm font-mono text-text-primary mb-3">
+        {claimableSats === null
+          ? 'Loading...'
+          : `${formatBtc(claimableSats)} available`}
+      </p>
+      {nothingToClaim && (
+        <p className="text-xs text-text-muted mb-2">No fees to claim yet.</p>
+      )}
       {claimResult && (
         <p className="text-xs text-text-secondary mb-2">{claimResult}</p>
       )}
@@ -144,7 +202,7 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
         size="sm"
         variant="secondary"
         onClick={handleClaim}
-        disabled={claiming}
+        disabled={claiming || nothingToClaim}
         className="w-full"
       >
         {claiming ? 'Claiming...' : 'Claim Creator Fees'}
