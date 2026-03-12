@@ -151,4 +151,14 @@ export function getProfileTokens(address: string): Promise<ProfileTokensResponse
   return request<ProfileTokensResponse>(`/v1/profile/${encodeURIComponent(address)}/tokens`);
 }
 
+/**
+ * Trigger the on-chain indexer to process new blocks.
+ * Fire-and-forget — used after trade confirmations to ensure trades appear quickly.
+ */
+export function triggerIndexer(): Promise<unknown> {
+  return request('/v1/indexer/run', { method: 'POST' }).catch(() => {
+    // Indexer trigger is best-effort, don't propagate errors
+  });
+}
+
 export { ApiError };

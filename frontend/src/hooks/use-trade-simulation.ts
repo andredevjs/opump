@@ -125,6 +125,9 @@ export function useTradeSimulation(token: Token | null) {
         toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
+
+        // Trigger indexer to pick up the trade immediately
+        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
         addBalance(btcSatsNum); // Refund on failure
@@ -190,6 +193,9 @@ export function useTradeSimulation(token: Token | null) {
         toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
+
+        // Trigger indexer to pick up the trade immediately
+        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
         addHolding(tokenAddress, tokenUnits); // Refund on failure
