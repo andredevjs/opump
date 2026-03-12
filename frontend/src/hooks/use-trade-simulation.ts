@@ -6,6 +6,10 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
 import toast from 'react-hot-toast';
 
+// The vault address where BTC must be sent for @payable buy() calls.
+// Each LaunchToken stores this as its vault — currently always the factory address.
+const VAULT_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
+
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
   const { connected, address: walletAddress } = useWalletStore();
@@ -96,14 +100,14 @@ export function useTradeSimulation(token: Token | null) {
           throw new Error('Amount exceeds safe range for extra outputs');
         }
 
-        // @payable: declare the BTC output BEFORE simulate
-        setupPayableCall(contract, tokenAddress, btcSatsBigInt);
+        // @payable: declare the BTC output to the vault BEFORE simulate
+        setupPayableCall(contract, VAULT_ADDRESS, btcSatsBigInt);
 
         const simResult = await contract.buy(btcSatsBigInt);
         const result = await sendContractCall(simResult, {
           refundTo: walletAddress,
           maximumAllowedSatToSpend: btcSatsBigInt + 50000n,
-          extraOutputs: [{ address: tokenAddress, value: Number(btcSatsBigInt) }],
+          extraOutputs: [{ address: VAULT_ADDRESS, value: Number(btcSatsBigInt) }],
         });
 
         updatePendingStatus(txId, 'mempool');
