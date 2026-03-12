@@ -1,9 +1,10 @@
 import { getStore } from "@netlify/blobs";
 import type { Context } from "@netlify/functions";
+import { getParam } from "./_shared/response.mts";
 
 export default async (req: Request, context: Context) => {
   const url = new URL(req.url);
-  const key = url.searchParams.get("key");
+  const key = getParam(url, "key", 3); // /api/images/:key
 
   if (!key) {
     return new Response("Missing key", { status: 400 });

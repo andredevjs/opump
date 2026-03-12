@@ -1,5 +1,5 @@
 import type { Context } from "@netlify/functions";
-import { json, error, corsHeaders } from "./_shared/response.mts";
+import { json, error, corsHeaders, getParam } from "./_shared/response.mts";
 import { getOHLCV, TIMEFRAME_SECONDS } from "./_shared/redis-queries.mts";
 
 export default async (req: Request, _context: Context) => {
@@ -8,7 +8,7 @@ export default async (req: Request, _context: Context) => {
   }
 
   const url = new URL(req.url);
-  const address = url.searchParams.get("address");
+  const address = getParam(url, "address", 4); // /api/v1/tokens/:address/ohlcv
 
   if (!address) {
     return error("Missing address parameter", 400);
