@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
 import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
@@ -7,6 +7,7 @@ import { useTradeStore } from '@/stores/trade-store';
 import * as api from '@/services/api';
 
 const EMPTY_WS_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
+const POLL_INTERVAL_MS = 15_000;
 
 interface TradeHistoryProps {
   token: Token;
@@ -16,9 +17,8 @@ export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const wsTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_WS_TRADES);
 
-  useEffect(() => {
+  const fetchTrades = useCallback(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
-      // Map API trades to local Trade type
       const mapped: Trade[] = res.trades.map((t) => ({
         id: t._id,
         txHash: t._id,
@@ -35,9 +35,15 @@ export function TradeHistory({ token }: TradeHistoryProps) {
       setTrades(mapped);
     }).catch((err) => {
       console.error('[TradeHistory] API error:', err);
-      setTrades([]);
     });
   }, [token.address]);
+
+  // Fetch on mount + poll every 15s
+  useEffect(() => {
+    fetchTrades();
+    const id = setInterval(fetchTrades, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchTrades]);
 
   return (
     <div className="overflow-x-auto">

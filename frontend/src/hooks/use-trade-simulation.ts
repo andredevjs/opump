@@ -126,8 +126,13 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
-        // Trigger indexer to pick up the trade immediately
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
+        // Trigger indexer then refresh token data so UI updates
+        import('@/services/api').then(async ({ triggerIndexer }) => {
+          await triggerIndexer();
+          // Refresh token data (price, reserves, stats) from the API
+          const { useTokenStore } = await import('@/stores/token-store');
+          if (tokenAddress) useTokenStore.getState().fetchToken(tokenAddress);
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
         addBalance(btcSatsNum); // Refund on failure
@@ -194,8 +199,12 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
-        // Trigger indexer to pick up the trade immediately
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
+        // Trigger indexer then refresh token data so UI updates
+        import('@/services/api').then(async ({ triggerIndexer }) => {
+          await triggerIndexer();
+          const { useTokenStore } = await import('@/stores/token-store');
+          if (tokenAddress) useTokenStore.getState().fetchToken(tokenAddress);
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
         addHolding(tokenAddress, tokenUnits); // Refund on failure
