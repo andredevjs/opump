@@ -41,9 +41,9 @@ const INITIAL_FORM: LaunchFormData = {
 };
 
 const DEPLOY_PHASES: DeployPhase[] = [
-  { label: 'Compiling contract...', status: 'pending' },
-  { label: 'Broadcasting to OPNet...', status: 'pending' },
-  { label: 'Confirming on Bitcoin...', status: 'pending' },
+  { label: 'Deploying contract on OPNet...', status: 'pending' },
+  { label: 'Registering token with factory...', status: 'pending' },
+  { label: 'Saving token metadata...', status: 'pending' },
 ];
 
 const STEPS: LaunchStep[] = [1, 2, 3, 4, 5, 6];

@@ -23,6 +23,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
+const LAUNCH_TOKEN_WASM_URL = '/contracts/LaunchToken.wasm';
 
 const flywheelDestMap: Record<TaxDestination, number> = {
   burn: 0,
@@ -70,37 +71,58 @@ export function StepDeploy() {
     startDeploy();
 
     try {
-      // Phase 1: Get factory contract
+      // Phase 1: Deploy LaunchToken contract via OPWallet
       advanceDeployPhase(0);
 
-      if (!FACTORY_ADDRESS) {
-        throw new Error('Factory contract address not configured (VITE_FACTORY_ADDRESS)');
-      }
-      const { getFactoryContract, sendContractCall } = await import('@/services/contract');
-      const factory = getFactoryContract(FACTORY_ADDRESS);
+      const { deployLaunchToken, buildLaunchTokenCalldata } = await import('@/services/contract');
 
-      // Phase 2: Deploy via factory contract
-      advanceDeployPhase(1);
-
-      const sim = await factory.registerToken(
-        formData.name,
-        formData.symbol,
-        BigInt(Math.round(formData.creatorAllocationPercent * 100)),
-        BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
-        BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
-        BigInt(flywheelDestMap[formData.taxDestination]),
-      );
-      const result = await sendContractCall(sim, {
-        refundTo: walletAddress,
-        maximumAllowedSatToSpend: 100000n,
+      const calldata = await buildLaunchTokenCalldata({
+        name: formData.name,
+        symbol: formData.symbol,
+        creatorAllocationBps: BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+        buyTaxBps: BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
+        sellTaxBps: BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
+        flywheelDestination: BigInt(flywheelDestMap[formData.taxDestination]),
+        vaultAddress: FACTORY_ADDRESS, // BTC outputs go to factory vault
       });
 
-      const contractAddress = result.txHash;
+      const deployResult = await deployLaunchToken(
+        LAUNCH_TOKEN_WASM_URL,
+        calldata,
+        walletAddress,
+      );
 
-      // Phase 3: Register metadata in backend
+      const contractAddress = deployResult.contractAddress;
+      const deployTxHash = deployResult.revealTxHash;
+
+      // Wait for deployment to confirm before proceeding
+      const { waitForConfirmation } = await import('@/services/contract');
+      await waitForConfirmation(deployTxHash);
+
+      // Phase 2: Register with factory
+      advanceDeployPhase(1);
+
+      if (FACTORY_ADDRESS) {
+        const { getFactoryContract, sendContractCall } = await import('@/services/contract');
+        const factory = getFactoryContract(FACTORY_ADDRESS);
+
+        const sim = await factory.registerToken(
+          formData.name,
+          formData.symbol,
+          BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+          BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
+          BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
+          BigInt(flywheelDestMap[formData.taxDestination]),
+        );
+        await sendContractCall(sim, {
+          refundTo: walletAddress,
+          maximumAllowedSatToSpend: 100000n,
+        });
+      }
+
+      // Phase 3: Upload image + register metadata in backend
       advanceDeployPhase(2);
 
-      // Upload image if a file was selected
       let imageUrl = '';
       if (formData.imageFile) {
         const base64 = await fileToBase64(formData.imageFile);
@@ -133,7 +155,7 @@ export function StepDeploy() {
           sellTaxBps: formData.flywheelEnabled ? Math.round(formData.sellTaxPercent * 100) : 0,
           flywheelDestination: flywheelDestNames[flywheelDestMap[formData.taxDestination]],
         },
-        deployTxHash: result.txHash,
+        deployTxHash,
       });
 
       setDeployedAddress(contractAddress);

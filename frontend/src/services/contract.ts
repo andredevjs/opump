@@ -212,5 +212,90 @@ export function setupPayableCall(
   });
 }
 
+// ============ Contract Deployment ============
+
+export interface DeployResult {
+  contractAddress: string;
+  revealTxHash: string;
+}
+
+/**
+ * Build constructor calldata for a LaunchToken deployment.
+ * Must match LaunchToken.onDeployment() parameter order.
+ */
+export async function buildLaunchTokenCalldata(opts: {
+  name: string;
+  symbol: string;
+  maxSupply?: bigint;
+  creatorAllocationBps: bigint;
+  buyTaxBps: bigint;
+  sellTaxBps: bigint;
+  flywheelDestination: bigint;
+  graduationThreshold?: bigint;
+  vaultAddress: string;
+}): Promise<Uint8Array> {
+  const { BinaryWriter } = await import('@btc-vision/transaction');
+  const writer = new BinaryWriter();
+  writer.writeStringWithLength(opts.name);
+  writer.writeStringWithLength(opts.symbol);
+  writer.writeU256(opts.maxSupply ?? 0n); // 0 = use contract default
+  writer.writeU256(opts.creatorAllocationBps);
+  writer.writeU256(opts.buyTaxBps);
+  writer.writeU256(opts.sellTaxBps);
+  writer.writeU256(opts.flywheelDestination);
+  writer.writeU256(opts.graduationThreshold ?? 0n); // 0 = use contract default
+  writer.writeStringWithLength(opts.vaultAddress);
+  return writer.getBuffer();
+}
+
+/**
+ * Deploy a LaunchToken contract via OPWallet's web3.deployContract() API.
+ * Fetches the pre-compiled WASM from the given URL, signs via OPWallet,
+ * and broadcasts the funding + reveal transactions.
+ */
+export async function deployLaunchToken(
+  bytecodeUrl: string,
+  calldata: Uint8Array,
+  walletAddress: string,
+): Promise<DeployResult> {
+  // Access OPWallet's web3 provider via window.opnet
+  const opwallet = (window as unknown as { opnet?: { web3?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    deployContract: (params: any) => Promise<{ contractAddress: string; transaction: [string, string] }>;
+  } } }).opnet;
+
+  if (!opwallet?.web3?.deployContract) {
+    throw new Error('OPWallet not found or does not support contract deployment. Make sure OPWallet extension is installed.');
+  }
+
+  // Fetch pre-compiled WASM bytecode
+  const response = await fetch(bytecodeUrl);
+  if (!response.ok) throw new Error('Failed to fetch contract bytecode');
+  const bytecode = new Uint8Array(await response.arrayBuffer());
+
+  // Get UTXOs for funding
+  const provider = getProvider();
+  const utxos = await provider.utxoManager.getUTXOs({ address: walletAddress });
+  if (utxos.length === 0) {
+    throw new Error('No UTXOs available for deployment. Fund your wallet first.');
+  }
+
+  // Deploy via OPWallet (handles signer, network, challenge internally)
+  const result = await opwallet.web3.deployContract({
+    bytecode,
+    calldata,
+    from: walletAddress,
+    utxos,
+    feeRate: 10,
+    priorityFee: 0n,
+    gasSatFee: 10_000n,
+  });
+
+  return {
+    contractAddress: result.contractAddress,
+    revealTxHash: result.transaction[1], // reveal tx = deployment tx
+  };
+}
+
 // Re-export for convenience
 export type { ILaunchTokenContract, IOPumpFactoryContract } from './abis';

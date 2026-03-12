@@ -61,7 +61,7 @@ export default async (req: Request, _context: Context) => {
   }
 
   // Validate address formats
-  const addressRegex = /^(bc1|bcrt1|tb1|op1|0x)[a-zA-Z0-9]{20,62}$/;
+  const addressRegex = /^(bc1|bcrt1|tb1|op1|opt1|0x)[a-zA-Z0-9]{20,64}$/;
   if (!addressRegex.test(body.contractAddress)) {
     return error("Invalid contract address format", 400);
   }

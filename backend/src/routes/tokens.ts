@@ -511,7 +511,7 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
     }
 
     // Validate address formats
-    const addressRegex = /^(bc1|bcrt1|tb1|op1|0x)[a-zA-Z0-9]{20,62}$/;
+    const addressRegex = /^(bc1|bcrt1|tb1|op1|opt1|0x)[a-zA-Z0-9]{20,64}$/;
     if (!addressRegex.test(body.contractAddress)) {
       res.status(400).json({ error: 'BadRequest', message: 'Invalid contract address format', statusCode: 400 });
       return;

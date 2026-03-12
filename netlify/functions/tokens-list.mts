@@ -82,7 +82,7 @@ async function handleCreate(req: Request): Promise<Response> {
   if (body.description && body.description.length > 500) return error("Description must be 500 characters or less", 400);
   if (body.imageUrl && body.imageUrl.length > 2048) return error("Image URL must be under 2048 characters", 400);
 
-  const addressRegex = /^(bc1|bcrt1|tb1|op1|0x)[a-zA-Z0-9]{20,62}$/;
+  const addressRegex = /^(bc1|bcrt1|tb1|op1|opt1|0x)[a-zA-Z0-9]{20,64}$/;
   if (!addressRegex.test(body.contractAddress)) return error("Invalid contract address format", 400);
   if (!addressRegex.test(body.creatorAddress)) return error("Invalid creator address format", 400);
 
