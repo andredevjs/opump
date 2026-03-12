@@ -12,7 +12,7 @@ const VAULT_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
-  const { connected, address: walletAddress } = useWalletStore();
+  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
   const { addPending, updatePendingStatus, removePending, addHolding, removeHolding } = useTradeStore();
   const [executing, setExecuting] = useState(false);
@@ -93,11 +93,17 @@ export function useTradeSimulation(token: Token | null) {
 
       try {
         const { getLaunchTokenContract, sendContractCall, setupPayableCall, waitForConfirmation } = await import('@/services/contract');
+        const { Address } = await import('@btc-vision/transaction');
         const contract = getLaunchTokenContract(tokenAddress);
         const btcSatsBigInt = BigInt(btcSats);
 
         if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
           throw new Error('Amount exceeds safe range for extra outputs');
+        }
+
+        // Set sender so the contract simulation knows who the caller is
+        if (hashedMLDSAKey) {
+          contract.setSender(Address.fromString(hashedMLDSAKey, publicKey ?? undefined));
         }
 
         // @payable: declare the BTC output to the vault BEFORE simulate
@@ -162,7 +168,14 @@ export function useTradeSimulation(token: Token | null) {
 
       try {
         const { getLaunchTokenContract, sendContractCall, waitForConfirmation } = await import('@/services/contract');
+        const { Address } = await import('@btc-vision/transaction');
         const contract = getLaunchTokenContract(tokenAddress);
+
+        // Set sender so the contract simulation knows who the caller is
+        if (hashedMLDSAKey) {
+          contract.setSender(Address.fromString(hashedMLDSAKey, publicKey ?? undefined));
+        }
+
         const simResult = await contract.sell(BigInt(tokenUnits));
         const result = await sendContractCall(simResult, {
           refundTo: walletAddress,
