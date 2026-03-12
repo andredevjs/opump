@@ -280,7 +280,7 @@ export async function deployLaunchToken(
     throw new Error('No UTXOs available for deployment. Fund your wallet first.');
   }
 
-  // Deploy via OPWallet (handles signer, network, challenge internally)
+  // OPWallet signs the deployment but does NOT broadcast — we must do it ourselves
   const result = await opwallet.web3.deployContract({
     bytecode,
     calldata,
@@ -291,9 +291,20 @@ export async function deployLaunchToken(
     gasSatFee: 10_000n,
   });
 
-  // OPWallet returns raw transaction hex, not txids — compute the actual txid
-  const revealTx = BitcoinTransaction.fromHex(result.transaction[1]);
-  const revealTxId = revealTx.getId();
+  // Broadcast funding tx, then reveal tx
+  const fundingBroadcast = await provider.sendRawTransaction(result.transaction[0], false);
+  if (!fundingBroadcast.success) {
+    throw new Error(`Funding tx broadcast failed: ${fundingBroadcast.error ?? 'unknown error'}`);
+  }
+
+  const revealBroadcast = await provider.sendRawTransaction(result.transaction[1], false);
+  if (!revealBroadcast.success) {
+    throw new Error(`Reveal tx broadcast failed: ${revealBroadcast.error ?? 'unknown error'}`);
+  }
+
+  // Use txid from broadcast result, fall back to computing from raw tx
+  const revealTxId = revealBroadcast.result
+    ?? BitcoinTransaction.fromHex(result.transaction[1]).getId();
 
   return {
     contractAddress: result.contractAddress,
