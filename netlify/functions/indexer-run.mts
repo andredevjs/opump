@@ -4,7 +4,7 @@
  * GET  /api/v1/indexer/run — returns current indexer state (debug).
  */
 
-import type { Config, Context } from "@netlify/functions";
+import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { runIndexer } from "./_shared/indexer-core.mts";
 import { getLastBlockIndexed, getStats } from "./_shared/redis-queries.mts";
@@ -46,7 +46,4 @@ export default async (req: Request, _context: Context) => {
   }
 };
 
-export const config: Config = {
-  path: "/api/v1/indexer/run",
-  method: ["GET", "POST", "OPTIONS"],
-};
+// Routed via netlify.toml redirect: /api/v1/indexer/run → /.netlify/functions/indexer-run

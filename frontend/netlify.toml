@@ -52,6 +52,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/v1/indexer/run"
+  to = "/.netlify/functions/indexer-run"
+  status = 200
+
+[[redirects]]
   from = "/api/health"
   to = "/.netlify/functions/health"
   status = 200
