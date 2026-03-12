@@ -64,11 +64,22 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
     const network = networkName === "mainnet" ? networks.bitcoin : networks.opnetTestnet;
     const provider = new JSONRpcProvider({ url: opnetRpcUrl, network });
 
-    const lastBlock = await getLastBlockIndexed();
+    let lastBlock = await getLastBlockIndexed();
     const currentBlock = await provider.getBlockNumber();
+    const currentBlockNum = Number(currentBlock);
 
     if (currentBlock <= BigInt(lastBlock)) {
       return { blocksProcessed: 0, tradesFound: 0, lastBlock, skipped: "no_new_blocks" };
+    }
+
+    // Auto-catch-up: if we're way behind (e.g. lastBlock=0 or thousands of blocks behind),
+    // skip ahead to near the tip so we only scan recent blocks.
+    const gap = currentBlockNum - lastBlock;
+    if (gap > maxBlocks * 2) {
+      const skipTo = currentBlockNum - maxBlocks;
+      console.log(`[Indexer] Gap too large (${gap} blocks). Skipping from ${lastBlock} to ${skipTo}`);
+      await setLastBlockIndexed(skipTo);
+      lastBlock = skipTo;
     }
 
     const redis = getRedis();

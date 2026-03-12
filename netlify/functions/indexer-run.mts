@@ -1,15 +1,36 @@
 /**
  * HTTP-triggered indexer — works on deploy previews where scheduled functions don't run.
  * POST /api/v1/indexer/run — processes up to 10 blocks per call.
+ * GET  /api/v1/indexer/run — returns current indexer state (debug).
  */
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { runIndexer } from "./_shared/indexer-core.mts";
+import { getLastBlockIndexed, getStats } from "./_shared/redis-queries.mts";
+import { getRedis } from "./_shared/redis.mts";
 
 export default async (req: Request, _context: Context) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+
+  // GET — return indexer debug state
+  if (req.method === "GET") {
+    try {
+      const redis = getRedis();
+      const lastBlock = await getLastBlockIndexed();
+      const stats = await getStats();
+      const knownTokens: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
+      return json({
+        lastBlockIndexed: lastBlock,
+        knownTokens,
+        knownTokenCount: knownTokens.length,
+        stats,
+      });
+    } catch (err) {
+      return error(err instanceof Error ? err.message : "Failed to get indexer state", 500, "InternalError");
+    }
   }
 
   if (req.method !== "POST") {
@@ -27,5 +48,5 @@ export default async (req: Request, _context: Context) => {
 
 export const config: Config = {
   path: "/api/v1/indexer/run",
-  method: ["POST", "OPTIONS"],
+  method: ["GET", "POST", "OPTIONS"],
 };
