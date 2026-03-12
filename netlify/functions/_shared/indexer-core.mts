@@ -413,11 +413,12 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
 
 async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<string> {
   const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
-  // Trade index is scored by createdAtMs — get only trades from last 24h
-  const txHashes: string[] = await redis.zrangebyscore(
+  // Trade index is scored by createdAtMs — use zrange with byScore for Upstash compatibility
+  const txHashes: string[] = await redis.zrange(
     `op:idx:trade:token:${tokenAddress}`,
     oneDayAgoMs,
     "+inf",
+    { byScore: true },
   );
   if (txHashes.length === 0) return "0";
 
@@ -431,6 +432,7 @@ async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAd
   for (const raw of results) {
     if (raw) totalSats += BigInt(String(raw));
   }
+  console.log(`[Indexer] volume24h for ${tokenAddress}: ${totalSats} sats from ${txHashes.length} trades`);
   return totalSats.toString();
 }
 
