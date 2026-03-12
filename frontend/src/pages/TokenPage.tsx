@@ -22,7 +22,10 @@ import { Globe, Twitter, Send, MessageCircle, Github, Gift, Coins } from 'lucide
 import { useWalletStore } from '@/stores/wallet-store';
 import { Button } from '@/components/ui/Button';
 
+import type { OHLCVCandle } from '@/types/api';
+
 const MOTOSWAP_URL = import.meta.env.VITE_MOTOSWAP_URL || '';
+const EMPTY_CANDLES: OHLCVCandle[] = [];
 
 function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
@@ -155,7 +158,7 @@ export function TokenPage() {
   const [timeframe, setTimeframe] = useState<TimeframeKey>('15m');
   const token = useTokenStore((s) => s.selectedToken?.address === address ? s.selectedToken : s.tokens.find((t) => t.address === address) ?? null);
   const fetchToken = useTokenStore((s) => s.fetchToken);
-  const candles = usePriceStore((s) => (address ? s.candles[address] ?? [] : []));
+  const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
 
   // Fetch token from API if not in store
@@ -163,7 +166,7 @@ export function TokenPage() {
     if (!token && address) {
       fetchToken(address);
     }
-  }, [address, token]);
+  }, [address, token?.address]);
 
   usePriceFeed(token, timeframe);
 

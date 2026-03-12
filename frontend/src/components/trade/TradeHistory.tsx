@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
 import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
@@ -6,13 +6,15 @@ import { cn } from '@/lib/cn';
 import { useTradeStore } from '@/stores/trade-store';
 import * as api from '@/services/api';
 
+const EMPTY_WS_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
+
 interface TradeHistoryProps {
   token: Token;
 }
 
 export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const wsTrades = useTradeStore((s) => s.recentTrades[token.address] ?? []);
+  const wsTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_WS_TRADES);
 
   useEffect(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
