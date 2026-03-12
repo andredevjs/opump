@@ -140,7 +140,7 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, simulateBuy],
+    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy],
   );
 
   /**
@@ -212,7 +212,7 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, simulateSell],
+    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };
