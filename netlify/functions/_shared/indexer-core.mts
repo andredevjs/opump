@@ -386,7 +386,11 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
   for (const tokenAddress of tokenAddresses) {
     try {
       const tradeCount = await redis.zcard(`op:idx:trade:token:${tokenAddress}`);
+
+      // Rebuild holders set from all trades to cover pre-existing trades
+      await rebuildHoldersSet(redis, tokenAddress);
       const holderCount = await getHolderCount(tokenAddress);
+
       const token = await getToken(tokenAddress);
       if (token) {
         await updateToken(tokenAddress, {
@@ -399,6 +403,28 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
       console.error(`[Indexer] Failed to update stats for ${tokenAddress}:`, err instanceof Error ? err.message : err);
     }
   }
+}
+
+async function rebuildHoldersSet(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<void> {
+  const txHashes: string[] = await redis.zrange(`op:idx:trade:token:${tokenAddress}`, 0, -1);
+  if (txHashes.length === 0) return;
+
+  const pipe = redis.pipeline();
+  for (const hash of txHashes) {
+    pipe.hgetall(`op:trade:${hash}`);
+  }
+  const results = await pipe.exec();
+
+  const addPipe = redis.pipeline();
+  for (const raw of results) {
+    if (raw && typeof raw === "object") {
+      const trade = raw as Record<string, string>;
+      if (trade.type === "buy" && trade.traderAddress) {
+        addPipe.sadd(`op:holders:${tokenAddress}`, trade.traderAddress);
+      }
+    }
+  }
+  await addPipe.exec();
 }
 
 async function updatePlatformStats(redis: import("@upstash/redis").Redis, lastBlock: number): Promise<void> {
