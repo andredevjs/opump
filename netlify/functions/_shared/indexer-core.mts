@@ -17,6 +17,7 @@ import {
   acquireIndexerLock,
   releaseIndexerLock,
   graduateToken,
+  getHolderCount,
 } from "./redis-queries.mts";
 import { TOKEN_DECIMALS } from "./constants.mts";
 import type { TradeDocument } from "./constants.mts";
@@ -385,10 +386,12 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
   for (const tokenAddress of tokenAddresses) {
     try {
       const tradeCount = await redis.zcard(`op:idx:trade:token:${tokenAddress}`);
+      const holderCount = await getHolderCount(tokenAddress);
       const token = await getToken(tokenAddress);
       if (token) {
         await updateToken(tokenAddress, {
           tradeCount,
+          holderCount,
           status: token.status,
         });
       }

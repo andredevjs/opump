@@ -19,6 +19,7 @@ const TOKEN_SEARCH_INDEX = "op:idx:token:search";
 
 const TRADE_TOKEN_INDEX = (tokenAddr: string) => `op:idx:trade:token:${tokenAddr}`;
 const TRADE_TRADER_INDEX = (traderAddr: string) => `op:idx:trade:trader:${traderAddr}`;
+const TOKEN_HOLDERS_SET = (tokenAddr: string) => `op:holders:${tokenAddr}`;
 
 const STATS_KEY = "op:stats";
 const INDEXER_LAST_BLOCK = "op:indexer:lastBlock";
@@ -262,7 +263,7 @@ export async function graduateToken(contractAddress: string, blockNumber: number
 // ─── Trade operations ───────────────────────────────────────
 
 /**
- * Save a trade and update all indexes.
+ * Save a trade and update all indexes + holder tracking.
  */
 export async function saveTrade(trade: TradeDocument): Promise<void> {
   const redis = getRedis();
@@ -274,7 +275,19 @@ export async function saveTrade(trade: TradeDocument): Promise<void> {
   pipe.hset(key, flat);
   pipe.zadd(TRADE_TOKEN_INDEX(trade.tokenAddress), { score: createdAtMs, member: trade._id });
   pipe.zadd(TRADE_TRADER_INDEX(trade.traderAddress), { score: createdAtMs, member: trade._id });
+  // Track unique holders (buyers) per token
+  if (trade.type === "buy") {
+    pipe.sadd(TOKEN_HOLDERS_SET(trade.tokenAddress), trade.traderAddress);
+  }
   await pipe.exec();
+}
+
+/**
+ * Get the number of unique holders for a token.
+ */
+export async function getHolderCount(tokenAddress: string): Promise<number> {
+  const redis = getRedis();
+  return redis.scard(TOKEN_HOLDERS_SET(tokenAddress));
 }
 
 /**
