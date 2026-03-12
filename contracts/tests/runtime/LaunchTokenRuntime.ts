@@ -45,6 +45,7 @@ export class LaunchTokenRuntime extends ContractRuntime {
     private readonly sellSelector = this.getSelector('sell(uint256)');
     private readonly reserveSelector = this.getSelector('reserve(uint256)');
     private readonly cancelReservationSelector = this.getSelector('cancelReservation()');
+    private readonly claimPlatformFeesSelector = this.getSelector('claimPlatformFees()');
     private readonly claimCreatorFeesSelector = this.getSelector('claimCreatorFees()');
     private readonly claimMinterRewardSelector = this.getSelector('claimMinterReward()');
     private readonly getReservesSelector = this.getSelector('getReserves()');
@@ -126,6 +127,20 @@ export class LaunchTokenRuntime extends ContractRuntime {
 
         const reader = new BinaryReader(response.response);
         return { success: reader.readBoolean(), response };
+    }
+
+    public async claimPlatformFees(sender?: Address): Promise<{ amount: bigint; response: CallResponse }> {
+        const calldata = new BinaryWriter();
+        calldata.writeSelector(this.claimPlatformFeesSelector);
+
+        const response = await this.execute({
+            calldata: calldata.getBuffer(),
+            ...(sender ? { sender, txOrigin: sender } : {}),
+        });
+        this.handleResponse(response);
+
+        const reader = new BinaryReader(response.response);
+        return { amount: reader.readU256(), response };
     }
 
     public async claimCreatorFees(sender?: Address): Promise<{ amount: bigint; response: CallResponse }> {

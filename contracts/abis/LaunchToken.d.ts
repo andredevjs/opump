@@ -72,6 +72,16 @@ export type CancelReservation = CallResult<
 >;
 
 /**
+ * @description Represents the result of the claimPlatformFees function call.
+ */
+export type ClaimPlatformFees = CallResult<
+    {
+        amount: bigint;
+    },
+    OPNetEvent<FeeClaimedEvent>[]
+>;
+
+/**
  * @description Represents the result of the claimCreatorFees function call.
  */
 export type ClaimCreatorFees = CallResult<
@@ -169,6 +179,7 @@ export interface ILaunchToken extends IOP_NETContract {
     sell(tokenAmount: bigint): Promise<Sell>;
     reserve(btcAmount: bigint): Promise<Reserve>;
     cancelReservation(): Promise<CancelReservation>;
+    claimPlatformFees(): Promise<ClaimPlatformFees>;
     claimCreatorFees(): Promise<ClaimCreatorFees>;
     claimMinterReward(): Promise<ClaimMinterReward>;
     getReserves(): Promise<GetReserves>;

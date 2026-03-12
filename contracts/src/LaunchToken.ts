@@ -364,6 +364,31 @@ export class LaunchToken extends OP20 {
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
   @emit('FeeClaimed')
+  public claimPlatformFees(calldata: Calldata): BytesWriter {
+    const sender = Blockchain.tx.sender;
+
+    // Only deployer (platform owner) can claim
+    this.onlyDeployer(sender);
+
+    const amount = this.platformFeePool.value;
+    if (amount == u256.Zero) {
+      throw new Revert('No fees to claim');
+    }
+
+    // Zero out pool before returning
+    this.platformFeePool.set(u256.Zero);
+
+    // feeType 2 = platform
+    this.emitEvent(new FeeClaimedEvent(sender, amount, u256.fromU32(2)));
+
+    const writer = new BytesWriter(32);
+    writer.writeU256(amount);
+    return writer;
+  }
+
+  @method()
+  @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
+  @emit('FeeClaimed')
   public claimCreatorFees(calldata: Calldata): BytesWriter {
     const sender = Blockchain.tx.sender;
 

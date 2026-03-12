@@ -69,6 +69,12 @@ export const LaunchTokenAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
+        name: 'claimPlatformFees',
+        inputs: [],
+        outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
         name: 'claimCreatorFees',
         inputs: [],
         outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
