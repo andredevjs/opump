@@ -10,7 +10,7 @@
  */
 
 import { getContract, JSONRpcProvider, TransactionOutputFlags, type CallResult } from 'opnet';
-import { networks, type Network } from '@btc-vision/bitcoin';
+import { networks, Transaction as BitcoinTransaction, type Network } from '@btc-vision/bitcoin';
 import type { InteractionTransactionReceipt, TransactionParameters } from 'opnet';
 import {
   LAUNCH_TOKEN_ABI,
@@ -291,9 +291,13 @@ export async function deployLaunchToken(
     gasSatFee: 10_000n,
   });
 
+  // OPWallet returns raw transaction hex, not txids — compute the actual txid
+  const revealTx = BitcoinTransaction.fromHex(result.transaction[1]);
+  const revealTxId = revealTx.getId();
+
   return {
     contractAddress: result.contractAddress,
-    revealTxHash: result.transaction[1], // reveal tx = deployment tx
+    revealTxHash: revealTxId,
   };
 }
 
