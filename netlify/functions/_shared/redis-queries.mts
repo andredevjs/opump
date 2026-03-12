@@ -564,10 +564,12 @@ function unflattenTrade(raw: Record<string, string>): TradeDocument {
   };
 }
 
-function safeJsonParse<T>(str: string | undefined, fallback: T): T {
-  if (!str) return fallback;
+function safeJsonParse<T>(value: string | object | undefined, fallback: T): T {
+  if (!value) return fallback;
+  // Upstash Redis REST client auto-parses JSON strings into objects
+  if (typeof value === "object") return value as T;
   try {
-    return JSON.parse(str) as T;
+    return JSON.parse(value) as T;
   } catch {
     return fallback;
   }

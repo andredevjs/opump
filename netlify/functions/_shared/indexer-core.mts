@@ -227,6 +227,12 @@ async function processBuyEvent(
 ): Promise<void> {
   const fees = calculateFeeBreakdown(data.btcIn);
 
+  // Calculate price from trade amounts since contract's calculatePrice()
+  // does integer division without decimals factor and may return 0
+  const pricePerToken = data.tokensOut > 0n
+    ? ((data.btcIn * DECIMALS_FACTOR) / data.tokensOut).toString()
+    : "0";
+
   const trade: TradeDocument = {
     _id: txHash,
     tokenAddress,
@@ -234,7 +240,7 @@ async function processBuyEvent(
     traderAddress: data.buyer,
     btcAmount: data.btcIn.toString(),
     tokenAmount: data.tokensOut.toString(),
-    pricePerToken: data.newPrice.toString(),
+    pricePerToken,
     fees: {
       platform: fees.platform.toString(),
       creator: fees.creator.toString(),
@@ -244,15 +250,16 @@ async function processBuyEvent(
     priceImpactBps: 0,
     status: "confirmed",
     blockNumber,
-    blockTimestamp: new Date(blockTime * 1000),
+    blockTimestamp: normalizeBlockTime(blockTime),
     createdAt: new Date(),
   };
 
   await saveTrade(trade);
 
-  const priceSats = Number(data.newPrice);
+  const priceSats = Number(pricePerToken);
   const volumeSats = Number(data.btcIn);
-  await updateOHLCV(tokenAddress, priceSats, volumeSats, blockTime);
+  const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+  await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
 }
 
 async function processSellEvent(
@@ -264,6 +271,10 @@ async function processSellEvent(
 ): Promise<void> {
   const fees = calculateFeeBreakdown(data.btcOut);
 
+  const pricePerToken = data.tokensIn > 0n
+    ? ((data.btcOut * DECIMALS_FACTOR) / data.tokensIn).toString()
+    : "0";
+
   const trade: TradeDocument = {
     _id: txHash,
     tokenAddress,
@@ -271,7 +282,7 @@ async function processSellEvent(
     traderAddress: data.seller,
     btcAmount: data.btcOut.toString(),
     tokenAmount: data.tokensIn.toString(),
-    pricePerToken: data.newPrice.toString(),
+    pricePerToken,
     fees: {
       platform: fees.platform.toString(),
       creator: fees.creator.toString(),
@@ -281,15 +292,28 @@ async function processSellEvent(
     priceImpactBps: 0,
     status: "confirmed",
     blockNumber,
-    blockTimestamp: new Date(blockTime * 1000),
+    blockTimestamp: normalizeBlockTime(blockTime),
     createdAt: new Date(),
   };
 
   await saveTrade(trade);
 
-  const priceSats = Number(data.newPrice);
+  const priceSats = Number(pricePerToken);
   const volumeSats = Number(data.btcOut);
-  await updateOHLCV(tokenAddress, priceSats, volumeSats, blockTime);
+  const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+  await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+}
+
+/**
+ * Normalize block.time to a Date. OPNet RPC may return seconds or milliseconds.
+ * If the value looks like milliseconds (> year 2100 as seconds), don't multiply.
+ */
+function normalizeBlockTime(blockTime: number): Date {
+  // If blockTime > 1e12, it's already in milliseconds
+  if (blockTime > 1_000_000_000_000) {
+    return new Date(blockTime);
+  }
+  return new Date(blockTime * 1000);
 }
 
 function calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: bigint; minter: bigint } {
