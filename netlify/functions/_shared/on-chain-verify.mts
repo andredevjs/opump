@@ -3,6 +3,8 @@
  * Verifies deployment tx, deployer address, contract type, and config.
  */
 
+import type { LaunchTokenContract, DeploymentTx } from "./contracts.mts";
+
 export interface OnChainVerificationResult {
   valid: boolean;
   error?: string;
@@ -30,12 +32,7 @@ export async function verifyTokenOnChain(
   }
 
   // 2. Verify deployer matches creator
-  const deploymentTx = tx as unknown as {
-    from?: { p2tr: (n: unknown) => string; toHex: () => string } | string;
-    deployerAddress?: { p2tr: (n: unknown) => string; toHex: () => string } | string;
-    contractAddress?: string;
-    blockNumber?: string | bigint;
-  };
+  const deploymentTx = tx as unknown as DeploymentTx;
 
   try {
     const rawDeployer = deploymentTx.deployerAddress ?? deploymentTx.from;
@@ -46,7 +43,8 @@ export async function verifyTokenOnChain(
       } else if (typeof rawDeployer === "object" && "p2tr" in rawDeployer && typeof rawDeployer.p2tr === "function") {
         deployerAddress = rawDeployer.p2tr(network);
       } else {
-        deployerAddress = String(rawDeployer);
+        console.error("[Verify] Unexpected deployer address type:", typeof rawDeployer);
+        return { valid: false, error: "Unable to extract deployer address from deployment transaction." };
       }
 
       if (deployerAddress !== creatorAddress) {
@@ -99,9 +97,7 @@ export async function verifyTokenOnChain(
 
   // 3a. Call getReserves
   try {
-    const reserves = await (contract as unknown as {
-      getReserves: () => Promise<{ properties: { virtualBtc: bigint; virtualToken: bigint; realBtc: bigint; k: bigint } }>;
-    }).getReserves();
+    const reserves = await (contract as unknown as LaunchTokenContract).getReserves();
 
     if (!reserves?.properties) {
       return { valid: false, error: "Contract is not a valid LaunchToken (getReserves returned no data)." };
@@ -112,9 +108,7 @@ export async function verifyTokenOnChain(
 
   // 3b. Call getConfig and verify parameters match
   try {
-    const onChainConfig = await (contract as unknown as {
-      getConfig: () => Promise<{ properties: { creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint } }>;
-    }).getConfig();
+    const onChainConfig = await (contract as unknown as LaunchTokenContract).getConfig();
 
     if (!onChainConfig?.properties) {
       return { valid: false, error: "Failed to read contract config on-chain." };

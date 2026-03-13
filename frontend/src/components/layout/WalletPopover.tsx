@@ -4,6 +4,7 @@ import BigNumber from 'bignumber.js';
 import { Copy, Check, ExternalLink, LogOut, Coins } from 'lucide-react';
 import { useWalletStore } from '@/stores/wallet-store';
 import { getKnownTokenAddresses } from '@/stores/trade-store';
+import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 import { formatBtc, formatTokenAmount, shortenAddress } from '@/lib/format';
 import { mapApiTokenToToken } from '@/lib/mappers';
 import * as api from '@/services/api';
@@ -148,7 +149,8 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
                 );
               }
 
-              const valueSats = new BigNumber(units).times(token.currentPriceSats).toNumber();
+              const priceSats = token.currentPriceSats ?? '0';
+              const valueSats = new BigNumber(units).times(priceSats).div(TOKEN_UNITS_PER_TOKEN).toNumber();
 
               return (
                 <button

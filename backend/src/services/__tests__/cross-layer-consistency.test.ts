@@ -14,7 +14,8 @@ import {
   K_CONSTANT,
   TOTAL_FEE_BPS,
   FEE_DENOMINATOR,
-  TOKEN_DECIMALS,
+  PRICE_PRECISION,
+  PRICE_DISPLAY_DIVISOR,
 } from '../../../../shared/constants/bonding-curve.js';
 
 const simulator = new BondingCurveSimulator();
@@ -105,16 +106,18 @@ describe('cross-layer consistency', () => {
 
   describe('price calculation parity', () => {
     it('initial price matches between layers', () => {
-      const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
+      // Backend simulator uses PRICE_PRECISION (10^18) internally
+      const backendScaled = simulator.calculatePrice(INITIAL_VIRTUAL_BTC_SATS, INITIAL_VIRTUAL_TOKEN_SUPPLY);
 
-      // Backend price
-      const backendPrice = simulator.calculatePrice(INITIAL_VIRTUAL_BTC_SATS, INITIAL_VIRTUAL_TOKEN_SUPPLY);
+      // Backend normalizes to display: sats per whole token
+      const backendDisplay = Number(backendScaled) / PRICE_DISPLAY_DIVISOR;
 
-      // Frontend price: virtualBtc * TOKEN_UNITS_PER_TOKEN / virtualToken
-      // TOKEN_UNITS_PER_TOKEN = 10^8 = DECIMALS_FACTOR
-      const frontendPrice = (INITIAL_VIRTUAL_BTC_SATS * DECIMALS_FACTOR) / INITIAL_VIRTUAL_TOKEN_SUPPLY;
+      // Frontend uses TOKEN_UNITS_PER_TOKEN (10^8) directly via BigNumber (no truncation)
+      // Frontend price = virtualBtc * 10^8 / virtualToken (BigNumber handles decimals)
+      const TOKEN_UNITS = 10n ** 8n;
+      const frontendPrice = Number(INITIAL_VIRTUAL_BTC_SATS * TOKEN_UNITS) / Number(INITIAL_VIRTUAL_TOKEN_SUPPLY);
 
-      expect(backendPrice).toBe(frontendPrice);
+      expect(backendDisplay).toBeCloseTo(frontendPrice, 10);
     });
   });
 

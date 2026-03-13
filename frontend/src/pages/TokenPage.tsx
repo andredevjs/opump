@@ -6,6 +6,8 @@ import { TradePanel } from '@/components/trade/TradePanel';
 import { TradeHistory } from '@/components/trade/TradeHistory';
 import { TokenPrice } from '@/components/token/TokenPrice';
 import { TokenBadge } from '@/components/token/TokenBadge';
+import { MinterRewardCard } from '@/components/token/MinterRewardCard';
+import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { BondingCurveVisual } from '@/components/shared/BondingCurveVisual';
 import { AddressDisplay } from '@/components/shared/AddressDisplay';
@@ -18,189 +20,12 @@ import { usePriceStore } from '@/stores/price-store';
 import { usePriceFeed } from '@/hooks/use-price-feed';
 import { formatBtc, formatNumber, timeAgo } from '@/lib/format';
 import type { TimeframeKey } from '@/types/api';
-import { Globe, Twitter, Send, MessageCircle, Github, Gift, Coins } from 'lucide-react';
-import { useWalletStore } from '@/stores/wallet-store';
-import { Button } from '@/components/ui/Button';
+import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
 
 import type { OHLCVCandle } from '@/types/api';
 
 const MOTOSWAP_URL = import.meta.env.VITE_MOTOSWAP_URL || '';
 const EMPTY_CANDLES: OHLCVCandle[] = [];
-
-function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
-  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
-  const [claiming, setClaiming] = useState(false);
-  const [minterInfo, setMinterInfo] = useState<{ shares: string; eligible: boolean } | null>(null);
-  const [minterPoolSats, setMinterPoolSats] = useState<number | null>(null);
-  const [claimResult, setClaimResult] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!connected || !walletAddress || !hashedMLDSAKey) return;
-    // Fetch minter info and fee pool from contract
-    (async () => {
-      try {
-        const { getLaunchTokenContract } = await import('@/services/contract');
-        const { Address } = await import('@btc-vision/transaction');
-        const contract = getLaunchTokenContract(tokenAddress);
-        const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
-        const result = await contract.getMinterInfo(addr);
-        setMinterInfo({
-          shares: String(result.properties.shares ?? '0'),
-          eligible: Boolean(result.properties.eligible),
-        });
-
-        // Fetch on-chain fee pool totals instead of iterating trades
-        const poolResult = await contract.getFeePools();
-        setMinterPoolSats(Number(poolResult.properties.minterFees));
-      } catch {
-        // Silently fail — user may not be a minter
-      }
-    })();
-  }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
-
-  if (!connected) return null;
-  if (minterInfo && minterInfo.shares === '0') return null;
-
-  const handleClaim = async () => {
-    if (!walletAddress) return;
-    setClaiming(true);
-    setClaimResult(null);
-    try {
-      const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const sim = await contract.claimMinterReward();
-      const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress,
-      });
-      setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
-    } catch (err) {
-      setClaimResult(err instanceof Error ? err.message : 'Claim failed');
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 mb-3">
-        <Gift size={16} className="text-accent" />
-        <h3 className="text-sm font-medium text-text-secondary">Minter Rewards</h3>
-      </div>
-      <p className="text-xs text-text-muted mb-2">
-        Early buyers in the first ~30 days earn a share of minter fees proportional to their purchase.
-      </p>
-      {minterPoolSats !== null && (
-        <p className="text-sm font-mono text-text-primary mb-2">
-          Pool: {formatBtc(minterPoolSats)}
-        </p>
-      )}
-      {minterInfo && minterInfo.shares !== '0' && (
-        <p className="text-xs text-text-secondary mb-2">
-          Your shares: {formatNumber(parseInt(minterInfo.shares, 10))}
-        </p>
-      )}
-      {minterInfo && !minterInfo.eligible && (
-        <p className="text-xs text-yellow-400 mb-2">Hold period not yet met. Keep holding!</p>
-      )}
-      {claimResult && (
-        <p className="text-xs text-text-secondary mb-2">{claimResult}</p>
-      )}
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={handleClaim}
-        disabled={claiming || (minterInfo !== null && !minterInfo.eligible)}
-        className="w-full"
-      >
-        {claiming ? 'Claiming...' : 'Claim Minter Reward'}
-      </Button>
-    </Card>
-  );
-}
-
-function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string; creatorAddress: string }) {
-  const { connected, address: walletAddress } = useWalletStore();
-  const [claiming, setClaiming] = useState(false);
-  const [claimResult, setClaimResult] = useState<string | null>(null);
-  const [claimableSats, setClaimableSats] = useState<number | null>(null);
-
-  const isCreator = connected && walletAddress === creatorAddress;
-
-  // Fetch on-chain creator fee pool instead of iterating trades
-  useEffect(() => {
-    if (!isCreator) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { getLaunchTokenContract } = await import('@/services/contract');
-        const contract = getLaunchTokenContract(tokenAddress);
-        const poolResult = await contract.getFeePools();
-        if (!cancelled) {
-          setClaimableSats(Number(poolResult.properties.creatorFees));
-        }
-      } catch {
-        // Silently fail
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tokenAddress, isCreator]);
-
-  if (!isCreator) return null;
-
-  const handleClaim = async () => {
-    if (!walletAddress) return;
-    setClaiming(true);
-    setClaimResult(null);
-    try {
-      const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const sim = await contract.claimCreatorFees();
-      const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress,
-      });
-      setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
-      setClaimableSats(0);
-    } catch (err) {
-      setClaimResult(err instanceof Error ? err.message : 'Claim failed');
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  const nothingToClaim = claimableSats !== null && claimableSats === 0;
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 mb-3">
-        <Coins size={16} className="text-accent" />
-        <h3 className="text-sm font-medium text-text-secondary">Creator Fees</h3>
-      </div>
-      <p className="text-xs text-text-muted mb-2">
-        As the token creator, you earn 0.25% of every trade.
-      </p>
-      <p className="text-sm font-mono text-text-primary mb-3">
-        {claimableSats === null
-          ? 'Loading...'
-          : `${formatBtc(claimableSats)} available`}
-      </p>
-      {nothingToClaim && (
-        <p className="text-xs text-text-muted mb-2">No fees to claim yet.</p>
-      )}
-      {claimResult && (
-        <p className="text-xs text-text-secondary mb-2">{claimResult}</p>
-      )}
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={handleClaim}
-        disabled={claiming || nothingToClaim}
-        className="w-full"
-      >
-        {claiming ? 'Claiming...' : 'Claim Creator Fees'}
-      </Button>
-    </Card>
-  );
-}
 
 export function TokenPage() {
   const { address } = useParams<{ address: string }>();
@@ -211,12 +36,12 @@ export function TokenPage() {
   const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
 
-  // Fetch token from API if not in store
+  // S24: Fetch token from API if not in store — depend on address and fetchToken
   useEffect(() => {
     if (!token && address) {
       fetchToken(address);
     }
-  }, [address, token?.address]);
+  }, [address, fetchToken, token]);
 
   usePriceFeed(token, timeframe);
 

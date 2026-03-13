@@ -1,4 +1,7 @@
-const FRONTEND_URL = process.env.FRONTEND_URL || "*";
+const FRONTEND_URL = process.env.FRONTEND_URL || (() => {
+  console.warn('[CORS] FRONTEND_URL not set — defaulting to wildcard origin "*"');
+  return '*';
+})();
 
 export function corsHeaders(): Record<string, string> {
   return {

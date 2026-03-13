@@ -13,11 +13,9 @@ import {
   MINTER_FEE_BPS,
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
-  TOKEN_DECIMALS,
   GRADUATION_THRESHOLD_SATS,
+  PRICE_PRECISION,
 } from "./constants.mts";
-
-const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
 
 export interface Reserves {
   virtualBtcReserve: bigint;
@@ -89,7 +87,7 @@ export class BondingCurveSimulator {
       ? Number(((priceAfter - priceBefore) * 10000n) / priceBefore)
       : 0;
 
-    const effectivePriceSats = tokensOut > 0n ? (btcAmountSats * 100000000n) / tokensOut : 0n;
+    const effectivePriceSats = tokensOut > 0n ? (btcAmountSats * PRICE_PRECISION) / tokensOut : 0n;
 
     return {
       tokensOut,
@@ -112,6 +110,10 @@ export class BondingCurveSimulator {
     const newVirtualBtc = reserves.kConstant / newVirtualToken;
     const grossBtcOut = reserves.virtualBtcReserve - newVirtualBtc;
 
+    if (grossBtcOut > reserves.realBtcReserve) {
+      throw new Error('Insufficient real BTC reserve');
+    }
+
     if (grossBtcOut < MIN_TRADE_SATS) {
       throw new Error("Below minimum trade amount");
     }
@@ -131,7 +133,7 @@ export class BondingCurveSimulator {
       ? Number(((priceBefore - priceAfter) * 10000n) / priceBefore)
       : 0;
 
-    const effectivePriceSats = tokenAmount > 0n ? (grossBtcOut * 100000000n) / tokenAmount : 0n;
+    const effectivePriceSats = tokenAmount > 0n ? (grossBtcOut * PRICE_PRECISION) / tokenAmount : 0n;
 
     return {
       btcOut,
@@ -156,7 +158,7 @@ export class BondingCurveSimulator {
 
   calculatePrice(virtualBtc: bigint, virtualToken: bigint): bigint {
     if (virtualToken === 0n) return 0n;
-    return (virtualBtc * DECIMALS_FACTOR) / virtualToken;
+    return (virtualBtc * PRICE_PRECISION) / virtualToken;
   }
 
   static getInitialReserves(): Reserves {

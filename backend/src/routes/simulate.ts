@@ -70,10 +70,10 @@ export function registerSimulateRoutes(app: HyperExpress.Server): void {
       return;
     }
 
-    if (token.status === 'graduated') {
+    if (token.status !== 'active') {
       res.status(400).json({
         error: 'BadRequest',
-        message: 'Token has graduated',
+        message: `Token is not active (status: ${token.status})`,
         statusCode: 400,
       });
       return;
@@ -146,10 +146,10 @@ export function registerSimulateRoutes(app: HyperExpress.Server): void {
       return;
     }
 
-    if (token.status === 'graduated') {
+    if (token.status !== 'active') {
       res.status(400).json({
         error: 'BadRequest',
-        message: 'Token has graduated',
+        message: `Token is not active (status: ${token.status})`,
         statusCode: 400,
       });
       return;

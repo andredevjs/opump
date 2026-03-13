@@ -27,6 +27,7 @@ export interface TokenConfig {
   airdropConfig?: AirdropConfig;
 }
 
+// 'new' reserved for future use: pre-funded tokens awaiting first trade
 export type TokenStatus = 'active' | 'graduated' | 'migrating' | 'migrated' | 'new';
 
 export interface TokenDocument {

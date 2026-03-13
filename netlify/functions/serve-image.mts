@@ -1,11 +1,11 @@
 import { getStore } from "@netlify/blobs";
 import type { Config, Context } from "@netlify/functions";
+import { error, corsHeaders } from "./_shared/response.mts";
 
 export default async (req: Request, context: Context) => {
-  const key = context.params.key;
-
-  if (!key) {
-    return new Response("Missing key", { status: 400 });
+  const key = context.params?.key;
+  if (!key || !/^[\w.-]+$/.test(key)) {
+    return error('Invalid key', 400, 'BadRequest');
   }
 
   const store = getStore("token-images");
@@ -22,7 +22,7 @@ export default async (req: Request, context: Context) => {
     headers: {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable",
-      "Access-Control-Allow-Origin": "*",
+      ...corsHeaders(),
     },
   });
 };

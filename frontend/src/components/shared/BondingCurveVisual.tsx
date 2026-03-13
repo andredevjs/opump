@@ -12,8 +12,8 @@ interface BondingCurveVisualProps {
 
 export function BondingCurveVisual({
   virtualBtcReserve,
-  virtualTokenSupply,
-  realBtcReserve,
+  virtualTokenSupply: _virtualTokenSupply,
+  realBtcReserve: _realBtcReserve,
   className,
 }: BondingCurveVisualProps) {
   const points = useMemo(() => {

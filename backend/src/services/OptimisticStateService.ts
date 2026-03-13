@@ -90,8 +90,8 @@ export class OptimisticStateService {
           const sim = this.simulator.simulateSell(currentReserves, adj.amount);
           currentReserves = sim.newReserves;
         }
-      } catch {
-        // Skip invalid simulations
+      } catch (err) {
+        console.debug('[Optimistic] Simulation skipped:', err instanceof Error ? err.message : err);
       }
     }
 

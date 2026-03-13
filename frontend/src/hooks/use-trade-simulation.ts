@@ -1,14 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Token } from '@/types/token';
-import type { PendingTransaction, TradeSimulation } from '@/types/trade';
+import type { PendingTransaction } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
+import { VAULT_ADDRESS } from '@/config/constants';
 import toast from 'react-hot-toast';
-
-// The vault address where BTC must be sent for @payable buy() calls.
-// Each LaunchToken stores this as its vault — currently always the factory address.
-const VAULT_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
@@ -20,6 +17,8 @@ export function useTradeSimulation(token: Token | null) {
   // Extract stable primitives to avoid re-creating callbacks when token object ref changes
   const tokenAddress = token?.address;
   const tokenSymbol = token?.symbol;
+  // W6-W7: Extract realBtcReserve so it can be a dependency
+  const realBtcReserve = token?.realBtcReserve;
 
   // Track pending timeouts for cleanup on unmount
   const timeoutIds = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -39,36 +38,33 @@ export function useTradeSimulation(token: Token | null) {
     timeoutIds.current.add(id);
   }
 
-  /**
-   * Simulate a buy. Uses local BigNumber math for instant preview.
-   */
-  const simulateBuy = useCallback(
-    (btcSats: string): TradeSimulation | null => {
-      return localSimBuy(btcSats);
-    },
-    [localSimBuy],
-  );
-
-  /**
-   * Simulate a sell using local bonding curve math.
-   */
-  const simulateSell = useCallback(
-    (tokenUnits: string): TradeSimulation | null => {
-      return localSimSell(tokenUnits);
-    },
-    [localSimSell],
-  );
+  // S20: simulateBuy / simulateSell are the bonding-curve functions directly
+  const simulateBuy = localSimBuy;
+  const simulateSell = localSimSell;
 
   /**
    * Execute a buy transaction via contract call through OPWallet.
    */
   const executeBuy = useCallback(
     async (btcSats: string) => {
+      // F3: Guard against missing vault address
+      if (!VAULT_ADDRESS) {
+        toast.error('Factory address not configured');
+        return;
+      }
       if (!tokenAddress || !connected || !btcSats || btcSats === '0') return;
       if (!walletAddress) {
         toast.error('Wallet not connected');
         return;
       }
+
+      // W13: Validate BigInt range before any state mutations
+      const btcSatsBigInt = BigInt(btcSats);
+      if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+        toast.error('Amount exceeds safe range for extra outputs');
+        return;
+      }
+
       const sim = simulateBuy(btcSats);
       if (!sim) return;
 
@@ -95,11 +91,6 @@ export function useTradeSimulation(token: Token | null) {
         const { getLaunchTokenContract, sendContractCall, setupPayableCall, waitForConfirmation } = await import('@/services/contract');
         const { Address } = await import('@btc-vision/transaction');
         const contract = getLaunchTokenContract(tokenAddress);
-        const btcSatsBigInt = BigInt(btcSats);
-
-        if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
-          throw new Error('Amount exceeds safe range for extra outputs');
-        }
 
         // Set sender so the contract simulation knows who the caller is
         if (hashedMLDSAKey) {
@@ -113,7 +104,7 @@ export function useTradeSimulation(token: Token | null) {
         const result = await sendContractCall(simResult, {
           refundTo: walletAddress,
           maximumAllowedSatToSpend: btcSatsBigInt + 50000n,
-          extraOutputs: [{ address: VAULT_ADDRESS, value: Number(btcSatsBigInt) }],
+          extraOutputs: [{ address: VAULT_ADDRESS, value: btcSatsBigInt }],
         });
 
         updatePendingStatus(txId, 'mempool');
@@ -136,12 +127,12 @@ export function useTradeSimulation(token: Token | null) {
           currentPriceSats: String(sim.newPriceSats),
           virtualBtcReserve: sim.newVirtualBtc,
           virtualTokenSupply: sim.newVirtualToken,
-          realBtcReserve: token?.realBtcReserve ?? '0',
+          realBtcReserve: realBtcReserve ?? '0',
           isOptimistic: true,
         });
         useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
 
-        toast(`Buy detected in mempool`, { icon: '📡' });
+        toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
@@ -154,8 +145,8 @@ export function useTradeSimulation(token: Token | null) {
         import('@/services/api').then(async ({ triggerIndexer }) => {
           await triggerIndexer();
           // Refresh token data (price, reserves, stats) from the API
-          const { useTokenStore } = await import('@/stores/token-store');
-          if (tokenAddress) useTokenStore.getState().fetchToken(tokenAddress);
+          const { useTokenStore: tokenStore } = await import('@/stores/token-store');
+          if (tokenAddress) tokenStore.getState().fetchToken(tokenAddress);
         });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
@@ -164,7 +155,8 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy],
+    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
+     realBtcReserve, addPending, deductBalance, updatePendingStatus, addWsTrade, addHolding, removePending, addBalance],
   );
 
   /**
@@ -233,12 +225,12 @@ export function useTradeSimulation(token: Token | null) {
           currentPriceSats: String(sim.newPriceSats),
           virtualBtcReserve: sim.newVirtualBtc,
           virtualTokenSupply: sim.newVirtualToken,
-          realBtcReserve: token?.realBtcReserve ?? '0',
+          realBtcReserve: realBtcReserve ?? '0',
           isOptimistic: true,
         });
         useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
 
-        toast(`Sell detected in mempool`, { icon: '📡' });
+        toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
@@ -250,8 +242,8 @@ export function useTradeSimulation(token: Token | null) {
         // Trigger indexer then refresh token data so UI updates
         import('@/services/api').then(async ({ triggerIndexer }) => {
           await triggerIndexer();
-          const { useTokenStore } = await import('@/stores/token-store');
-          if (tokenAddress) useTokenStore.getState().fetchToken(tokenAddress);
+          const { useTokenStore: tokenStore } = await import('@/stores/token-store');
+          if (tokenAddress) tokenStore.getState().fetchToken(tokenAddress);
         });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
@@ -260,7 +252,8 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell],
+    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
+     realBtcReserve, addPending, removeHolding, updatePendingStatus, addWsTrade, addBalance, addHolding, removePending],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

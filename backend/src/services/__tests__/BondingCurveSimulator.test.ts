@@ -51,10 +51,11 @@ describe('BondingCurveSimulator', () => {
     it('returns initial price', () => {
       const price = simulator.calculatePrice(INITIAL_VIRTUAL_BTC_SATS, INITIAL_VIRTUAL_TOKEN_SUPPLY);
 
-      // price = (3_000_000_000 * 10^8) / 100_000_000_000_000_000 = 3
-      const expected = (INITIAL_VIRTUAL_BTC_SATS * (10n ** BigInt(TOKEN_DECIMALS))) / INITIAL_VIRTUAL_TOKEN_SUPPLY;
+      // price = (767_000 * 10^18) / 100_000_000_000_000_000 = 7_670_000
+      const PRICE_PRECISION_LOCAL = 10n ** 18n;
+      const expected = (INITIAL_VIRTUAL_BTC_SATS * PRICE_PRECISION_LOCAL) / INITIAL_VIRTUAL_TOKEN_SUPPLY;
       expect(price).toBe(expected);
-      expect(price).toBe(3n);
+      expect(price).toBe(7_670_000n);
     });
 
     it('returns 0 for zero token supply', () => {
@@ -153,7 +154,7 @@ describe('BondingCurveSimulator', () => {
     });
 
     it('price impact is positive for buys (large enough to show)', () => {
-      // Need a large buy relative to 30 BTC virtual reserve for integer-visible impact
+      // Need a large buy relative to 0.00767 BTC virtual reserve for visible impact
       const result = simulator.simulateBuy(largeCapReserves(), 500_000_000n); // 5 BTC
 
       expect(result.priceImpactBps).toBeGreaterThan(0);
@@ -177,8 +178,9 @@ describe('BondingCurveSimulator', () => {
       const btcAmount = 1_000_000n;
       const result = simulator.simulateBuy(initialReserves(), btcAmount);
 
-      // effectivePrice = btcAmount * 10^8 / tokensOut
-      const expected = (btcAmount * 100_000_000n) / result.tokensOut;
+      // effectivePrice = btcAmount * PRICE_PRECISION / tokensOut (10^18 precision)
+      const PRICE_PRECISION_LOCAL = 10n ** 18n;
+      const expected = (btcAmount * PRICE_PRECISION_LOCAL) / result.tokensOut;
       expect(result.effectivePriceSats).toBe(expected);
     });
 
@@ -193,11 +195,11 @@ describe('BondingCurveSimulator', () => {
   });
 
   describe('simulateSell', () => {
-    it('throws when gross BTC output is below minimum', () => {
-      // Selling 1 token unit is so small the output is below min trade
+    it('throws when selling from initial reserves (no real BTC)', () => {
+      // Initial reserves have realBtcReserve=0, so any sell exceeds it
       expect(() =>
         simulator.simulateSell(initialReserves(), 1n),
-      ).toThrow('Below minimum trade amount');
+      ).toThrow('Insufficient real BTC reserve');
     });
 
     it('returns positive BTC out for meaningful sell', () => {

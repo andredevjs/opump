@@ -11,17 +11,17 @@ export async function checkRateLimit(
 ): Promise<boolean> {
   const redis = getRedis();
   const current = await redis.incr(key);
-  if (current === 1) {
-    await redis.expire(key, windowSeconds);
-  }
+  // Always set expire to prevent keys persisting after crash between incr and expire
+  await redis.expire(key, windowSeconds);
   return current <= maxRequests;
 }
 
 /**
- * Check IP-based rate limit: 100 requests per 60 seconds.
+ * Check IP-based rate limit with configurable prefix, limit, and window.
+ * Defaults: 100 requests per 60 seconds.
  */
-export async function checkIpRateLimit(ip: string): Promise<boolean> {
-  return checkRateLimit(`op:rl:ip:${ip}`, 100, 60);
+export async function checkIpRateLimit(ip: string, prefix = 'ip', maxRequests = 100, windowSeconds = 60): Promise<boolean> {
+  return checkRateLimit(`op:rl:${prefix}:${ip}`, maxRequests, windowSeconds);
 }
 
 /**

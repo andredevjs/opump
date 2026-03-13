@@ -3,6 +3,7 @@ import { Address, BytesWriter, NetEvent } from '@btc-vision/btc-runtime/runtime'
 
 export class BuyEvent extends NetEvent {
   constructor(buyer: Address, btcIn: u256, tokensOut: u256, newPrice: u256) {
+    // Size: 1 address (32 bytes) + 3 u256 values (32 bytes each) = 128 bytes
     const data = new BytesWriter(32 + 32 + 32 + 32);
     data.writeAddress(buyer);
     data.writeU256(btcIn);
@@ -14,6 +15,7 @@ export class BuyEvent extends NetEvent {
 
 export class SellEvent extends NetEvent {
   constructor(seller: Address, tokensIn: u256, btcOut: u256, newPrice: u256) {
+    // Size: 1 address (32 bytes) + 3 u256 values (32 bytes each) = 128 bytes
     const data = new BytesWriter(32 + 32 + 32 + 32);
     data.writeAddress(seller);
     data.writeU256(tokensIn);
@@ -25,6 +27,7 @@ export class SellEvent extends NetEvent {
 
 export class GraduationEvent extends NetEvent {
   constructor(triggerer: Address, finalBtcReserve: u256) {
+    // Size: 1 address (32 bytes) + 1 u256 value (32 bytes) = 64 bytes
     const data = new BytesWriter(32 + 32);
     data.writeAddress(triggerer);
     data.writeU256(finalBtcReserve);
@@ -34,6 +37,7 @@ export class GraduationEvent extends NetEvent {
 
 export class ReservationEvent extends NetEvent {
   constructor(user: Address, amount: u256, expiryBlock: u256) {
+    // Size: 1 address (32 bytes) + 2 u256 values (32 bytes each) = 96 bytes
     const data = new BytesWriter(32 + 32 + 32);
     data.writeAddress(user);
     data.writeU256(amount);
@@ -44,6 +48,7 @@ export class ReservationEvent extends NetEvent {
 
 export class FeeClaimedEvent extends NetEvent {
   constructor(claimer: Address, amount: u256, feeType: u256) {
+    // Size: 1 address (32 bytes) + 2 u256 values (32 bytes each) = 96 bytes
     const data = new BytesWriter(32 + 32 + 32);
     data.writeAddress(claimer);
     data.writeU256(amount);
@@ -54,6 +59,7 @@ export class FeeClaimedEvent extends NetEvent {
 
 export class MigrationEvent extends NetEvent {
   constructor(recipient: Address, tokenAmount: u256, btcReserve: u256) {
+    // Size: 1 address (32 bytes) + 2 u256 values (32 bytes each) = 96 bytes
     const data = new BytesWriter(32 + 32 + 32);
     data.writeAddress(recipient);
     data.writeU256(tokenAmount);
@@ -64,6 +70,7 @@ export class MigrationEvent extends NetEvent {
 
 export class TokenRegisteredEvent extends NetEvent {
   constructor(creator: Address, tokenIndex: u256) {
+    // Size: 1 address (32 bytes) + 1 u256 value (32 bytes) = 64 bytes
     const data = new BytesWriter(32 + 32);
     data.writeAddress(creator);
     data.writeU256(tokenIndex);

@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { FeeBreakdown } from '@/components/shared/FeeBreakdown';
 import type { Token } from '@/types/token';
-import type { TradeSimulation } from '@/types/trade';
 import { useTradeSimulation } from '@/hooks/use-trade-simulation';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
@@ -19,7 +18,6 @@ interface SellFormProps {
 
 export function SellForm({ token }: SellFormProps) {
   const [amount, setAmount] = useState('');
-  const [simulation, setSimulation] = useState<TradeSimulation | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const { simulateSell, executeSell, executing } = useTradeSimulation(token);
   const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
@@ -42,14 +40,11 @@ export function SellForm({ token }: SellFormProps) {
   const holdingBn = new BigNumber(holding);
   const hasHolding = holdingBn.isGreaterThan(0);
 
-  useEffect(() => {
+  // S21: Derive simulation from amount via useMemo instead of useEffect+setState
+  const simulation = useMemo(() => {
     const tokens = parseFloat(amount);
-    if (!isNaN(tokens) && tokens > 0) {
-      const units = tokensToUnits(tokens);
-      setSimulation(simulateSell(units));
-    } else {
-      setSimulation(null);
-    }
+    if (isNaN(tokens) || tokens <= 0) return null;
+    return simulateSell(tokensToUnits(tokens));
   }, [amount, simulateSell]);
 
   const handleSell = () => {

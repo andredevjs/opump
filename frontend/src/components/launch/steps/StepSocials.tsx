@@ -20,7 +20,7 @@ export function StepSocials() {
           { icon: Send, label: 'Telegram', key: 'telegram' as const, placeholder: 't.me/...' },
           { icon: MessageCircle, label: 'Discord', key: 'discord' as const, placeholder: 'discord.gg/...' },
           { icon: Github, label: 'GitHub', key: 'github' as const, placeholder: 'github.com/...' },
-        ].map(({ icon: Icon, label, key, placeholder }) => (
+        ].map(({ icon: Icon, label: _label, key, placeholder }) => (
           <div key={key} className="flex items-center gap-3">
             <Icon size={18} className="text-text-muted shrink-0" />
             <Input

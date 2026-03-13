@@ -17,16 +17,20 @@ export async function uploadImage(base64Data: string, contentType: string): Prom
     throw new Error(`Unsupported image type: ${contentType}. Allowed: ${[...ALLOWED_TYPES].join(", ")}`);
   }
 
-  const buffer = Buffer.from(base64Data, "base64");
-  if (buffer.length > MAX_IMAGE_BYTES) {
-    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes limit (got ${buffer.length})`);
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes limit (got ${bytes.length})`);
   }
 
   const ext = contentType.split("/")[1]?.replace("svg+xml", "svg") || "png";
   const key = `${Date.now()}-${randomHex(8)}.${ext}`;
 
   const store = getStore("token-images");
-  await store.set(key, new Uint8Array(buffer).buffer as ArrayBuffer, {
+  await store.set(key, bytes.buffer as ArrayBuffer, {
     metadata: { contentType },
   });
 

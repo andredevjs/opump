@@ -7,6 +7,7 @@
 import { getRedis } from "./redis.mts";
 import {
   getToken,
+  getTokensBatch,
   saveTrade,
   updateToken,
   updateOHLCV,
@@ -19,23 +20,23 @@ import {
   graduateToken,
   getHolderCount,
 } from "./redis-queries.mts";
-import { TOKEN_DECIMALS } from "./constants.mts";
+import {
+  PRICE_PRECISION,
+  PRICE_DISPLAY_DIVISOR,
+  INITIAL_VIRTUAL_TOKEN_SUPPLY,
+  PLATFORM_FEE_BPS,
+  CREATOR_FEE_BPS,
+  MINTER_FEE_BPS,
+  FEE_DENOMINATOR,
+} from "./constants.mts";
 import type { TradeDocument } from "./constants.mts";
+import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
+import { decodeBuyEvent, decodeSellEvent, getEventData, readAddressFromEventData } from "./event-decoders.mts";
+import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 
-const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
-
-interface BuyEventData {
-  buyer: string;
-  btcIn: bigint;
-  tokensOut: bigint;
-  newPrice: bigint;
-}
-
-interface SellEventData {
-  seller: string;
-  tokensIn: bigint;
-  btcOut: bigint;
-  newPrice: bigint;
+/** Convert a PRICE_PRECISION-scaled bigint to "sats per whole token" string */
+function toDisplayPrice(scaled: bigint): string {
+  return (Number(scaled) / PRICE_DISPLAY_DIVISOR).toString();
 }
 
 export interface IndexerResult {
@@ -59,6 +60,9 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
     const opnetRpcUrl = process.env.OPNET_RPC_URL || "https://testnet.opnet.org";
     const networkName = process.env.NETWORK || "testnet";
     const factoryAddress = process.env.FACTORY_ADDRESS || "";
+    if (!factoryAddress) {
+      console.warn('[Indexer] FACTORY_ADDRESS not set — token discovery disabled');
+    }
 
     const { JSONRpcProvider, OPNetTransactionTypes, getContract, ABIDataTypes, BitcoinAbiTypes } = await import("opnet");
     const { networks } = await import("@btc-vision/bitcoin");
@@ -122,9 +126,9 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
             const factoryEvents = tx.events[factoryAddress];
             if (factoryEvents) {
               for (const event of factoryEvents) {
-                const eventType = (event as { type?: string }).type;
-                if (eventType === "TokenDeployed") {
-                  const data = getEventData(event);
+                const evt = event as OPNetEvent;
+                if (evt.type === "TokenDeployed") {
+                  const data = getEventData(evt);
                   if (data && data.length >= 64) {
                     const tokenAddr = readAddressFromEventData(data, 32);
                     knownTokenAddresses.add(tokenAddr);
@@ -137,7 +141,7 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
           continue;
         }
 
-        const interactionTx = tx as { contractAddress?: string; hash: string } & typeof tx;
+        const interactionTx = tx as typeof tx & { contractAddress?: string; hash: string };
         const contractAddr = interactionTx.contractAddress;
         if (!contractAddr) continue;
 
@@ -152,33 +156,34 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
         if (!contractEvents || contractEvents.length === 0) continue;
 
         for (const event of contractEvents) {
-          const eventType = (event as { type?: string }).type;
+          const evt = event as OPNetEvent;
+          const eventType = evt.type;
           if (!eventType) continue;
 
           try {
             if (eventType === "Buy" && isKnownToken) {
-              const buyData = decodeBuyEvent(event);
+              const buyData = decodeBuyEvent(evt);
               if (buyData) {
                 await processBuyEvent(contractAddr, tx.hash, Number(blockNum), block.time, buyData);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
             } else if (eventType === "Sell" && isKnownToken) {
-              const sellData = decodeSellEvent(event);
+              const sellData = decodeSellEvent(evt);
               if (sellData) {
                 await processSellEvent(contractAddr, tx.hash, Number(blockNum), block.time, sellData);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
             } else if (eventType === "Graduation" && isKnownToken) {
-              const data = getEventData(event);
+              const data = getEventData(evt);
               if (data && data.length >= 64) {
                 await graduateToken(contractAddr, Number(blockNum));
                 affectedTokens.add(contractAddr);
                 console.log(`[Indexer] Token ${contractAddr} graduated at block ${blockNum}`);
               }
             } else if (eventType === "TokenDeployed" && isFactory) {
-              const data = getEventData(event);
+              const data = getEventData(evt);
               if (data && data.length >= 64) {
                 const tokenAddr = readAddressFromEventData(data, 32);
                 knownTokenAddresses.add(tokenAddr);
@@ -231,7 +236,7 @@ async function processBuyEvent(
   // Calculate price from trade amounts since contract's calculatePrice()
   // does integer division without decimals factor and may return 0
   const pricePerToken = data.tokensOut > 0n
-    ? ((data.btcIn * DECIMALS_FACTOR) / data.tokensOut).toString()
+    ? toDisplayPrice((data.btcIn * PRICE_PRECISION) / data.tokensOut)
     : "0";
 
   const trade: TradeDocument = {
@@ -257,6 +262,7 @@ async function processBuyEvent(
 
   await saveTrade(trade);
 
+  // priceSats is in sats-per-whole-token after toDisplayPrice()
   const priceSats = Number(pricePerToken);
   const volumeSats = Number(data.btcIn);
   const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
@@ -273,7 +279,7 @@ async function processSellEvent(
   const fees = calculateFeeBreakdown(data.btcOut);
 
   const pricePerToken = data.tokensIn > 0n
-    ? ((data.btcOut * DECIMALS_FACTOR) / data.tokensIn).toString()
+    ? toDisplayPrice((data.btcOut * PRICE_PRECISION) / data.tokensIn)
     : "0";
 
   const trade: TradeDocument = {
@@ -299,6 +305,7 @@ async function processSellEvent(
 
   await saveTrade(trade);
 
+  // priceSats is in sats-per-whole-token after toDisplayPrice()
   const priceSats = Number(pricePerToken);
   const volumeSats = Number(data.btcOut);
   const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
@@ -318,11 +325,6 @@ function normalizeBlockTime(blockTime: number): Date {
 }
 
 function calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: bigint; minter: bigint } {
-  const FEE_DENOMINATOR = 10_000n;
-  const PLATFORM_FEE_BPS = 100n;
-  const CREATOR_FEE_BPS = 25n;
-  const MINTER_FEE_BPS = 25n;
-
   return {
     platform: (amount * PLATFORM_FEE_BPS) / FEE_DENOMINATOR,
     creator: (amount * CREATOR_FEE_BPS) / FEE_DENOMINATOR,
@@ -338,7 +340,7 @@ async function syncTokenReserves(
   getContractFn: typeof import("opnet").getContract,
   ABIDataTypes: typeof import("opnet").ABIDataTypes,
   BitcoinAbiTypes: typeof import("opnet").BitcoinAbiTypes,
-  network: unknown,
+  network: import("@btc-vision/bitcoin").Network,
 ): Promise<void> {
   try {
     const abi: import("opnet").BitcoinInterfaceAbi = [
@@ -356,22 +358,20 @@ async function syncTokenReserves(
       },
     ];
 
-    const contract = getContractFn(tokenAddress, abi, provider, network as import("@btc-vision/bitcoin").Network);
-    const result = await (contract as unknown as {
-      getReserves: () => Promise<{ properties: { virtualBtc: bigint; virtualToken: bigint; realBtc: bigint; k: bigint } }>;
-    }).getReserves();
+    const contract = getContractFn(tokenAddress, abi, provider, network);
+    const result = await (contract as unknown as LaunchTokenContract).getReserves();
 
     if (result && result.properties) {
       const { virtualBtc, virtualToken, realBtc, k } = result.properties;
-      const currentPrice = virtualToken > 0n ? (virtualBtc * DECIMALS_FACTOR) / virtualToken : 0n;
-      const marketCap = currentPrice * virtualToken / (10n ** 8n);
+      const currentPriceScaled = virtualToken > 0n ? (virtualBtc * PRICE_PRECISION) / virtualToken : 0n;
+      const marketCap = virtualToken > 0n ? virtualBtc * INITIAL_VIRTUAL_TOKEN_SUPPLY / virtualToken : 0n;
 
       await updateToken(tokenAddress, {
         virtualBtcReserve: virtualBtc.toString(),
         virtualTokenSupply: virtualToken.toString(),
         kConstant: k.toString(),
         realBtcReserve: realBtc.toString(),
-        currentPriceSats: currentPrice.toString(),
+        currentPriceSats: toDisplayPrice(currentPriceScaled),
         marketCapSats: marketCap.toString(),
       });
     }
@@ -387,8 +387,7 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
     try {
       const tradeCount = await redis.zcard(`op:idx:trade:token:${tokenAddress}`);
 
-      // Rebuild holders set from all trades to cover pre-existing trades
-      await rebuildHoldersSet(redis, tokenAddress);
+      // Holders set is maintained incrementally by saveTrade() (adds buyers on buy events)
       const holderCount = await getHolderCount(tokenAddress);
 
       // Calculate 24h and total volume from trades
@@ -453,43 +452,19 @@ async function calculateVolumeTotal(redis: import("@upstash/redis").Redis, token
   return totalSats.toString();
 }
 
-async function rebuildHoldersSet(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<void> {
-  const txHashes: string[] = await redis.zrange(`op:idx:trade:token:${tokenAddress}`, 0, -1);
-  if (txHashes.length === 0) return;
-
-  const pipe = redis.pipeline();
-  for (const hash of txHashes) {
-    pipe.hgetall(`op:trade:${hash}`);
-  }
-  const results = await pipe.exec();
-
-  const addPipe = redis.pipeline();
-  for (const raw of results) {
-    if (raw && typeof raw === "object") {
-      const trade = raw as Record<string, string>;
-      if (trade.type === "buy" && trade.traderAddress) {
-        addPipe.sadd(`op:holders:${tokenAddress}`, trade.traderAddress);
-      }
-    }
-  }
-  await addPipe.exec();
-}
-
 async function updatePlatformStats(redis: import("@upstash/redis").Redis, lastBlock: number): Promise<void> {
   try {
     const totalTokens = await redis.zcard("op:idx:token:all:newest");
     const totalGraduated = await redis.zcard("op:idx:token:graduated:newest");
 
-    // Aggregate total trades and volume across all tokens
+    // Aggregate total trades and volume across all tokens (batch fetch)
     const allTokenAddrs: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
+    const tokens = await getTokensBatch(redis, allTokenAddrs);
     let totalTrades = 0;
     let totalVolumeSats = 0n;
-    for (const addr of allTokenAddrs) {
-      const token = await getToken(addr);
-      if (token) {
-        totalTrades += token.tradeCount || 0;
-        totalVolumeSats += BigInt(token.volumeTotal || "0");
-      }
+    for (const token of tokens) {
+      totalTrades += token.tradeCount || 0;
+      totalVolumeSats += BigInt(token.volumeTotal || "0");
     }
 
     await updateStats({
@@ -504,62 +479,4 @@ async function updatePlatformStats(redis: import("@upstash/redis").Redis, lastBl
   }
 }
 
-// ─── Event decoding helpers ─────────────────────────────────
-
-function decodeBuyEvent(event: unknown): BuyEventData | null {
-  const data = getEventData(event);
-  if (!data || data.length < 128) return null;
-
-  return {
-    buyer: readAddressFromEventData(data, 0),
-    btcIn: readU256FromEventData(data, 32),
-    tokensOut: readU256FromEventData(data, 64),
-    newPrice: readU256FromEventData(data, 96),
-  };
-}
-
-function decodeSellEvent(event: unknown): SellEventData | null {
-  const data = getEventData(event);
-  if (!data || data.length < 128) return null;
-
-  return {
-    seller: readAddressFromEventData(data, 0),
-    tokensIn: readU256FromEventData(data, 32),
-    btcOut: readU256FromEventData(data, 64),
-    newPrice: readU256FromEventData(data, 96),
-  };
-}
-
-function getEventData(event: unknown): Uint8Array | null {
-  const evt = event as Record<string, unknown>;
-
-  if (evt.data instanceof Uint8Array) {
-    return evt.data;
-  }
-  if (typeof evt.data === "string") {
-    const hex = evt.data.startsWith("0x") ? evt.data.slice(2) : evt.data;
-    const bytes = new Uint8Array(hex.length / 2);
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-    }
-    return bytes;
-  }
-  return null;
-}
-
-function readU256FromEventData(data: Uint8Array, offset: number): bigint {
-  let value = 0n;
-  for (let i = 0; i < 32; i++) {
-    value = (value << 8n) | BigInt(data[offset + i]);
-  }
-  return value;
-}
-
-function readAddressFromEventData(data: Uint8Array, offset: number): string {
-  const bytes = data.slice(offset, offset + 32);
-  let hex = "0x";
-  for (const b of bytes) {
-    hex += b.toString(16).padStart(2, "0");
-  }
-  return hex;
-}
+// Event decoding helpers are in event-decoders.mts

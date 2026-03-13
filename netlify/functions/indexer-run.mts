@@ -7,46 +7,33 @@
 import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { runIndexer } from "./_shared/indexer-core.mts";
-import { getLastBlockIndexed, getStats, getToken, getHolderCount } from "./_shared/redis-queries.mts";
+import { getLastBlockIndexed } from "./_shared/redis-queries.mts";
 import { getRedis } from "./_shared/redis.mts";
+
+const INDEXER_API_KEY = process.env.INDEXER_API_KEY || '';
 
 export default async (req: Request, _context: Context) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // GET — return indexer debug state
+  // Authenticate all non-OPTIONS requests
+  const authHeader = req.headers.get('Authorization');
+  if (!INDEXER_API_KEY || authHeader !== `Bearer ${INDEXER_API_KEY}`) {
+    return error('Unauthorized', 401, 'Unauthorized');
+  }
+
+  // GET — return basic indexer status (no sensitive data)
   if (req.method === "GET") {
     try {
       const redis = getRedis();
       const lastBlock = await getLastBlockIndexed();
-      const stats = await getStats();
-      const knownTokenAddrs: string[] = await redis.zrange("op:idx:token:all:newest", 0, -1);
-
-      // Per-token debug info
-      const tokenDetails = [];
-      for (const addr of knownTokenAddrs) {
-        const token = await getToken(addr);
-        const tradeCount = await redis.zcard(`op:idx:trade:token:${addr}`);
-        const holderCount = await getHolderCount(addr);
-        tokenDetails.push({
-          address: addr,
-          name: token?.name,
-          symbol: token?.symbol,
-          volume24h: token?.volume24h,
-          volumeTotal: token?.volumeTotal,
-          tradeCount,
-          holderCount,
-          currentPriceSats: token?.currentPriceSats,
-          marketCapSats: token?.marketCapSats,
-        });
-      }
+      const tokenCount = await redis.zcard("op:idx:token:all:newest");
 
       return json({
-        lastBlockIndexed: lastBlock,
-        knownTokens: tokenDetails,
-        knownTokenCount: knownTokenAddrs.length,
-        stats,
+        lastBlock,
+        tokenCount,
+        status: 'ok',
       });
     } catch (err) {
       return error(err instanceof Error ? err.message : "Failed to get indexer state", 500, "InternalError");

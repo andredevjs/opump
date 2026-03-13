@@ -3,6 +3,9 @@ import { getTokensCollection } from '../db/models/Token.js';
 import { getTradesCollection } from '../db/models/Trade.js';
 import type { WebSocketService } from './WebSocketService.js';
 import type { OptimisticStateService } from './OptimisticStateService.js';
+import { decodeBuyEvent, decodeSellEvent } from './EventDecoder.js';
+import { toDisplayPrice } from '../utils/price.js';
+import type { PendingTransaction } from '../types/contracts.js';
 
 export class MempoolService {
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -69,9 +72,9 @@ export class MempoolService {
   private async scanMempool(): Promise<void> {
     const provider = await this.getProvider();
 
-    let pendingTxs: Array<Record<string, unknown>>;
+    let pendingTxs: PendingTransaction[];
     try {
-      pendingTxs = await (provider as unknown as { getLatestPendingTransactions: () => Promise<Array<Record<string, unknown>>> }).getLatestPendingTransactions();
+      pendingTxs = await (provider as unknown as { getLatestPendingTransactions: () => Promise<PendingTransaction[]> }).getLatestPendingTransactions();
     } catch (err) {
       // RPC may not support this yet on all networks — degrade gracefully
       console.debug('[Mempool] getLatestPendingTransactions unavailable:', err instanceof Error ? err.message : err);
@@ -88,7 +91,7 @@ export class MempoolService {
     const { OPNetTransactionTypes } = await import('opnet');
 
     for (const tx of pendingTxs) {
-      const txHash = tx.hash as string | undefined;
+      const txHash = tx.hash;
       if (!txHash) continue;
 
       // Skip already-known pending txs
@@ -97,7 +100,7 @@ export class MempoolService {
       // Only interaction transactions (contract calls)
       if (tx.OPNetType !== OPNetTransactionTypes.Interaction) continue;
 
-      const contractAddr = tx.contractAddress as string | undefined;
+      const contractAddr = tx.contractAddress;
       if (!contractAddr || !tokenAddressSet.has(contractAddr)) continue;
 
       // Check if this tx was already confirmed (race between indexer and mempool)
@@ -106,7 +109,7 @@ export class MempoolService {
       if (existing) continue;
 
       // Parse events from the pending transaction's simulated receipt
-      const events = tx.events as Record<string, Array<Record<string, unknown>>> | undefined;
+      const events = tx.events as Record<string, unknown[]> | undefined;
       if (!events) continue;
 
       const contractEvents = events[contractAddr];
@@ -116,12 +119,12 @@ export class MempoolService {
       const senderAddr = this.extractSenderAddress(tx);
 
       for (const event of contractEvents) {
-        const eventType = event.type as string | undefined;
+        const eventType = (event as { type?: string }).type;
         if (!eventType) continue;
 
         try {
           if (eventType === 'Buy') {
-            const buyData = this.decodeBuyEvent(event);
+            const buyData = decodeBuyEvent(event);
             if (buyData) {
               await this.registerPendingTrade(
                 txHash,
@@ -134,7 +137,7 @@ export class MempoolService {
               );
             }
           } else if (eventType === 'Sell') {
-            const sellData = this.decodeSellEvent(event);
+            const sellData = decodeSellEvent(event);
             if (sellData) {
               await this.registerPendingTrade(
                 txHash,
@@ -157,9 +160,9 @@ export class MempoolService {
   /**
    * Extract sender address from a transaction object.
    */
-  private extractSenderAddress(tx: Record<string, unknown>): string {
+  private extractSenderAddress(tx: PendingTransaction): string {
     // The tx.from field is an Address object with toHex()
-    const from = tx.from as { toHex?: () => string } | undefined;
+    const from = (tx as unknown as { from?: { toHex?: () => string } }).from;
     if (from && typeof from.toHex === 'function') {
       return from.toHex();
     }
@@ -287,10 +290,12 @@ export class MempoolService {
 
     // Broadcast optimistic price update
     const optimistic = this.optimisticService.getOptimisticPrice(tokenAddress);
-    const vToken = optimistic.reserves.virtualTokenSupply;
-    const price = vToken > 0n ? optimistic.reserves.virtualBtcReserve / vToken : 0n;
+    const displayPrice = toDisplayPrice(
+      optimistic.reserves.virtualBtcReserve,
+      optimistic.reserves.virtualTokenSupply,
+    );
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: price.toString(),
+      currentPriceSats: displayPrice,
       virtualBtcReserve: optimistic.reserves.virtualBtcReserve.toString(),
       virtualTokenSupply: optimistic.reserves.virtualTokenSupply.toString(),
       realBtcReserve: optimistic.reserves.realBtcReserve.toString(),
@@ -298,57 +303,4 @@ export class MempoolService {
     });
   }
 
-  // --- Event decoding (mirrors IndexerService helpers) ---
-
-  private decodeBuyEvent(event: Record<string, unknown>): { buyer: string; btcIn: bigint; tokensOut: bigint; newPrice: bigint } | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 128) return null;
-    return {
-      buyer: this.readAddressHex(data, 0),
-      btcIn: this.readU256(data, 32),
-      tokensOut: this.readU256(data, 64),
-      newPrice: this.readU256(data, 96),
-    };
-  }
-
-  private decodeSellEvent(event: Record<string, unknown>): { seller: string; tokensIn: bigint; btcOut: bigint; newPrice: bigint } | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 128) return null;
-    return {
-      seller: this.readAddressHex(data, 0),
-      tokensIn: this.readU256(data, 32),
-      btcOut: this.readU256(data, 64),
-      newPrice: this.readU256(data, 96),
-    };
-  }
-
-  private getEventData(event: Record<string, unknown>): Uint8Array | null {
-    if (event.data instanceof Uint8Array) return event.data;
-    if (typeof event.data === 'string') {
-      const hex = event.data.startsWith('0x') ? event.data.slice(2) : event.data;
-      const bytes = new Uint8Array(hex.length / 2);
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-      }
-      return bytes;
-    }
-    return null;
-  }
-
-  private readU256(data: Uint8Array, offset: number): bigint {
-    let value = 0n;
-    for (let i = 0; i < 32; i++) {
-      value = (value << 8n) | BigInt(data[offset + i]);
-    }
-    return value;
-  }
-
-  private readAddressHex(data: Uint8Array, offset: number): string {
-    const bytes = data.slice(offset, offset + 32);
-    let hex = '0x';
-    for (const b of bytes) {
-      hex += b.toString(16).padStart(2, '0');
-    }
-    return hex;
-  }
 }

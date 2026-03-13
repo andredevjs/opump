@@ -8,18 +8,12 @@ import {
   INITIAL_VIRTUAL_TOKEN_SUPPLY,
   K_CONSTANT,
   GRADUATION_THRESHOLD_SATS,
-  TOKEN_DECIMALS,
 } from '../../../shared/constants/bonding-curve.js';
+import { toDisplayPrice } from '../utils/price.js';
 import type { Filter } from 'mongodb';
 import type { TokenDocument } from '../../../shared/types/token.js';
 import type { OptimisticStateService } from '../services/OptimisticStateService.js';
-import { config } from '../config/env.js';
-
-let _optimisticService: OptimisticStateService | null = null;
-
-export function setOptimisticService(service: OptimisticStateService): void {
-  _optimisticService = service;
-}
+import { verifyTokenOnChain } from '../services/on-chain-verify.js';
 
 // Per-wallet rate limiter for token creation (max 3 per hour per wallet)
 const TOKEN_CREATE_WINDOW_MS = 3_600_000; // 1 hour
@@ -37,182 +31,95 @@ function checkWalletRateLimit(walletAddress: string): boolean {
   return entry.count <= TOKEN_CREATE_MAX;
 }
 
-// Clean up expired wallet rate limit entries every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [wallet, entry] of walletCreateCounts) {
-    if (now > entry.resetAt) {
-      walletCreateCounts.delete(wallet);
-    }
-  }
-}, 600_000);
-
-interface OnChainVerificationResult {
-  valid: boolean;
-  error?: string;
-  deployBlock?: number;
-}
+const ADDRESS_REGEX = /^(?:(?:bc1|bcrt1|tb1|op1|opt1)[a-zA-Z0-9]{20,64}|0x[a-fA-F0-9]{40,64})$/;
 
 /**
- * Verify the token contract on-chain:
- * 1. Transaction receipt exists (deployment confirmed)
- * 2. Contract responds to getReserves() (is a LaunchToken)
- * 3. Deployer address matches claimed creator
- * 4. On-chain config matches submitted config
+ * Validate a CreateTokenRequest body. Returns an error message string if invalid, or null if valid.
  */
-async function verifyTokenOnChain(
-  contractAddress: string,
-  creatorAddress: string,
-  deployTxHash: string,
-  clientConfig: { creatorAllocationBps: number; buyTaxBps: number; sellTaxBps: number },
-): Promise<OnChainVerificationResult> {
-  const { JSONRpcProvider, getContract, ABIDataTypes, BitcoinAbiTypes } = await import('opnet');
-  const { networks } = await import('@btc-vision/bitcoin');
-  const network = config.network === 'mainnet' ? networks.bitcoin : networks.opnetTestnet;
-  const provider = new JSONRpcProvider({ url: config.opnetRpcUrl, network });
-
-  // 1. Verify deployment tx exists and extract deployer + block info
-  const tx = await provider.getTransaction(deployTxHash);
-  if (!tx) {
-    return { valid: false, error: 'Deployment transaction not found on-chain. Wait for confirmation.' };
+function validateCreateTokenRequest(body: CreateTokenRequest): string | null {
+  // Required fields
+  if (
+    typeof body.name !== 'string' || !body.name ||
+    typeof body.symbol !== 'string' || !body.symbol ||
+    typeof body.contractAddress !== 'string' || !body.contractAddress ||
+    typeof body.creatorAddress !== 'string' || !body.creatorAddress
+  ) {
+    return 'Missing required fields: name, symbol, contractAddress, creatorAddress (must be strings)';
   }
 
-  // 2. Verify deployer matches creator
-  // IDeploymentTransaction extends ICommonTransaction which has `from` and `deployerAddress`
-  const deploymentTx = tx as unknown as {
-    from?: { p2tr: (n: unknown) => string; toHex: () => string } | string;
-    deployerAddress?: { p2tr: (n: unknown) => string; toHex: () => string } | string;
-    contractAddress?: string;
-    blockNumber?: string | bigint;
-  };
-
-  try {
-    // Prefer deployerAddress, fall back to from
-    const rawDeployer = deploymentTx.deployerAddress ?? deploymentTx.from;
-    if (rawDeployer) {
-      let deployerAddress: string;
-      if (typeof rawDeployer === 'string') {
-        deployerAddress = rawDeployer;
-      } else if (typeof rawDeployer === 'object' && 'p2tr' in rawDeployer && typeof rawDeployer.p2tr === 'function') {
-        deployerAddress = rawDeployer.p2tr(network);
-      } else {
-        deployerAddress = String(rawDeployer);
-      }
-
-      if (deployerAddress !== creatorAddress) {
-        return {
-          valid: false,
-          error: `Creator address mismatch: deployer is ${deployerAddress}, but ${creatorAddress} was submitted`,
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('[Tokens] Deployer verification failed:', err instanceof Error ? err.message : err);
-    if (process.env.NODE_ENV === 'production') {
-      return { valid: false, error: 'Failed to verify deployer address on-chain.' };
-    }
+  // Optional field types
+  if (body.description !== undefined && typeof body.description !== 'string') {
+    return 'description must be a string';
+  }
+  if (body.deployTxHash !== undefined && typeof body.deployTxHash !== 'string') {
+    return 'deployTxHash must be a string';
   }
 
-  // 3. Verify contract is a LaunchToken (getReserves + getConfig)
-  const launchTokenAbi: import('opnet').BitcoinInterfaceAbi = [
-    {
-      name: 'getReserves',
-      type: BitcoinAbiTypes.Function,
-      constant: true,
-      inputs: [],
-      outputs: [
-        { name: 'virtualBtc', type: ABIDataTypes.UINT256 },
-        { name: 'virtualToken', type: ABIDataTypes.UINT256 },
-        { name: 'realBtc', type: ABIDataTypes.UINT256 },
-        { name: 'k', type: ABIDataTypes.UINT256 },
-      ],
-    },
-    {
-      name: 'getConfig',
-      type: BitcoinAbiTypes.Function,
-      constant: true,
-      inputs: [],
-      outputs: [
-        { name: 'creatorBps', type: ABIDataTypes.UINT256 },
-        { name: 'buyTax', type: ABIDataTypes.UINT256 },
-        { name: 'sellTax', type: ABIDataTypes.UINT256 },
-        { name: 'destination', type: ABIDataTypes.UINT256 },
-        { name: 'threshold', type: ABIDataTypes.UINT256 },
-      ],
-    },
-  ];
+  // Field lengths
+  if (body.name.length > 50) return 'Name must be 50 characters or less';
+  if (body.symbol.length > 10) return 'Symbol must be 10 characters or less';
+  if (body.description && body.description.length > 500) return 'Description must be 500 characters or less';
+  if (body.imageUrl && body.imageUrl.length > 2048) return 'Image URL must be under 2048 characters';
 
-  let contract: ReturnType<typeof getContract>;
-  try {
-    contract = getContract(contractAddress, launchTokenAbi, provider, network);
-  } catch {
-    return { valid: false, error: 'Failed to connect to contract. Invalid contract address.' };
+  // Address formats
+  if (!ADDRESS_REGEX.test(body.contractAddress)) return 'Invalid contract address format';
+  if (!ADDRESS_REGEX.test(body.creatorAddress)) return 'Invalid creator address format';
+
+  // BPS values
+  const bpsConfig = body.config || {};
+  if (bpsConfig.creatorAllocationBps !== undefined && (bpsConfig.creatorAllocationBps < 0 || bpsConfig.creatorAllocationBps > 1000)) {
+    return 'Creator allocation must be 0-1000 bps (0-10%)';
+  }
+  if (bpsConfig.buyTaxBps !== undefined && (bpsConfig.buyTaxBps < 0 || bpsConfig.buyTaxBps > 300)) {
+    return 'Buy tax must be 0-300 bps (0-3%)';
+  }
+  if (bpsConfig.sellTaxBps !== undefined && (bpsConfig.sellTaxBps < 0 || bpsConfig.sellTaxBps > 500)) {
+    return 'Sell tax must be 0-500 bps (0-5%)';
   }
 
-  // 3a. Call getReserves — if this fails, it's not a LaunchToken
-  try {
-    const reserves = await (contract as unknown as {
-      getReserves: () => Promise<{ properties: { virtualBtc: bigint; virtualToken: bigint; realBtc: bigint; k: bigint } }>;
-    }).getReserves();
-
-    if (!reserves?.properties) {
-      return { valid: false, error: 'Contract is not a valid LaunchToken (getReserves returned no data).' };
-    }
-  } catch {
-    return { valid: false, error: 'Contract is not a valid LaunchToken (getReserves call failed).' };
+  // deployTxHash required for on-chain verification
+  if (!body.deployTxHash || typeof body.deployTxHash !== 'string' || body.deployTxHash.length < 64) {
+    return 'deployTxHash is required and must be a valid transaction hash (64+ hex chars)';
   }
 
-  // 3b. Call getConfig and verify parameters match
-  try {
-    const onChainConfig = await (contract as unknown as {
-      getConfig: () => Promise<{ properties: { creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint } }>;
-    }).getConfig();
-
-    if (!onChainConfig?.properties) {
-      return { valid: false, error: 'Failed to read contract config on-chain.' };
-    }
-
-    const { creatorBps, buyTax, sellTax } = onChainConfig.properties;
-
-    if (Number(creatorBps) !== clientConfig.creatorAllocationBps) {
-      return {
-        valid: false,
-        error: `Creator allocation mismatch: on-chain=${creatorBps}, submitted=${clientConfig.creatorAllocationBps}`,
-      };
-    }
-    if (Number(buyTax) !== clientConfig.buyTaxBps) {
-      return {
-        valid: false,
-        error: `Buy tax mismatch: on-chain=${buyTax}, submitted=${clientConfig.buyTaxBps}`,
-      };
-    }
-    if (Number(sellTax) !== clientConfig.sellTaxBps) {
-      return {
-        valid: false,
-        error: `Sell tax mismatch: on-chain=${sellTax}, submitted=${clientConfig.sellTaxBps}`,
-      };
-    }
-  } catch {
-    return { valid: false, error: 'Failed to verify contract config on-chain.' };
-  }
-
-  // Extract deploy block from tx (ITransactionBase has blockNumber?: string | bigint)
-  let deployBlock = 0;
-  if (deploymentTx.blockNumber) {
-    deployBlock = typeof deploymentTx.blockNumber === 'bigint'
-      ? Number(deploymentTx.blockNumber)
-      : parseInt(String(deploymentTx.blockNumber), 10) || 0;
-  }
-
-  return { valid: true, deployBlock };
+  return null;
 }
 
-export function registerTokenRoutes(app: HyperExpress.Server): void {
+let _cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
+export function stopTokenRoutesCleanup(): void {
+  if (_cleanupInterval) {
+    clearInterval(_cleanupInterval);
+    _cleanupInterval = null;
+  }
+}
+
+export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?: OptimisticStateService): void {
+  // Start cleanup interval for wallet rate limit entries (every 10 minutes)
+  if (_cleanupInterval) clearInterval(_cleanupInterval);
+  _cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [wallet, entry] of walletCreateCounts) {
+      if (now > entry.resetAt) {
+        walletCreateCounts.delete(wallet);
+      }
+    }
+    // Cap map size to prevent unbounded memory growth
+    if (walletCreateCounts.size > 10_000) {
+      walletCreateCounts.clear();
+    }
+  }, 600_000);
   // GET /v1/tokens — list tokens with pagination, filter, sort, search
   app.get('/v1/tokens', async (req, res) => {
     const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
     const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '20'), 10)));
-    const status = String(req.query.status || 'all') as TokenListQuery['status'];
+    const VALID_STATUSES = ['active', 'graduated', 'migrating', 'migrated', 'new', 'all'];
+    const statusRaw = String(req.query.status || 'all');
+    if (!VALID_STATUSES.includes(statusRaw)) {
+      res.status(400).json({ error: 'BadRequest', message: `Invalid status. Valid: ${VALID_STATUSES.join(', ')}`, statusCode: 400 });
+      return;
+    }
+    const status = statusRaw as TokenListQuery['status'];
     const search = String(req.query.search || '');
     const sort = String(req.query.sort || 'newest') as TokenListQuery['sort'];
     const order = req.query.order === 'asc' ? 1 : -1;
@@ -225,7 +132,11 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
     }
 
     if (search) {
-      filter.$text = { $search: search as string };
+      // Sanitize search input: strip special chars, limit length
+      const cleanSearch = search.replace(/[^\w\s$-]/g, '').trim().slice(0, 100);
+      if (cleanSearch) {
+        filter.$text = { $search: cleanSearch };
+      }
     }
 
     const sortField: Record<string, 1 | -1> = {};
@@ -326,13 +237,10 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
     }
 
     // Use optimistic state if available
-    if (_optimisticService && _optimisticService.hasPending(address)) {
-      const optimistic = _optimisticService.getOptimisticPrice(address);
-      const vToken = optimistic.reserves.virtualTokenSupply;
-      const decimalsFactor = 10n ** BigInt(TOKEN_DECIMALS);
-      const price = vToken > 0n ? (optimistic.reserves.virtualBtcReserve * decimalsFactor) / vToken : 0n;
+    if (optimisticService && optimisticService.hasPending(address)) {
+      const optimistic = optimisticService.getOptimisticPrice(address);
       res.json({
-        currentPriceSats: price.toString(),
+        currentPriceSats: toDisplayPrice(optimistic.reserves.virtualBtcReserve, optimistic.reserves.virtualTokenSupply),
         virtualBtcReserve: optimistic.reserves.virtualBtcReserve.toString(),
         virtualTokenSupply: optimistic.reserves.virtualTokenSupply.toString(),
         realBtcReserve: optimistic.reserves.realBtcReserve.toString(),
@@ -460,90 +368,9 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
       return;
     }
 
-    // Validate required fields exist and are strings
-    if (
-      typeof body.name !== 'string' || !body.name ||
-      typeof body.symbol !== 'string' || !body.symbol ||
-      typeof body.contractAddress !== 'string' || !body.contractAddress ||
-      typeof body.creatorAddress !== 'string' || !body.creatorAddress
-    ) {
-      res.status(400).json({
-        error: 'BadRequest',
-        message: 'Missing required fields: name, symbol, contractAddress, creatorAddress (must be strings)',
-        statusCode: 400,
-      });
-      return;
-    }
-
-    // Validate optional fields are correct types when present
-    if (body.description !== undefined && typeof body.description !== 'string') {
-      res.status(400).json({
-        error: 'BadRequest',
-        message: 'description must be a string',
-        statusCode: 400,
-      });
-      return;
-    }
-    if (body.deployTxHash !== undefined && typeof body.deployTxHash !== 'string') {
-      res.status(400).json({
-        error: 'BadRequest',
-        message: 'deployTxHash must be a string',
-        statusCode: 400,
-      });
-      return;
-    }
-
-    // Validate field lengths
-    if (body.name.length > 50) {
-      res.status(400).json({ error: 'BadRequest', message: 'Name must be 50 characters or less', statusCode: 400 });
-      return;
-    }
-    if (body.symbol.length > 10) {
-      res.status(400).json({ error: 'BadRequest', message: 'Symbol must be 10 characters or less', statusCode: 400 });
-      return;
-    }
-    if (body.description && body.description.length > 500) {
-      res.status(400).json({ error: 'BadRequest', message: 'Description must be 500 characters or less', statusCode: 400 });
-      return;
-    }
-    if (body.imageUrl && body.imageUrl.length > 2048) {
-      res.status(400).json({ error: 'BadRequest', message: 'Image URL must be under 2048 characters', statusCode: 400 });
-      return;
-    }
-
-    // Validate address formats
-    const addressRegex = /^(bc1|bcrt1|tb1|op1|opt1|0x)[a-zA-Z0-9]{20,64}$/;
-    if (!addressRegex.test(body.contractAddress)) {
-      res.status(400).json({ error: 'BadRequest', message: 'Invalid contract address format', statusCode: 400 });
-      return;
-    }
-    if (!addressRegex.test(body.creatorAddress)) {
-      res.status(400).json({ error: 'BadRequest', message: 'Invalid creator address format', statusCode: 400 });
-      return;
-    }
-
-    // Validate BPS values
-    const bpsConfig = body.config || {};
-    if (bpsConfig.creatorAllocationBps !== undefined && (bpsConfig.creatorAllocationBps < 0 || bpsConfig.creatorAllocationBps > 1000)) {
-      res.status(400).json({ error: 'BadRequest', message: 'Creator allocation must be 0-1000 bps (0-10%)', statusCode: 400 });
-      return;
-    }
-    if (bpsConfig.buyTaxBps !== undefined && (bpsConfig.buyTaxBps < 0 || bpsConfig.buyTaxBps > 300)) {
-      res.status(400).json({ error: 'BadRequest', message: 'Buy tax must be 0-300 bps (0-3%)', statusCode: 400 });
-      return;
-    }
-    if (bpsConfig.sellTaxBps !== undefined && (bpsConfig.sellTaxBps < 0 || bpsConfig.sellTaxBps > 500)) {
-      res.status(400).json({ error: 'BadRequest', message: 'Sell tax must be 0-500 bps (0-5%)', statusCode: 400 });
-      return;
-    }
-
-    // Validate deployTxHash is present (required for on-chain verification)
-    if (!body.deployTxHash || typeof body.deployTxHash !== 'string' || body.deployTxHash.length < 64) {
-      res.status(400).json({
-        error: 'BadRequest',
-        message: 'deployTxHash is required and must be a valid transaction hash (64+ hex chars)',
-        statusCode: 400,
-      });
+    const validationError = validateCreateTokenRequest(body);
+    if (validationError) {
+      res.status(400).json({ error: 'BadRequest', message: validationError, statusCode: 400 });
       return;
     }
 
@@ -565,9 +392,9 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
         body.creatorAddress,
         body.deployTxHash,
         {
-          creatorAllocationBps: bpsConfig.creatorAllocationBps ?? 0,
-          buyTaxBps: bpsConfig.buyTaxBps ?? 0,
-          sellTaxBps: bpsConfig.sellTaxBps ?? 0,
+          creatorAllocationBps: body.config?.creatorAllocationBps ?? 0,
+          buyTaxBps: body.config?.buyTaxBps ?? 0,
+          sellTaxBps: body.config?.sellTaxBps ?? 0,
         },
       );
 
@@ -608,9 +435,8 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
     }
 
     const now = new Date();
-    // Price per whole token (not per smallest unit): scale by 10^DECIMALS
-    const decimalsFactor = 10n ** BigInt(TOKEN_DECIMALS);
-    const initialPrice = ((INITIAL_VIRTUAL_BTC_SATS * decimalsFactor) / INITIAL_VIRTUAL_TOKEN_SUPPLY).toString();
+    // Normalize to sats per whole token (bigint-safe)
+    const initialPrice = toDisplayPrice(INITIAL_VIRTUAL_BTC_SATS, INITIAL_VIRTUAL_TOKEN_SUPPLY);
 
     const tokenDoc: TokenDocument = {
       _id: body.contractAddress,

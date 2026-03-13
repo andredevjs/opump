@@ -16,9 +16,13 @@ export async function uploadImage(base64Data: string, contentType: string): Prom
     throw new Error(`Unsupported image type: ${contentType}. Allowed: ${[...ALLOWED_TYPES].join(', ')}`);
   }
 
-  const buffer = Buffer.from(base64Data, 'base64');
-  if (buffer.length > MAX_IMAGE_BYTES) {
-    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes limit (got ${buffer.length})`);
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    throw new Error(`Image exceeds ${MAX_IMAGE_BYTES} bytes limit (got ${bytes.length})`);
   }
 
   // Dev fallback: return data URI when S3 is not configured
@@ -45,7 +49,7 @@ export async function uploadImage(base64Data: string, contentType: string): Prom
     new PutObjectCommand({
       Bucket: config.s3Bucket,
       Key: key,
-      Body: buffer,
+      Body: bytes,
       ContentType: contentType,
       CacheControl: 'public, max-age=31536000, immutable',
     }),

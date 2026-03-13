@@ -5,7 +5,7 @@
 
 import { useEffect, type ReactNode } from 'react';
 import { WalletConnectProvider, useWalletConnect, SupportedWallets } from '@btc-vision/walletconnect';
-import { useWalletStore, setWalletConnectBridge } from '@/stores/wallet-store';
+import { useWalletStore, setWalletConnectBridge, clearWalletConnectBridge } from '@/stores/wallet-store';
 import { clearContractCache } from '@/services/contract';
 
 interface Props {
@@ -41,9 +41,10 @@ function WalletBridge() {
     });
   }, [walletAddress, walletBalance, network, hashedMLDSAKey, publicKey, syncWallet]);
 
-  // Register the bridge so store.connect() connects directly to OP Wallet
+  // S25: Register the bridge so store.connect() connects directly to OP Wallet, with cleanup
   useEffect(() => {
     setWalletConnectBridge(() => connectToWallet(SupportedWallets.OP_WALLET));
+    return () => clearWalletConnectBridge();
   }, [connectToWallet]);
 
   // Wire store.disconnect() to also call walletconnect disconnect

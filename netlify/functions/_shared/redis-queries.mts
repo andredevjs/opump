@@ -75,7 +75,7 @@ export async function getToken(contractAddress: string): Promise<TokenDocument |
   const redis = getRedis();
   const raw = await redis.hgetall(TOKEN_KEY(contractAddress));
   if (!raw || Object.keys(raw).length === 0) return null;
-  return unflattenToken(raw as Record<string, string>);
+  return unflattenToken(raw as Record<string, unknown>);
 }
 
 /**
@@ -101,8 +101,8 @@ export async function listTokens(opts: {
     return searchTokens(opts.search, page, limit);
   }
 
-  // Map sort param to index sort field
-  const sortField = sort === "marketCap" ? "marketCap" : sort === "price" ? "price" : sort === "volume24h" ? "volume24h" : "newest";
+  // Validate sort field against allowed values, default to "newest"
+  const sortField = (SORT_FIELDS as readonly string[]).includes(sort) ? sort : "newest";
   const indexKey = TOKEN_INDEX(status, sortField);
 
   const total = await redis.zcard(indexKey);
@@ -172,7 +172,7 @@ export async function getTokensByCreator(creatorAddress: string): Promise<TokenD
 /**
  * Batch-fetch multiple tokens by address.
  */
-async function getTokensBatch(redis: Redis, addresses: string[]): Promise<TokenDocument[]> {
+export async function getTokensBatch(redis: Redis, addresses: string[]): Promise<TokenDocument[]> {
   const pipe = redis.pipeline();
   for (const addr of addresses) {
     pipe.hgetall(TOKEN_KEY(addr));
@@ -180,8 +180,8 @@ async function getTokensBatch(redis: Redis, addresses: string[]): Promise<TokenD
   const results = await pipe.exec();
   const tokens: TokenDocument[] = [];
   for (const raw of results) {
-    if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
-      tokens.push(unflattenToken(raw as Record<string, string>));
+    if (raw !== null && typeof raw === "object" && Object.keys(raw as object).length > 0) {
+      tokens.push(unflattenToken(raw as Record<string, unknown>));
     }
   }
   return tokens;
@@ -196,23 +196,16 @@ export async function updateToken(contractAddress: string, fields: Partial<Recor
 
   pipe.hset(TOKEN_KEY(contractAddress), { ...fields, updatedAt: new Date().toISOString() });
 
+  // Execute hset first before refreshing indexes
+  await pipe.exec();
+
   // Refresh sort indexes if relevant fields changed
   if (fields.volume24h !== undefined || fields.marketCapSats !== undefined || fields.currentPriceSats !== undefined) {
     const status = (fields.status as string) || null;
     // We need the current status to know which indexes to update
-    if (!status) {
-      // Fetch current status
-      const currentStatus = await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null;
-      if (currentStatus) {
-        await refreshTokenIndexes(contractAddress, currentStatus, fields);
-      }
-      await pipe.exec();
-      return;
-    }
-    await refreshTokenIndexes(contractAddress, status, fields);
+    const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
+    await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
   }
-
-  await pipe.exec();
 }
 
 async function refreshTokenIndexes(contractAddress: string, status: string, fields: Partial<Record<string, string | number>>): Promise<void> {
@@ -240,6 +233,22 @@ async function refreshTokenIndexes(contractAddress: string, status: string, fiel
  */
 export async function graduateToken(contractAddress: string, blockNumber: number): Promise<void> {
   const redis = getRedis();
+
+  // Step 1: Read all scores first (parallel reads)
+  const [score1, score2, score3, score4] = await Promise.all([
+    redis.zscore(TOKEN_INDEX("active", "volume24h"), contractAddress),
+    redis.zscore(TOKEN_INDEX("active", "marketCap"), contractAddress),
+    redis.zscore(TOKEN_INDEX("active", "price"), contractAddress),
+    redis.zscore(TOKEN_INDEX("active", "newest"), contractAddress),
+  ]);
+  const scores = [
+    { field: "volume24h", score: score1 },
+    { field: "marketCap", score: score2 },
+    { field: "price", score: score3 },
+    { field: "newest", score: score4 },
+  ];
+
+  // Step 2: Single pipeline for all writes
   const pipe = redis.pipeline();
 
   pipe.hset(TOKEN_KEY(contractAddress), {
@@ -249,11 +258,10 @@ export async function graduateToken(contractAddress: string, blockNumber: number
   });
 
   // Remove from active indexes, add to graduated indexes
-  for (const sortField of SORT_FIELDS) {
-    const score = await redis.zscore(TOKEN_INDEX("active", sortField), contractAddress);
-    pipe.zrem(TOKEN_INDEX("active", sortField), contractAddress);
+  for (const { field, score } of scores) {
+    pipe.zrem(TOKEN_INDEX("active", field), contractAddress);
     if (score !== null) {
-      pipe.zadd(TOKEN_INDEX("graduated", sortField), { score, member: contractAddress });
+      pipe.zadd(TOKEN_INDEX("graduated", field), { score, member: contractAddress });
     }
   }
 
@@ -322,109 +330,9 @@ export async function listTradesForToken(tokenAddress: string, page: number, lim
   return { trades, total };
 }
 
-// ─── OHLCV operations ───────────────────────────────────────
+// ─── OHLCV operations (extracted to redis-ohlcv.mts) ────────
 
-const OHLCV_KEY = (tokenAddr: string, tf: string, bucket: number) => `op:ohlcv:${tokenAddr}:${tf}:${bucket}`;
-const OHLCV_INDEX = (tokenAddr: string, tf: string) => `op:ohlcv:idx:${tokenAddr}:${tf}`;
-
-const TIMEFRAME_SECONDS: Record<string, number> = {
-  "1m": 60,
-  "5m": 300,
-  "15m": 900,
-  "1h": 3600,
-  "4h": 14400,
-  "1d": 86400,
-};
-
-const TIMEFRAME_TTL: Record<string, number> = {
-  "1m": 2 * 86400,
-  "5m": 7 * 86400,
-  "15m": 30 * 86400,
-  "1h": 90 * 86400,
-  "4h": 180 * 86400,
-  "1d": 0, // no expiry
-};
-
-/**
- * Update OHLCV candles for a trade across all timeframes.
- */
-export async function updateOHLCV(tokenAddress: string, priceSats: number, volumeSats: number, timestampSec: number): Promise<void> {
-  const redis = getRedis();
-
-  for (const [tf, interval] of Object.entries(TIMEFRAME_SECONDS)) {
-    const bucket = Math.floor(timestampSec / interval) * interval;
-    const candleKey = OHLCV_KEY(tokenAddress, tf, bucket);
-    const indexKey = OHLCV_INDEX(tokenAddress, tf);
-
-    // Use Lua script for atomic OHLCV update
-    const script = `
-      local key = KEYS[1]
-      local price = tonumber(ARGV[1])
-      local volume = tonumber(ARGV[2])
-      local exists = redis.call('EXISTS', key)
-      if exists == 0 then
-        redis.call('HSET', key, 'o', price, 'h', price, 'l', price, 'c', price, 'v', volume)
-      else
-        local h = tonumber(redis.call('HGET', key, 'h'))
-        local l = tonumber(redis.call('HGET', key, 'l'))
-        if price > h then redis.call('HSET', key, 'h', price) end
-        if price < l then redis.call('HSET', key, 'l', price) end
-        redis.call('HSET', key, 'c', price)
-        redis.call('HINCRBY', key, 'v', volume)
-      end
-      return 1
-    `;
-
-    await redis.eval(script, [candleKey], [priceSats.toString(), volumeSats.toString()]);
-
-    // Set TTL if applicable
-    const ttl = TIMEFRAME_TTL[tf];
-    if (ttl > 0) {
-      await redis.expire(candleKey, ttl);
-    }
-
-    // Add to candle index
-    await redis.zadd(indexKey, { score: bucket, member: String(bucket) });
-  }
-}
-
-/**
- * Get OHLCV candles for a token and timeframe.
- */
-export async function getOHLCV(tokenAddress: string, timeframe: string, limit: number): Promise<Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }>> {
-  const redis = getRedis();
-  const indexKey = OHLCV_INDEX(tokenAddress, timeframe);
-
-  // Get the most recent `limit` buckets
-  const buckets: string[] = await redis.zrange(indexKey, 0, limit - 1, { rev: true });
-  if (buckets.length === 0) return [];
-
-  // Reverse to get chronological order
-  buckets.reverse();
-
-  const pipe = redis.pipeline();
-  for (const bucket of buckets) {
-    pipe.hgetall(OHLCV_KEY(tokenAddress, timeframe, parseInt(bucket)));
-  }
-  const results = await pipe.exec();
-
-  const candles: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }> = [];
-  for (let i = 0; i < buckets.length; i++) {
-    const raw = results[i] as Record<string, string> | null;
-    if (raw && raw.o !== undefined) {
-      candles.push({
-        time: parseInt(buckets[i]),
-        open: parseFloat(raw.o),
-        high: parseFloat(raw.h),
-        low: parseFloat(raw.l),
-        close: parseFloat(raw.c),
-        volume: parseFloat(raw.v),
-      });
-    }
-  }
-
-  return candles;
-}
+export { updateOHLCV, getOHLCV, TIMEFRAME_SECONDS } from "./redis-ohlcv.mts";
 
 // ─── Stats operations ───────────────────────────────────────
 
@@ -505,39 +413,39 @@ function flattenToken(token: TokenDocument): Record<string, string> {
   };
 }
 
-function unflattenToken(raw: Record<string, string>): TokenDocument {
+function unflattenToken(raw: Record<string, unknown>): TokenDocument {
   return {
-    _id: raw._id,
-    name: raw.name,
-    symbol: raw.symbol,
-    description: raw.description || "",
-    imageUrl: raw.imageUrl || "",
-    socials: safeJsonParse(raw.socials, {}),
-    creatorAddress: raw.creatorAddress,
-    contractAddress: raw.contractAddress,
-    virtualBtcReserve: raw.virtualBtcReserve,
-    virtualTokenSupply: raw.virtualTokenSupply,
-    kConstant: raw.kConstant,
-    realBtcReserve: raw.realBtcReserve,
-    config: safeJsonParse(raw.config, {
+    _id: String(raw._id),
+    name: String(raw.name),
+    symbol: String(raw.symbol),
+    description: String(raw.description || ""),
+    imageUrl: String(raw.imageUrl || ""),
+    socials: safeJsonParse(raw.socials as string | object | undefined, {}),
+    creatorAddress: String(raw.creatorAddress),
+    contractAddress: String(raw.contractAddress),
+    virtualBtcReserve: String(raw.virtualBtcReserve),
+    virtualTokenSupply: String(raw.virtualTokenSupply),
+    kConstant: String(raw.kConstant),
+    realBtcReserve: String(raw.realBtcReserve),
+    config: safeJsonParse(raw.config as string | object | undefined, {
       creatorAllocationBps: 0,
       buyTaxBps: 0,
       sellTaxBps: 0,
       flywheelDestination: "burn",
       graduationThreshold: "0",
     }),
-    status: (raw.status as "active" | "graduated") || "active",
-    currentPriceSats: raw.currentPriceSats || "0",
-    volume24h: raw.volume24h || "0",
-    volumeTotal: raw.volumeTotal || "0",
-    marketCapSats: raw.marketCapSats || "0",
-    tradeCount: parseInt(raw.tradeCount || "0"),
-    holderCount: parseInt(raw.holderCount || "0"),
-    deployBlock: parseInt(raw.deployBlock || "0"),
-    deployTxHash: raw.deployTxHash || "",
-    graduatedAt: raw.graduatedAt ? parseInt(raw.graduatedAt) : undefined,
-    createdAt: new Date(raw.createdAt),
-    updatedAt: new Date(raw.updatedAt),
+    status: (String(raw.status || "active")) as TokenStatus,
+    currentPriceSats: String(raw.currentPriceSats || "0"),
+    volume24h: String(raw.volume24h || "0"),
+    volumeTotal: String(raw.volumeTotal || "0"),
+    marketCapSats: String(raw.marketCapSats || "0"),
+    tradeCount: parseInt(String(raw.tradeCount || "0")),
+    holderCount: parseInt(String(raw.holderCount || "0")),
+    deployBlock: parseInt(String(raw.deployBlock || "0")),
+    deployTxHash: String(raw.deployTxHash || ""),
+    graduatedAt: raw.graduatedAt ? parseInt(String(raw.graduatedAt)) : undefined,
+    createdAt: new Date(String(raw.createdAt)),
+    updatedAt: new Date(String(raw.updatedAt)),
   };
 }
 
@@ -596,5 +504,4 @@ export {
   TOKEN_INDEX,
   STATS_KEY,
   INDEXER_LAST_BLOCK,
-  TIMEFRAME_SECONDS,
 };

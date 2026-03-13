@@ -10,7 +10,7 @@
  */
 
 import { getContract, JSONRpcProvider, TransactionOutputFlags, type CallResult } from 'opnet';
-import { networks, Transaction as BitcoinTransaction, type Network } from '@btc-vision/bitcoin';
+import { networks, Transaction as BitcoinTransaction, type Network, toSatoshi } from '@btc-vision/bitcoin';
 import type { InteractionTransactionReceipt, TransactionParameters } from 'opnet';
 import {
   LAUNCH_TOKEN_ABI,
@@ -93,7 +93,7 @@ export interface TransactionReceipt {
 
 export interface ExtraOutput {
   address: string;
-  value: number;
+  value: bigint;
 }
 
 export interface SendOptions {
@@ -101,6 +101,25 @@ export interface SendOptions {
   maximumAllowedSatToSpend?: bigint;
   feeRate?: number;
   extraOutputs?: ExtraOutput[];
+}
+
+/** F1: Re-export the actual type used by contract.setTransactionDetails() */
+import type { ParsedSimulatedTransaction } from 'opnet';
+
+/** F2: Shape passed to OPWallet's web3.deployContract() method */
+interface DeployContractParams {
+  bytecode: Uint8Array;
+  calldata: Uint8Array;
+  from: string;
+  utxos: unknown[];
+  feeRate: number;
+  priorityFee: bigint;
+  gasSatFee: bigint;
+}
+
+interface DeployContractResult {
+  contractAddress: string;
+  transaction: [string, string];
 }
 
 /**
@@ -122,19 +141,24 @@ export async function sendContractCall(
 
   const network = getNetwork();
 
-  const txParams = {
-    signer: null as null,
-    mldsaSigner: null as null,
+  // F4: Build a fully typed TransactionParameters object.
+  // signer and mldsaSigner are null because OPWallet handles signing externally.
+  const extraOutputs = options.extraOutputs?.map((o) => ({
+    address: o.address,
+    value: toSatoshi(o.value),
+  }));
+
+  const txParams: TransactionParameters = {
+    signer: null as unknown as TransactionParameters['signer'],
+    mldsaSigner: null as unknown as TransactionParameters['mldsaSigner'],
     refundTo: options.refundTo,
     maximumAllowedSatToSpend: options.maximumAllowedSatToSpend ?? 50000n,
     feeRate: options.feeRate ?? 10,
     network,
-    ...(options.extraOutputs?.length ? { extraOutputs: options.extraOutputs } : {}),
+    ...(extraOutputs?.length ? { extraOutputs } : {}),
   };
 
-  const receipt: InteractionTransactionReceipt = await sim.sendTransaction(
-    txParams as TransactionParameters,
-  );
+  const receipt: InteractionTransactionReceipt = await sim.sendTransaction(txParams);
 
   return {
     txHash: receipt.transactionId ?? '',
@@ -197,12 +221,11 @@ export async function waitForConfirmation(
  * @param valueSats - BTC amount in satoshis (bigint)
  */
 export function setupPayableCall(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  contract: { setTransactionDetails: (details: any) => void },
+  contract: { setTransactionDetails: (details: ParsedSimulatedTransaction) => void },
   to: string,
   valueSats: bigint,
 ): void {
-  contract.setTransactionDetails({
+  const details: ParsedSimulatedTransaction = {
     inputs: [],
     outputs: [
       {
@@ -212,7 +235,8 @@ export function setupPayableCall(
         flags: TransactionOutputFlags.hasTo,
       },
     ],
-  });
+  };
+  contract.setTransactionDetails(details);
 }
 
 // ============ Contract Deployment ============
@@ -263,8 +287,7 @@ export async function deployLaunchToken(
 ): Promise<DeployResult> {
   // Access OPWallet's web3 provider via window.opnet
   const opwallet = (window as unknown as { opnet?: { web3?: {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    deployContract: (params: any) => Promise<{ contractAddress: string; transaction: [string, string] }>;
+    deployContract: (params: DeployContractParams) => Promise<DeployContractResult>;
   } } }).opnet;
 
   if (!opwallet?.web3?.deployContract) {

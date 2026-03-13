@@ -2,7 +2,7 @@ import HyperExpress from '@btc-vision/hyper-express';
 import { config } from './config/env.js';
 import { connectDb, closeDb } from './db/connection.js';
 import { ensureIndexes } from './db/indexes.js';
-import { registerTokenRoutes, setOptimisticService } from './routes/tokens.js';
+import { registerTokenRoutes, stopTokenRoutesCleanup } from './routes/tokens.js';
 import { registerSimulateRoutes } from './routes/simulate.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerStatsRoutes } from './routes/stats.js';
@@ -32,8 +32,8 @@ app.use(rateLimit);
 // CORS middleware
 app.use((req, res, next) => {
   const allowedOrigin = process.env.FRONTEND_URL;
-  if (!allowedOrigin && process.env.NODE_ENV === 'production') {
-    console.warn('[CORS] FRONTEND_URL not set in production — allowing all origins is insecure!');
+  if (!allowedOrigin && process.env.NODE_ENV !== 'production') {
+    console.warn('[CORS] FRONTEND_URL not set — allowing all origins (dev only)');
   }
   res.header('Access-Control-Allow-Origin', allowedOrigin || '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -67,9 +67,18 @@ async function start(): Promise<void> {
   await connectDb();
   await ensureIndexes();
 
+  // B4/S8: Startup warnings for missing production config
+  if (process.env.NODE_ENV === 'production') {
+    if (!config.nativeSwapAddress) {
+      console.error('[CONFIG] NATIVE_SWAP_ADDRESS is not set — migration to DEX will fail!');
+    }
+    if (!process.env.FRONTEND_URL) {
+      console.error('[CORS] FRONTEND_URL not set in production — CORS is allowing all origins, which is insecure!');
+    }
+  }
+
   // Register routes
-  setOptimisticService(optimisticService);
-  registerTokenRoutes(app);
+  registerTokenRoutes(app, optimisticService);
   registerSimulateRoutes(app);
   registerProfileRoutes(app);
   registerStatsRoutes(app);
@@ -91,9 +100,17 @@ async function start(): Promise<void> {
 // Graceful shutdown
 function shutdown(): void {
   console.log('[SERVER] Shutting down...');
+
+  // Force exit if graceful shutdown takes too long
+  setTimeout(() => {
+    console.error('[SERVER] Shutdown timeout — forcing exit');
+    process.exit(1);
+  }, 10_000).unref();
+
   indexerService.stop();
   mempoolService.stop();
   migrationService.stop();
+  stopTokenRoutesCleanup();
   wsService.stop();
   closeDb()
     .then(() => {

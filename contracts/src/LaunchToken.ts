@@ -12,6 +12,7 @@ import {
   StoredBoolean,
   StoredU64,
   StoredString,
+  StoredAddress,
   AddressMemoryMap,
   EMPTY_POINTER,
 } from '@btc-vision/btc-runtime/runtime';
@@ -89,6 +90,7 @@ export class LaunchToken extends OP20 {
   private readonly creatorAllocationBps: StoredU256 = new StoredU256(this.creatorAllocationBpsPtr, EMPTY_POINTER);
   private readonly buyTaxBps: StoredU256 = new StoredU256(this.buyTaxBpsPtr, EMPTY_POINTER);
   private readonly sellTaxBps: StoredU256 = new StoredU256(this.sellTaxBpsPtr, EMPTY_POINTER);
+  // Values: 0 = burn, 1 = community pool, 2 = creator
   private readonly flywheelDestination: StoredU256 = new StoredU256(this.flywheelDestinationPtr, EMPTY_POINTER);
 
   private readonly minterShares: AddressMemoryMap = new AddressMemoryMap(this.minterSharesPtr);
@@ -104,6 +106,11 @@ export class LaunchToken extends OP20 {
   // Vault address for BTC output verification
   private readonly vaultAddressPtr: u16 = Blockchain.nextPointer;
   private readonly vaultAddress: StoredString = new StoredString(this.vaultAddressPtr);
+
+  // Creator address — stored at deployment so creator fees can be claimed
+  // even when the contract is deployed through a factory (where deployer != creator)
+  private readonly creatorAddressPtr: u16 = Blockchain.nextPointer;
+  private readonly creatorAddress: StoredAddress = new StoredAddress(this.creatorAddressPtr);
 
   public constructor() {
     super();
@@ -121,6 +128,8 @@ export class LaunchToken extends OP20 {
     const vaultAddr: string = calldata.readStringWithLength();
 
     // Validate
+    if (name.length == 0) throw new Revert('Name required');
+    if (symbol.length == 0) throw new Revert('Symbol required');
     if (vaultAddr.length == 0) {
       throw new Revert('Vault address required');
     }
@@ -137,6 +146,10 @@ export class LaunchToken extends OP20 {
     // Use defaults if zero
     const finalSupply = maxSupply == u256.Zero ? DEFAULT_MAX_SUPPLY : maxSupply;
     const finalThreshold = gradThreshold == u256.Zero ? DEFAULT_GRADUATION_THRESHOLD : gradThreshold;
+
+    if (finalSupply < INITIAL_VIRTUAL_TOKEN) {
+      throw new Revert('Max supply must be >= initial virtual token supply');
+    }
 
     // Initialize OP20
     this.instantiate(new OP20InitParameters(finalSupply, 8, name, symbol));
@@ -159,8 +172,14 @@ export class LaunchToken extends OP20 {
     this.deployBlock.set(0, Blockchain.block.number);
     this.deployBlock.save();
 
-    // Mint creator allocation if > 0
+    // Use tx.origin (not tx.sender) to give creator allocation to the
+    // human signer, even when deployed through a factory contract.
     const origin = Blockchain.tx.origin;
+
+    // Store the creator address for fee claims (distinct from deployer/platform)
+    this.creatorAddress.value = origin;
+
+    // Mint creator allocation if > 0
     if (creatorAllocBps > u256.Zero) {
       const creatorTokens = SafeMath.div(
         SafeMath.mul(finalSupply, creatorAllocBps),
@@ -189,6 +208,10 @@ export class LaunchToken extends OP20 {
 
     const sender = Blockchain.tx.sender;
 
+    // NOTE: Reservation is for the gross btcAmount. After fees, netBtc enters
+    // the curve, so tokens received will be slightly less than a pure-AMM
+    // estimate at reservation time. This is by design — fees are always applied.
+
     // Consume reservation if active (two-transaction model)
     this._consumeReservation(sender, btcAmount);
 
@@ -207,6 +230,7 @@ export class LaunchToken extends OP20 {
 
     // Prevent buying beyond graduation threshold
     const currentRealBtc = this.realBtcReserve.value;
+    const currentVolume = this.totalVolumeSats.value;
     const threshold = this.graduationThreshold.value;
     if (SafeMath.add(currentRealBtc, netBtc) > threshold) {
       throw new Revert('Exceeds graduation threshold');
@@ -218,11 +242,11 @@ export class LaunchToken extends OP20 {
     const k = this.kConstant.value;
     const tokensOut = BondingCurve.calculateBuy(vBtc, vToken, k, netBtc);
 
-    // Update reserves
+    // Update reserves — use already-loaded values to avoid redundant storage reads
     this.virtualBtcReserve.set(SafeMath.add(vBtc, netBtc));
     this.virtualTokenSupply.set(SafeMath.sub(vToken, tokensOut));
-    this.realBtcReserve.set(SafeMath.add(this.realBtcReserve.value, netBtc));
-    this.totalVolumeSats.set(SafeMath.add(this.totalVolumeSats.value, btcAmount));
+    this.realBtcReserve.set(SafeMath.add(currentRealBtc, netBtc));
+    this.totalVolumeSats.set(SafeMath.add(currentVolume, btcAmount));
 
     // Accumulate fee pools
     this.platformFeePool.set(SafeMath.add(this.platformFeePool.value, platformFee));
@@ -253,6 +277,14 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  /**
+   * Sells tokens back to the bonding curve.
+   *
+   * NOTE: The sell operation updates reserves and accounting but does NOT
+   * directly transfer BTC to the seller. The caller must construct appropriate
+   * BTC outputs. The btcOut value emitted in the SellEvent indicates the
+   * amount the seller should receive via transaction outputs.
+   */
   @method({ name: 'tokenAmount', type: ABIDataTypes.UINT256 })
   @returns({ name: 'btcOut', type: ABIDataTypes.UINT256 })
   @emit('Sell')
@@ -351,6 +383,14 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  /**
+   * Cancels an active reservation.
+   *
+   * WARNING: Cancellation does NOT refund BTC sent during reserve().
+   * The CANCEL_PENALTY_BPS constant in Constants.ts is reserved for
+   * a future penalty-based refund mechanism. Currently, reservations
+   * are non-refundable once BTC is sent to the vault.
+   */
   @method()
   @returns({ name: 'success', type: ABIDataTypes.BOOL })
   public cancelReservation(calldata: Calldata): BytesWriter {
@@ -370,13 +410,27 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  /**
+   * Claims accumulated platform fees.
+   *
+   * NOTE: This method records the claim and zeros the pool, but does NOT
+   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
+   * outputs constructed by the caller. The claim emits an event that an
+   * off-chain settlement process monitors to fulfill the BTC transfer.
+   *
+   * The caller must construct the appropriate BTC outputs in their transaction.
+   *
+   * Only the deployer (platform/factory) can claim platform fees. When deployed
+   * through a factory, the factory address IS the deployer and acts as the platform.
+   */
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
   @emit('FeeClaimed')
   public claimPlatformFees(calldata: Calldata): BytesWriter {
     const sender = Blockchain.tx.sender;
 
-    // Only deployer (platform owner) can claim
+    // Only deployer (platform owner) can claim platform fees.
+    // When deployed via factory, the factory IS the deployer/platform.
     this.onlyDeployer(sender);
 
     const amount = this.platformFeePool.value;
@@ -395,14 +449,31 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  /**
+   * Claims accumulated creator fees.
+   *
+   * NOTE: This method records the claim and zeros the pool, but does NOT
+   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
+   * outputs constructed by the caller. The claim emits an event that an
+   * off-chain settlement process monitors to fulfill the BTC transfer.
+   *
+   * The caller must construct the appropriate BTC outputs in their transaction.
+   *
+   * Only the original creator (tx.origin at deployment time) can claim.
+   * This is distinct from onlyDeployer — when deployed through a factory,
+   * the deployer is the factory, but the creator is the human signer.
+   */
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
   @emit('FeeClaimed')
   public claimCreatorFees(calldata: Calldata): BytesWriter {
     const sender = Blockchain.tx.sender;
 
-    // Only deployer can claim — uses built-in OP_NET deployer check
-    this.onlyDeployer(sender);
+    // Check against stored creator address (set during onDeployment)
+    // This ensures the actual creator can claim even when deployed via factory
+    if (sender !== this.creatorAddress.value) {
+      throw new Revert('Only creator can claim creator fees');
+    }
 
     const amount = this.creatorFeePool.value;
     if (amount == u256.Zero) {
@@ -420,6 +491,16 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  /**
+   * Claims accumulated minter reward based on proportional shares.
+   *
+   * NOTE: This method records the claim and zeros the shares, but does NOT
+   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
+   * outputs constructed by the caller. The claim emits an event that an
+   * off-chain settlement process monitors to fulfill the BTC transfer.
+   *
+   * The caller must construct the appropriate BTC outputs in their transaction.
+   */
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
   @emit('FeeClaimed')
@@ -621,17 +702,17 @@ export class LaunchToken extends OP20 {
   private _verifyBtcOutput(requiredSats: u256): void {
     const vault = this.vaultAddress.value;
     const txOutputs = Blockchain.tx.outputs;
-    let totalToVault: u64 = 0;
+    let totalToVault: u256 = u256.Zero;
 
     for (let i: i32 = 0; i < txOutputs.length; i++) {
       const output = txOutputs[i];
       if (output.hasTo && output.to == vault) {
-        totalToVault += output.value;
+        totalToVault = SafeMath.add(totalToVault, u256.fromU64(output.value));
       }
     }
 
-    if (totalToVault < requiredSats.toU64()) {
-      throw new Revert('Insufficient BTC output to vault');
+    if (totalToVault < requiredSats) {
+      throw new Revert('Insufficient BTC sent to vault');
     }
   }
 

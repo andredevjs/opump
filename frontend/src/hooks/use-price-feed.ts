@@ -8,6 +8,34 @@ import type { TimeframeKey } from '@/types/api';
 import { wsClient } from '@/services/websocket';
 import * as api from '@/services/api';
 
+// W16-W17: Runtime type guards for WebSocket data
+interface PriceWsData {
+  currentPriceSats?: string;
+  virtualBtcReserve?: string;
+  virtualTokenSupply?: string;
+  realBtcReserve?: string;
+  isOptimistic?: boolean;
+}
+
+interface TradeWsData {
+  txHash: string;
+  type: 'buy' | 'sell';
+  traderAddress: string;
+  btcAmount: string;
+  tokenAmount: string;
+  status: string;
+  pricePerToken: string;
+  reason?: string;
+}
+
+function isPriceData(d: unknown): d is PriceWsData {
+  return d !== null && typeof d === 'object';
+}
+
+function isTradeData(d: unknown): d is TradeWsData {
+  return d !== null && typeof d === 'object' && 'txHash' in d && 'type' in d;
+}
+
 const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
   '1m': 60,
   '5m': 300,
@@ -55,13 +83,8 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     wsClient.connect();
 
     const unsubPrice = wsClient.subscribe('token:price', token.address, (_event, data) => {
-      const d = data as Partial<{
-        currentPriceSats: string;
-        virtualBtcReserve: string;
-        virtualTokenSupply: string;
-        realBtcReserve: string;
-        isOptimistic: boolean;
-      }>;
+      if (!isPriceData(data)) return;
+      const d = data;
 
       // Merge with existing — don't overwrite reserves with undefined
       setLivePrice(token.address, d);
@@ -71,16 +94,8 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     });
 
     const unsubTrades = wsClient.subscribe('token:trades', token.address, (event, data) => {
-      const d = data as {
-        txHash: string;
-        type: 'buy' | 'sell';
-        traderAddress: string;
-        btcAmount: string;
-        tokenAmount: string;
-        status: string;
-        pricePerToken: string;
-        reason?: string;
-      };
+      if (!isTradeData(data)) return;
+      const d = data;
 
       if (event === 'new_trade') {
         addWsTrade(token.address, d);
@@ -122,10 +137,14 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }
     });
 
+    // W12: Track consecutive polling failures and log after threshold
+    let consecutiveFailures = 0;
+
     // Fallback polling in case WebSocket disconnects
     intervalRef.current = window.setInterval(() => {
       if (!wsClient.isConnected()) {
         api.getTokenPrice(token.address).then((price) => {
+          consecutiveFailures = 0;
           setLivePrice(token.address, {
             currentPriceSats: price.currentPriceSats,
             virtualBtcReserve: price.virtualBtcReserve,
@@ -135,7 +154,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           });
           updateTokenPrice(token.address, Number(price.currentPriceSats), 0);
         }).catch(() => {
-          // Silently ignore polling errors
+          consecutiveFailures++;
+          if (consecutiveFailures >= 3) {
+            console.warn(`[usePriceFeed] ${consecutiveFailures} consecutive polling failures for ${token.address}`);
+          }
         });
       }
     }, PRICE_UPDATE_INTERVAL_MS);
@@ -147,5 +169,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       unsubTrades();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [token?.address, timeframe]);
+  }, [token?.address, timeframe, clearCandles, setLoading, setCandles, updateTokenPrice,
+      setLivePrice, addWsTrade, confirmWsTrade, dropWsTrade, appendCandle, updateLastCandle]);
 }

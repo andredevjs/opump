@@ -3,9 +3,8 @@ import BigNumber from 'bignumber.js';
 import { calculateBuy, calculateSell, getCurrentPrice, getGraduationProgress, getMarketCap } from '../bonding-curve';
 
 // Initial virtual reserves from constants
-const INITIAL_VIRTUAL_BTC = new BigNumber('3000000000'); // 30 BTC in sats
+const INITIAL_VIRTUAL_BTC = new BigNumber('767000'); // 0.00767 BTC in sats
 const INITIAL_VIRTUAL_TOKEN = new BigNumber('100000000000000000'); // 1B tokens * 10^8
-const TOKEN_UNITS_PER_TOKEN = 100_000_000;
 
 describe('bonding-curve', () => {
   describe('calculateBuy', () => {
@@ -179,10 +178,10 @@ describe('bonding-curve', () => {
       const price = getCurrentPrice(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN);
 
       // Price = virtualBtc * TOKEN_UNITS_PER_TOKEN / virtualToken
-      // = 3_000_000_000 * 100_000_000 / 100_000_000_000_000_000
-      // = 300_000_000_000_000_000 / 100_000_000_000_000_000
-      // = 3
-      expect(price).toBe(3);
+      // = 767_000 * 100_000_000 / 100_000_000_000_000_000
+      // = 76_700_000_000_000 / 100_000_000_000_000_000
+      // = 0.000767 sats per whole token
+      expect(price).toBeCloseTo(0.000767, 6);
     });
 
     it('returns 0 for zero token supply', () => {
@@ -221,12 +220,13 @@ describe('bonding-curve', () => {
 
   describe('getMarketCap', () => {
     it('calculates market cap as price * supply (returned as string)', () => {
-      const priceSats = 3; // sats per token-unit
+      const priceSats = 0.000767; // sats per whole token (initial price)
       const supply = '100000000000000000'; // 1B tokens * 10^8
       const result = getMarketCap(priceSats, supply);
 
       // Returns string to avoid Number overflow
-      expect(result).toBe('300000000000000000');
+      // 0.000767 * 100_000_000_000_000_000 = 76_700_000_000_000
+      expect(result).toBe('76700000000000');
     });
 
     it('returns "0" for zero price', () => {

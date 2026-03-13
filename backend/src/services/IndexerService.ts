@@ -5,43 +5,35 @@ import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { WebSocketService } from './WebSocketService.js';
 import type { OptimisticStateService } from './OptimisticStateService.js';
 import type { MigrationService } from './MigrationService.js';
-import { TOKEN_DECIMALS } from '../../../shared/constants/bonding-curve.js';
+import {
+  INITIAL_VIRTUAL_TOKEN_SUPPLY,
+  PLATFORM_FEE_BPS,
+  CREATOR_FEE_BPS,
+  MINTER_FEE_BPS,
+  FEE_DENOMINATOR,
+} from '../../../shared/constants/bonding-curve.js';
+import { toDisplayPrice, scaledToDisplayPrice } from '../utils/price.js';
+import type { LaunchTokenContract, InteractionTransaction } from '../types/contracts.js';
+import {
+  decodeBuyEvent,
+  decodeSellEvent,
+  decodeGraduationEvent,
+  decodeMigrationEvent,
+  decodeTokenDeployedEvent,
+} from './EventDecoder.js';
+import type {
+  BuyEventData,
+  SellEventData,
+} from './EventDecoder.js';
+export type {
+  BuyEventData,
+  SellEventData,
+  GraduationEventData,
+  MigrationEventData,
+  TokenDeployedEventData,
+} from './EventDecoder.js';
 
-const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
-
-/**
- * Event data layouts emitted by the on-chain contracts.
- * Each field is a 32-byte u256. Addresses are written as u256 (32 bytes).
- */
-interface BuyEventData {
-  buyer: string;
-  btcIn: bigint;
-  tokensOut: bigint;
-  newPrice: bigint;
-}
-
-interface SellEventData {
-  seller: string;
-  tokensIn: bigint;
-  btcOut: bigint;
-  newPrice: bigint;
-}
-
-interface GraduationEventData {
-  triggerer: string;
-  finalBtcReserve: bigint;
-}
-
-interface MigrationEventData {
-  recipient: string;
-  tokenAmount: bigint;
-  btcReserve: bigint;
-}
-
-interface TokenDeployedEventData {
-  creator: string;
-  tokenAddress: string;
-}
+// toDisplayPrice and scaledToDisplayPrice imported from utils/price.ts
 
 export class IndexerService {
   private lastBlockIndexed = 0n;
@@ -197,7 +189,7 @@ export class IndexerService {
         continue;
       }
 
-      const interactionTx = tx as { contractAddress?: string; hash: string } & typeof tx;
+      const interactionTx = tx as unknown as InteractionTransaction;
       const contractAddr = interactionTx.contractAddress;
 
       if (!contractAddr) continue;
@@ -221,30 +213,30 @@ export class IndexerService {
 
         try {
           if (eventType === 'Buy' && isKnownToken) {
-            const buyData = this.decodeBuyEvent(event);
+            const buyData = decodeBuyEvent(event);
             if (buyData) {
               await this.processBuyEvent(contractAddr, tx.hash, blockNumber, block.time, buyData);
               affectedTokens.add(contractAddr);
             }
           } else if (eventType === 'Sell' && isKnownToken) {
-            const sellData = this.decodeSellEvent(event);
+            const sellData = decodeSellEvent(event);
             if (sellData) {
               await this.processSellEvent(contractAddr, tx.hash, blockNumber, block.time, sellData);
               affectedTokens.add(contractAddr);
             }
           } else if (eventType === 'Graduation' && isKnownToken) {
-            const gradData = this.decodeGraduationEvent(event);
+            const gradData = decodeGraduationEvent(event);
             if (gradData) {
               await this.processGraduation(contractAddr, blockNumber);
               affectedTokens.add(contractAddr);
             }
           } else if (eventType === 'Migration' && isKnownToken) {
-            const migrationData = this.decodeMigrationEvent(event);
+            const migrationData = decodeMigrationEvent(event);
             if (migrationData) {
               console.log(`[Indexer] Migration event for ${contractAddr}: ${migrationData.tokenAmount} tokens to ${migrationData.recipient}`);
             }
           } else if (eventType === 'TokenDeployed' && isFactory) {
-            const deployData = this.decodeTokenDeployedEvent(event);
+            const deployData = decodeTokenDeployedEvent(event);
             if (deployData) {
               tokenAddressSet.add(deployData.tokenAddress);
               console.log(`[Indexer] Discovered new token ${deployData.tokenAddress} from factory at block ${blockNumber}`);
@@ -287,131 +279,6 @@ export class IndexerService {
   }
 
   /**
-   * Decode a Buy event from the on-chain event data.
-   * Layout: buyer(32) + btcIn(32) + tokensOut(32) + newPrice(32)
-   */
-  private decodeBuyEvent(event: unknown): BuyEventData | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 128) return null;
-
-    return {
-      buyer: this.readAddressFromEventData(data, 0),
-      btcIn: this.readU256FromEventData(data, 32),
-      tokensOut: this.readU256FromEventData(data, 64),
-      newPrice: this.readU256FromEventData(data, 96),
-    };
-  }
-
-  /**
-   * Decode a Sell event from the on-chain event data.
-   * Layout: seller(32) + tokensIn(32) + btcOut(32) + newPrice(32)
-   */
-  private decodeSellEvent(event: unknown): SellEventData | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 128) return null;
-
-    return {
-      seller: this.readAddressFromEventData(data, 0),
-      tokensIn: this.readU256FromEventData(data, 32),
-      btcOut: this.readU256FromEventData(data, 64),
-      newPrice: this.readU256FromEventData(data, 96),
-    };
-  }
-
-  /**
-   * Decode a Graduation event from the on-chain event data.
-   * Layout: triggerer(32) + finalBtcReserve(32)
-   */
-  private decodeGraduationEvent(event: unknown): GraduationEventData | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 64) return null;
-
-    return {
-      triggerer: this.readAddressFromEventData(data, 0),
-      finalBtcReserve: this.readU256FromEventData(data, 32),
-    };
-  }
-
-  /**
-   * Decode a TokenDeployed event from the on-chain event data.
-   * Layout: creator(32) + tokenAddress(32)
-   */
-  private decodeTokenDeployedEvent(event: unknown): TokenDeployedEventData | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 64) return null;
-
-    return {
-      creator: this.readAddressFromEventData(data, 0),
-      tokenAddress: this.readAddressFromEventData(data, 32),
-    };
-  }
-
-  /**
-   * Decode a Migration event from the on-chain event data.
-   * Layout: recipient(32) + tokenAmount(32) + btcReserve(32)
-   */
-  private decodeMigrationEvent(event: unknown): MigrationEventData | null {
-    const data = this.getEventData(event);
-    if (!data || data.length < 96) return null;
-
-    return {
-      recipient: this.readAddressFromEventData(data, 0),
-      tokenAmount: this.readU256FromEventData(data, 32),
-      btcReserve: this.readU256FromEventData(data, 64),
-    };
-  }
-
-  /**
-   * Extract raw event data as Uint8Array from an OPNet event object.
-   */
-  private getEventData(event: unknown): Uint8Array | null {
-    const evt = event as Record<string, unknown>;
-
-    // The OPNet SDK event structure may provide data in different formats
-    if (evt.data instanceof Uint8Array) {
-      return evt.data;
-    }
-    if (typeof evt.data === 'string') {
-      // Hex-encoded data
-      const hex = evt.data.startsWith('0x') ? evt.data.slice(2) : evt.data;
-      const bytes = new Uint8Array(hex.length / 2);
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
-      }
-      return bytes;
-    }
-    // Some events may have properties directly decoded
-    if (evt.properties && typeof evt.properties === 'object') {
-      return null; // Handle via properties in the caller if needed
-    }
-    return null;
-  }
-
-  /**
-   * Read a u256 from event data at the given byte offset (big-endian).
-   */
-  private readU256FromEventData(data: Uint8Array, offset: number): bigint {
-    let value = 0n;
-    for (let i = 0; i < 32; i++) {
-      value = (value << 8n) | BigInt(data[offset + i]);
-    }
-    return value;
-  }
-
-  /**
-   * Read an address from event data at the given byte offset.
-   * Addresses are stored as u256 (32 bytes). We convert to hex.
-   */
-  private readAddressFromEventData(data: Uint8Array, offset: number): string {
-    const bytes = data.slice(offset, offset + 32);
-    let hex = '0x';
-    for (const b of bytes) {
-      hex += b.toString(16).padStart(2, '0');
-    }
-    return hex;
-  }
-
-  /**
    * Process a Buy event: upsert trade record and broadcast.
    */
   private async processBuyEvent(
@@ -426,16 +293,15 @@ export class IndexerService {
     // Calculate fees using the simulator
     const fees = this.calculateFeeBreakdown(data.btcIn);
 
-    // Recalculate price from reserves (event newPrice may be unscaled from older contracts)
+    // Recalculate price from reserves and normalize to sats per whole token
     const token = await getTokensCollection().findOne({ _id: tokenAddress });
-    let scaledPrice: string;
+    let displayPrice: string;
     if (token) {
       const vBtc = BigInt(token.virtualBtcReserve || '0');
       const vToken = BigInt(token.virtualTokenSupply || '0');
-      scaledPrice = vToken > 0n ? ((vBtc * DECIMALS_FACTOR) / vToken).toString() : '0';
+      displayPrice = toDisplayPrice(vBtc, vToken);
     } else {
-      // Fallback: use event price (may be correctly scaled from updated contracts)
-      scaledPrice = data.newPrice.toString();
+      displayPrice = scaledToDisplayPrice(data.newPrice);
     }
 
     // Upsert — if the MempoolService already registered this trade as pending, update it
@@ -448,7 +314,7 @@ export class IndexerService {
           traderAddress: data.buyer,
           btcAmount: data.btcIn.toString(),
           tokenAmount: data.tokensOut.toString(),
-          pricePerToken: scaledPrice,
+          pricePerToken: displayPrice,
           fees: {
             platform: fees.platform.toString(),
             creator: fees.creator.toString(),
@@ -477,14 +343,14 @@ export class IndexerService {
       traderAddress: data.buyer,
       btcAmount: data.btcIn.toString(),
       tokenAmount: data.tokensOut.toString(),
-      pricePerToken: scaledPrice,
+      pricePerToken: displayPrice,
       status: 'confirmed',
       blockNumber,
     });
 
     // Broadcast price update
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: scaledPrice,
+      currentPriceSats: displayPrice,
       isOptimistic: false,
     });
   }
@@ -502,15 +368,15 @@ export class IndexerService {
     const trades = getTradesCollection();
     const fees = this.calculateFeeBreakdown(data.btcOut);
 
-    // Recalculate price from reserves (event newPrice may be unscaled from older contracts)
+    // Recalculate price from reserves and normalize to sats per whole token
     const sellToken = await getTokensCollection().findOne({ _id: tokenAddress });
-    let scaledSellPrice: string;
+    let sellDisplayPrice: string;
     if (sellToken) {
       const vBtc = BigInt(sellToken.virtualBtcReserve || '0');
       const vToken = BigInt(sellToken.virtualTokenSupply || '0');
-      scaledSellPrice = vToken > 0n ? ((vBtc * DECIMALS_FACTOR) / vToken).toString() : '0';
+      sellDisplayPrice = toDisplayPrice(vBtc, vToken);
     } else {
-      scaledSellPrice = data.newPrice.toString();
+      sellDisplayPrice = scaledToDisplayPrice(data.newPrice);
     }
 
     await trades.updateOne(
@@ -522,7 +388,7 @@ export class IndexerService {
           traderAddress: data.seller,
           btcAmount: data.btcOut.toString(),
           tokenAmount: data.tokensIn.toString(),
-          pricePerToken: scaledSellPrice,
+          pricePerToken: sellDisplayPrice,
           fees: {
             platform: fees.platform.toString(),
             creator: fees.creator.toString(),
@@ -549,13 +415,13 @@ export class IndexerService {
       traderAddress: data.seller,
       btcAmount: data.btcOut.toString(),
       tokenAmount: data.tokensIn.toString(),
-      pricePerToken: scaledSellPrice,
+      pricePerToken: sellDisplayPrice,
       status: 'confirmed',
       blockNumber,
     });
 
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: scaledSellPrice,
+      currentPriceSats: sellDisplayPrice,
       isOptimistic: false,
     });
   }
@@ -564,11 +430,6 @@ export class IndexerService {
    * Calculate fee breakdown from a BTC amount using shared constants.
    */
   private calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: bigint; minter: bigint } {
-    const FEE_DENOMINATOR = 10_000n;
-    const PLATFORM_FEE_BPS = 100n;
-    const CREATOR_FEE_BPS = 25n;
-    const MINTER_FEE_BPS = 25n;
-
     return {
       platform: (amount * PLATFORM_FEE_BPS) / FEE_DENOMINATOR,
       creator: (amount * CREATOR_FEE_BPS) / FEE_DENOMINATOR,
@@ -632,12 +493,10 @@ export class IndexerService {
       ];
 
       const contract = getContract(tokenAddress, abi, provider, network);
-      const result = await (contract as unknown as { getReserves: () => Promise<{ properties: { virtualBtc: bigint; virtualToken: bigint; realBtc: bigint; k: bigint } }> }).getReserves();
+      const result = await (contract as unknown as LaunchTokenContract).getReserves();
 
       if (result && result.properties) {
         const { virtualBtc, virtualToken, realBtc, k } = result.properties;
-        const currentPrice = virtualToken > 0n ? (virtualBtc * DECIMALS_FACTOR) / virtualToken : 0n;
-
         const tokens = getTokensCollection();
         await tokens.updateOne(
           { _id: tokenAddress },
@@ -647,7 +506,7 @@ export class IndexerService {
               virtualTokenSupply: virtualToken.toString(),
               kConstant: k.toString(),
               realBtcReserve: realBtc.toString(),
-              currentPriceSats: currentPrice.toString(),
+              currentPriceSats: toDisplayPrice(virtualBtc, virtualToken),
               updatedAt: new Date(),
             },
           },
@@ -678,7 +537,7 @@ export class IndexerService {
     for (const event of factoryEvents) {
       const eventType = (event as { type?: string }).type;
       if (eventType === 'TokenDeployed') {
-        const deployData = this.decodeTokenDeployedEvent(event);
+        const deployData = decodeTokenDeployedEvent(event);
         if (deployData) {
           console.log(`[Indexer] Discovered new token ${deployData.tokenAddress} from deployment at block ${blockNumber}`);
         }
@@ -736,7 +595,7 @@ export class IndexerService {
   /**
    * Update per-token stats (volume24h, marketCapSats, tradeCount) after confirmed trades.
    */
-  private async updateTokenStats(confirmedTrades: Array<Record<string, unknown>>): Promise<void> {
+  private async updateTokenStats(confirmedTrades: Array<{ tokenAddress: string; btcAmount?: string }>): Promise<void> {
     const tokens = getTokensCollection();
     const tradesCol = getTradesCollection();
 
@@ -748,37 +607,31 @@ export class IndexerService {
 
     for (const tokenAddress of tokenAddresses) {
       try {
-        // Aggregate 24h volume using application-level BigInt to avoid $toLong overflow
-        const recentTrades = await tradesCol
-          .find({ tokenAddress, status: 'confirmed', createdAt: { $gte: oneDayAgo } }, { projection: { btcAmount: 1 } })
-          .toArray();
-        let volume24hBig = 0n;
-        for (const t of recentTrades) {
-          volume24hBig += BigInt(String(t.btcAmount) || '0');
-        }
-        const volume24h = volume24hBig.toString();
+        // Aggregate 24h volume via MongoDB pipeline ($toDouble is acceptable for volume stats)
+        const vol24hAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
+          { $match: { tokenAddress, status: 'confirmed', createdAt: { $gte: oneDayAgo } } },
+          { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
+        ]).toArray();
+        const volume24h = Math.floor(vol24hAgg[0]?.total ?? 0).toString();
 
         // Total trade count
         const tradeCount = await tradesCol.countDocuments({ tokenAddress, status: 'confirmed' });
 
-        // Total volume using application-level BigInt
-        const allTrades = await tradesCol
-          .find({ tokenAddress, status: 'confirmed' }, { projection: { btcAmount: 1 } })
-          .toArray();
-        let volumeTotalBig = 0n;
-        for (const t of allTrades) {
-          volumeTotalBig += BigInt(String(t.btcAmount) || '0');
-        }
-        const volumeTotal = volumeTotalBig.toString();
+        // Total volume via MongoDB pipeline
+        const volTotalAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
+          { $match: { tokenAddress, status: 'confirmed' } },
+          { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
+        ]).toArray();
+        const volumeTotal = Math.floor(volTotalAgg[0]?.total ?? 0).toString();
 
         // Fetch current token to compute market cap from current price
         const token = await tokens.findOne({ _id: tokenAddress });
         let marketCapSats = '0';
         if (token) {
-          const priceSats = BigInt(token.currentPriceSats || '0');
-          const supply = BigInt(token.virtualTokenSupply || '0');
-          if (supply > 0n) {
-            marketCapSats = String(priceSats * supply / DECIMALS_FACTOR);
+          const vBtcMc = BigInt(token.virtualBtcReserve || '0');
+          const vTokenMc = BigInt(token.virtualTokenSupply || '0');
+          if (vTokenMc > 0n) {
+            marketCapSats = String(vBtcMc * INITIAL_VIRTUAL_TOKEN_SUPPLY / vTokenMc);
           }
         }
 
@@ -821,15 +674,12 @@ export class IndexerService {
     const tradesCol = getTradesCollection();
     const totalTrades = await tradesCol.countDocuments({ status: 'confirmed' });
 
-    // Aggregate total volume using application-level BigInt to avoid $toLong overflow
-    const allConfirmed = await tradesCol
-      .find({ status: 'confirmed' }, { projection: { btcAmount: 1 } })
-      .toArray();
-    let totalVolumeBig = 0n;
-    for (const t of allConfirmed) {
-      totalVolumeBig += BigInt(String(t.btcAmount) || '0');
-    }
-    const totalVolumeSats = totalVolumeBig.toString();
+    // Aggregate total volume via MongoDB pipeline ($toDouble is acceptable for platform-level stats)
+    const volAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
+      { $match: { status: 'confirmed' } },
+      { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
+    ]).toArray();
+    const totalVolumeSats = Math.floor(volAgg[0]?.total ?? 0).toString();
 
     await stats.updateOne(
       { _id: 'current' },

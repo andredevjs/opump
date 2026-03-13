@@ -18,9 +18,11 @@ interface TokenStore {
   fetchToken: (address: string) => Promise<Token | null>;
 }
 
-let _fetchGeneration = 0;
+export const useTokenStore = create<TokenStore>((set, get) => {
+  // W18: Internal mutable state — not exposed to subscribers
+  let _fetchGeneration = 0;
 
-export const useTokenStore = create<TokenStore>((set, get) => ({
+  return ({
   tokens: [],
   selectedToken: null,
   filter: { search: '', status: 'all', sort: 'volume' },
@@ -94,16 +96,19 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     }
   },
 
+  // W11: Set loading state during fetchToken
   fetchToken: async (address) => {
+    set({ loading: true });
     try {
       const t = await api.getToken(address);
       const token = mapApiTokenToToken(t);
-      set({ selectedToken: token });
+      set({ selectedToken: token, loading: false });
       return token;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch token';
-      set({ error: message });
+      set({ error: message, loading: false });
       return null;
     }
   },
-}));
+});
+});

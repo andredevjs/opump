@@ -36,9 +36,9 @@ export class WebSocketService {
       this.subscriptions.set(ws, new Set());
       console.log('[WS] Client connected');
 
-      ws.on('message', (message: Buffer) => {
+      ws.on('message', (message: Buffer | ArrayBuffer | Uint8Array) => {
         try {
-          const text = message.toString('utf-8');
+          const text = new TextDecoder().decode(message);
           const msg: ClientMessage = JSON.parse(text);
           this.handleMessage(ws, msg);
         } catch {

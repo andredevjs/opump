@@ -4,7 +4,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  TOKEN_DECIMALS,
   GRADUATION_THRESHOLD_SATS,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
@@ -12,11 +11,11 @@ import {
   FEE_DENOMINATOR,
   INITIAL_VIRTUAL_BTC_SATS,
   INITIAL_VIRTUAL_TOKEN_SUPPLY,
+  PRICE_PRECISION,
+  PRICE_DISPLAY_DIVISOR,
 } from '../../../../shared/constants/bonding-curve.js';
 import type { TokenStatus as SharedTokenStatus } from '../../../../shared/types/token.js';
 import { BondingCurveSimulator } from '../BondingCurveSimulator.js';
-
-const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
 
 // ---------------------------------------------------------------------------
 // Fix #3: BigInt volume aggregation (replaces $toLong which overflows at 2^63)
@@ -82,28 +81,30 @@ describe('TokenStatus alignment (Fix #4)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fix #5: DECIMALS_FACTOR for market cap calculation (no magic number)
+// Fix #5: Price display and market cap calculation
 // ---------------------------------------------------------------------------
-describe('Market cap calculation with DECIMALS_FACTOR (Fix #5)', () => {
-  it('DECIMALS_FACTOR equals 10^TOKEN_DECIMALS', () => {
-    expect(DECIMALS_FACTOR).toBe(10n ** BigInt(TOKEN_DECIMALS));
-    expect(DECIMALS_FACTOR).toBe(100_000_000n); // 10^8
+describe('Price display normalization (Fix #5)', () => {
+  it('PRICE_DISPLAY_DIVISOR equals 10^10', () => {
+    expect(PRICE_DISPLAY_DIVISOR).toBe(1e10);
   });
 
-  it('market cap calculation uses DECIMALS_FACTOR correctly', () => {
-    const priceSats = 3n; // 3 sats per token unit
-    const supply = INITIAL_VIRTUAL_TOKEN_SUPPLY; // 100_000_000_000_000_000 (1B * 10^8)
+  it('display price converts to sats per whole token', () => {
+    const scaledPrice = (INITIAL_VIRTUAL_BTC_SATS * PRICE_PRECISION) / INITIAL_VIRTUAL_TOKEN_SUPPLY;
+    const displayPrice = Number(scaledPrice) / PRICE_DISPLAY_DIVISOR;
 
-    const marketCap = (priceSats * supply) / DECIMALS_FACTOR;
+    // 767000 / 1B tokens ≈ 0.000767 sats per whole token
+    expect(displayPrice).toBeCloseTo(0.000767, 6);
+  });
 
-    // 3 * 1B_00000000 / 10^8 = 3B sats = 30 BTC
-    expect(marketCap).toBe(3_000_000_000n);
+  it('market cap from reserves equals virtualBtc at initial state', () => {
+    // marketCap = virtualBtc * totalSupply / virtualToken = virtualBtc (initial)
+    const marketCap = INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY / INITIAL_VIRTUAL_TOKEN_SUPPLY;
+    expect(marketCap).toBe(INITIAL_VIRTUAL_BTC_SATS);
   });
 
   it('market cap is zero for zero supply', () => {
-    const priceSats = 100n;
-    const supply = 0n;
-    const marketCap = supply > 0n ? (priceSats * supply) / DECIMALS_FACTOR : 0n;
+    const virtualToken = 0n;
+    const marketCap = virtualToken > 0n ? INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY / virtualToken : 0n;
     expect(marketCap).toBe(0n);
   });
 });

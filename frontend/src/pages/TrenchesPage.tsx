@@ -25,7 +25,7 @@ const SORT_OPTIONS: TokenSortOption[] = [
 ];
 
 export function TrenchesPage() {
-  const { tokens, filter, setFilter, loading, pagination, fetchTokens } = useTokenStore();
+  const { tokens, filter, setFilter, loading: _loading, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
   const [page, setPage] = useState(1);
 

@@ -1,6 +1,7 @@
 import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { uploadImage } from "./_shared/image-storage.mts";
+import { checkIpRateLimit } from "./_shared/rate-limit.mts";
 
 export default async (req: Request, _context: Context) => {
   if (req.method === "OPTIONS") {
@@ -10,6 +11,11 @@ export default async (req: Request, _context: Context) => {
   if (req.method !== "POST") {
     return error("Method not allowed", 405, "MethodNotAllowed");
   }
+
+  // IP-based rate limiting: 10 uploads per 60 seconds
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const allowed = await checkIpRateLimit(ip, 'upload', 10, 60);
+  if (!allowed) return error('Upload rate limit exceeded', 429, 'TooManyRequests');
 
   let body: { data?: string; contentType?: string };
   try {

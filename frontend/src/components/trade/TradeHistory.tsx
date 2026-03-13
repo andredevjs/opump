@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
 import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
@@ -16,6 +16,13 @@ interface TradeHistoryProps {
 export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const wsTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_WS_TRADES);
+
+  // S29: Deduplicate — filter out API trades whose txHash already appears in WS trades
+  const wsTradeHashes = useMemo(() => new Set(wsTrades.map((t) => t.txHash)), [wsTrades]);
+  const deduplicatedTrades = useMemo(
+    () => trades.filter((t) => !wsTradeHashes.has(t.txHash)),
+    [trades, wsTradeHashes],
+  );
 
   const fetchTrades = useCallback(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
@@ -92,8 +99,8 @@ export function TradeHistory({ token }: TradeHistoryProps) {
             </tr>
           ))}
 
-          {/* Historical trades */}
-          {trades.map((trade) => (
+          {/* Historical trades (deduplicated against WS trades) */}
+          {deduplicatedTrades.map((trade) => (
             <tr key={trade.id} className="border-b border-border/30 hover:bg-elevated/50 transition-colors">
               <td className="py-2 px-2">
                 <span className={cn('font-medium uppercase', trade.type === 'buy' ? 'text-bull' : 'text-bear')}>

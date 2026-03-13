@@ -39,9 +39,9 @@ function optional(key: string, defaultValue: string): string {
 
 export const config: Config = {
   port: parseInt(optional('PORT', '9850'), 10),
-  mongoUrl: optional('MONGO_URL', 'mongodb://localhost:27017'),
+  mongoUrl: process.env.NODE_ENV === 'production' ? _required('MONGO_URL') : optional('MONGO_URL', 'mongodb://localhost:27017'),
   mongoDbName: optional('MONGO_DB_NAME', 'opump'),
-  opnetRpcUrl: optional('OPNET_RPC_URL', 'https://testnet.opnet.org'),
+  opnetRpcUrl: process.env.NODE_ENV === 'production' ? _required('OPNET_RPC_URL') : optional('OPNET_RPC_URL', 'https://testnet.opnet.org'),
   network: optional('NETWORK', 'testnet'),
   factoryAddress: optional('FACTORY_ADDRESS', ''),
   indexerPollMs: parseInt(optional('INDEXER_POLL_MS', '5000'), 10),
@@ -54,7 +54,8 @@ export const config: Config = {
   s3SecretKey: optional('S3_SECRET_KEY', ''),
   s3PublicUrl: optional('S3_PUBLIC_URL', ''),
   // Migration
-  nativeSwapAddress: optional('NATIVE_SWAP_ADDRESS', '0x035884f9ac2b6ae75d7778553e7d447899e9a82e247d7ced48f22aa102681e70'),
+  // MUST be set in production — no default hardcoded address
+  nativeSwapAddress: optional('NATIVE_SWAP_ADDRESS', ''),
   migrationWalletMnemonic: optional('MIGRATION_WALLET_MNEMONIC', ''),
   migrationFloorPrice: parseInt(optional('MIGRATION_FLOOR_PRICE', '1000'), 10),
   migrationAntibotBlocks: parseInt(optional('MIGRATION_ANTIBOT_BLOCKS', '10'), 10),

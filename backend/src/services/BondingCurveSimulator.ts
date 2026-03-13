@@ -8,11 +8,9 @@ import {
   MINTER_FEE_BPS,
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
-  TOKEN_DECIMALS,
   GRADUATION_THRESHOLD_SATS,
+  PRICE_PRECISION,
 } from '../../../shared/constants/bonding-curve.js';
-
-const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
 
 export interface Reserves {
   virtualBtcReserve: bigint;
@@ -48,6 +46,12 @@ export interface SellSimulation {
   effectivePriceSats: bigint;
 }
 
+/** Error messages shared across simulator methods */
+const ERRORS = {
+  BELOW_MINIMUM: 'Below minimum trade amount',
+  EXCEEDS_GRADUATION: 'Exceeds graduation threshold',
+} as const;
+
 export class BondingCurveSimulator {
   /**
    * Simulate a buy on the bonding curve.
@@ -59,7 +63,7 @@ export class BondingCurveSimulator {
     buyTaxBps: bigint = 0n,
   ): BuySimulation {
     if (btcAmountSats < MIN_TRADE_SATS) {
-      throw new Error('Below minimum trade amount');
+      throw new Error(ERRORS.BELOW_MINIMUM);
     }
 
     const priceBefore = this.calculatePrice(reserves.virtualBtcReserve, reserves.virtualTokenSupply);
@@ -73,7 +77,7 @@ export class BondingCurveSimulator {
     // Prevent buying beyond graduation threshold
     const graduationThreshold = reserves.graduationThreshold ?? GRADUATION_THRESHOLD_SATS;
     if (reserves.realBtcReserve + netBtc > graduationThreshold) {
-      throw new Error('Exceeds graduation threshold');
+      throw new Error(ERRORS.EXCEEDS_GRADUATION);
     }
 
     // Calculate tokens out: tokensOut = vToken - (k / (vBtc + netBtc))
@@ -94,7 +98,7 @@ export class BondingCurveSimulator {
       ? Number(((priceAfter - priceBefore) * 10000n) / priceBefore)
       : 0;
 
-    const effectivePriceSats = tokensOut > 0n ? (btcAmountSats * 100000000n) / tokensOut : 0n;
+    const effectivePriceSats = tokensOut > 0n ? (btcAmountSats * PRICE_PRECISION) / tokensOut : 0n;
 
     return {
       tokensOut,
@@ -122,8 +126,12 @@ export class BondingCurveSimulator {
     const newVirtualBtc = reserves.kConstant / newVirtualToken;
     const grossBtcOut = reserves.virtualBtcReserve - newVirtualBtc;
 
+    if (grossBtcOut > reserves.realBtcReserve) {
+      throw new Error('Insufficient real BTC reserve');
+    }
+
     if (grossBtcOut < MIN_TRADE_SATS) {
-      throw new Error('Below minimum trade amount');
+      throw new Error(ERRORS.BELOW_MINIMUM);
     }
 
     // Calculate fees on the gross output
@@ -145,7 +153,7 @@ export class BondingCurveSimulator {
       ? Number(((priceBefore - priceAfter) * 10000n) / priceBefore)
       : 0;
 
-    const effectivePriceSats = tokenAmount > 0n ? (grossBtcOut * 100000000n) / tokenAmount : 0n;
+    const effectivePriceSats = tokenAmount > 0n ? (grossBtcOut * PRICE_PRECISION) / tokenAmount : 0n;
 
     return {
       btcOut,
@@ -173,12 +181,13 @@ export class BondingCurveSimulator {
   }
 
   /**
-   * Calculate current price in sats per whole token.
-   * Scales by 10^DECIMALS to convert from per-unit to per-token.
+   * Calculate price with 10^18 precision.
+   * Returns (virtualBtc * 10^18) / virtualToken.
+   * Consumers divide by 10^18 to get sats per whole token.
    */
   calculatePrice(virtualBtc: bigint, virtualToken: bigint): bigint {
     if (virtualToken === 0n) return 0n;
-    return (virtualBtc * DECIMALS_FACTOR) / virtualToken;
+    return (virtualBtc * PRICE_PRECISION) / virtualToken;
   }
 
   /**

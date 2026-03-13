@@ -8,6 +8,7 @@ import { Check, Loader2, Circle, Rocket, ExternalLink } from 'lucide-react';
 import { createToken, uploadImage } from '@/services/api';
 import toast from 'react-hot-toast';
 import type { TaxDestination } from '@/types/launch';
+import { FACTORY_ADDRESS } from '@/config/constants';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -21,8 +22,6 @@ function fileToBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-
-const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
 const LAUNCH_TOKEN_WASM_URL = '/contracts/LaunchToken.wasm';
 
 const flywheelDestMap: Record<TaxDestination, number> = {

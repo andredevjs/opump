@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
+import { CHART_THEME } from '@/config/constants';
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
@@ -11,50 +12,52 @@ interface PriceChartProps {
 
 export function PriceChart({ candles, loading, className }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // S30: Use shared chart theme for colors
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#8888a0',
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: 11,
+        background: { type: ColorType.Solid, color: CHART_THEME.background },
+        textColor: CHART_THEME.textColor,
+        fontFamily: CHART_THEME.fontFamily,
+        fontSize: CHART_THEME.fontSize,
       },
       grid: {
-        vertLines: { color: '#1a1a27' },
-        horzLines: { color: '#1a1a27' },
+        vertLines: { color: CHART_THEME.gridColor },
+        horzLines: { color: CHART_THEME.gridColor },
       },
       crosshair: {
-        vertLine: { color: '#f7931a', width: 1, style: 2 },
-        horzLine: { color: '#f7931a', width: 1, style: 2 },
+        vertLine: { color: CHART_THEME.crosshairColor, width: 1, style: 2 },
+        horzLine: { color: CHART_THEME.crosshairColor, width: 1, style: 2 },
       },
       rightPriceScale: {
-        borderColor: '#2a2a3d',
+        borderColor: CHART_THEME.borderColor,
         scaleMargins: { top: 0.1, bottom: 0.25 },
       },
       timeScale: {
-        borderColor: '#2a2a3d',
+        borderColor: CHART_THEME.borderColor,
         timeVisible: true,
       },
       handleScroll: { vertTouchDrag: false },
     });
 
     const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+      upColor: CHART_THEME.upColor,
+      downColor: CHART_THEME.downColor,
+      borderUpColor: CHART_THEME.upColor,
+      borderDownColor: CHART_THEME.downColor,
+      wickUpColor: CHART_THEME.upColor,
+      wickDownColor: CHART_THEME.downColor,
     });
 
     const volumeSeries = chart.addHistogramSeries({
-      color: '#f7931a',
+      color: CHART_THEME.volumeColor,
       priceFormat: { type: 'volume' },
       priceScaleId: '',
     });
@@ -62,10 +65,12 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
+    chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
     return () => {
+      chartRef.current = null;
       chart.remove();
     };
   }, []);
@@ -90,11 +95,16 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
     const volumeData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)',
+      color: c.close >= c.open ? `${CHART_THEME.upColor}4d` : `${CHART_THEME.downColor}4d`,
     }));
 
     candleSeriesRef.current.setData(candleData);
     volumeSeriesRef.current.setData(volumeData);
+
+    // S23: Fit content after data loads so all candles are visible
+    if (chartRef.current && candles.length > 0) {
+      chartRef.current.timeScale().fitContent();
+    }
   }, [candles]);
 
   return (

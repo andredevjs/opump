@@ -142,6 +142,8 @@ export class MigrationService {
       const delay = BASE_RETRY_MS * Math.pow(2, job.retries - 1);
       console.log(`[Migration] Retrying ${tokenAddress} in ${delay}ms (attempt ${job.retries}/${MAX_RETRIES})`);
       job.timer = setTimeout(() => {
+        // Guard: if the job was removed during shutdown, skip the retry
+        if (!this.activeJobs.has(tokenAddress)) return;
         this.runMigration(tokenAddress).catch((retryErr) => {
           console.error(`[Migration] Retry failed for ${tokenAddress}:`, retryErr instanceof Error ? retryErr.message : retryErr);
         });
