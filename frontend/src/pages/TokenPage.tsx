@@ -208,6 +208,7 @@ export function TokenPage() {
   const token = useTokenStore((s) => s.selectedToken?.address === address ? s.selectedToken : s.tokens.find((t) => t.address === address) ?? null);
   const fetchToken = useTokenStore((s) => s.fetchToken);
   const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
+  const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
 
   // Fetch token from API if not in store
@@ -287,7 +288,7 @@ export function TokenPage() {
               <span className="text-sm font-medium text-text-secondary">Price Chart</span>
               <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} />
             </div>
-            <PriceChart candles={candles} />
+            <PriceChart candles={candles} loading={chartLoading} />
           </Card>
 
           {/* Stats row */}

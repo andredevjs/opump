@@ -12,23 +12,38 @@ interface LivePrice {
 interface PriceStore {
   // token address -> candles
   candles: Record<string, OHLCVCandle[]>;
+  // token address -> loading state
+  loading: Record<string, boolean>;
   // token address -> live price from WebSocket
   livePrices: Record<string, LivePrice>;
   setCandles: (address: string, candles: OHLCVCandle[]) => void;
+  clearCandles: (address: string) => void;
+  setLoading: (address: string, loading: boolean) => void;
   appendCandle: (address: string, candle: OHLCVCandle) => void;
   updateLastCandle: (address: string, candle: OHLCVCandle) => void;
-  setLivePrice: (address: string, price: LivePrice) => void;
+  setLivePrice: (address: string, price: Partial<LivePrice>) => void;
 }
 
 const MAX_CANDLES = 500;
 
 export const usePriceStore = create<PriceStore>((set) => ({
   candles: {},
+  loading: {},
   livePrices: {},
 
   setCandles: (address, candles) =>
     set((state) => ({
       candles: { ...state.candles, [address]: candles.slice(-MAX_CANDLES) },
+    })),
+
+  clearCandles: (address) =>
+    set((state) => ({
+      candles: { ...state.candles, [address]: [] },
+    })),
+
+  setLoading: (address, loading) =>
+    set((state) => ({
+      loading: { ...state.loading, [address]: loading },
     })),
 
   appendCandle: (address, candle) =>
@@ -55,7 +70,19 @@ export const usePriceStore = create<PriceStore>((set) => ({
     }),
 
   setLivePrice: (address, price) =>
-    set((state) => ({
-      livePrices: { ...state.livePrices, [address]: price },
-    })),
+    set((state) => {
+      const existing = state.livePrices[address];
+      return {
+        livePrices: {
+          ...state.livePrices,
+          [address]: {
+            currentPriceSats: price.currentPriceSats ?? existing?.currentPriceSats ?? '0',
+            virtualBtcReserve: price.virtualBtcReserve ?? existing?.virtualBtcReserve ?? '0',
+            virtualTokenSupply: price.virtualTokenSupply ?? existing?.virtualTokenSupply ?? '0',
+            realBtcReserve: price.realBtcReserve ?? existing?.realBtcReserve ?? '0',
+            isOptimistic: price.isOptimistic ?? existing?.isOptimistic ?? false,
+          },
+        },
+      };
+    }),
 }));

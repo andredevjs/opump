@@ -1,16 +1,16 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { createChart, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
+  loading?: boolean;
   className?: string;
 }
 
-export function PriceChart({ candles, className }: PriceChartProps) {
+export function PriceChart({ candles, loading, className }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
@@ -18,6 +18,7 @@ export function PriceChart({ candles, className }: PriceChartProps) {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
+      autoSize: true,
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: '#8888a0',
@@ -61,26 +62,22 @@ export function PriceChart({ candles, className }: PriceChartProps) {
       scaleMargins: { top: 0.8, bottom: 0 },
     });
 
-    chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    const handleResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
     return () => {
-      window.removeEventListener('resize', handleResize);
       chart.remove();
     };
   }, []);
 
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) return;
+    if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
+
+    if (candles.length === 0) {
+      candleSeriesRef.current.setData([]);
+      volumeSeriesRef.current.setData([]);
+      return;
+    }
 
     const candleData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
@@ -101,6 +98,18 @@ export function PriceChart({ candles, className }: PriceChartProps) {
   }, [candles]);
 
   return (
-    <div ref={containerRef} className={cn('w-full h-[400px]', className)} />
+    <div className={cn('relative w-full h-[400px]', className)}>
+      <div ref={containerRef} className="w-full h-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-surface/60 backdrop-blur-sm z-10">
+          <div className="h-6 w-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      {!loading && candles.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <p className="text-sm text-text-muted">No trades yet</p>
+        </div>
+      )}
+    </div>
   );
 }
