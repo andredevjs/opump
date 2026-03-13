@@ -52,6 +52,16 @@ export class FeeClaimedEvent extends NetEvent {
   }
 }
 
+export class MigrationEvent extends NetEvent {
+  constructor(recipient: Address, tokenAmount: u256, btcReserve: u256) {
+    const data = new BytesWriter(32 + 32 + 32);
+    data.writeAddress(recipient);
+    data.writeU256(tokenAmount);
+    data.writeU256(btcReserve);
+    super('Migration', data);
+  }
+}
+
 export class TokenRegisteredEvent extends NetEvent {
   constructor(creator: Address, tokenIndex: u256) {
     const data = new BytesWriter(32 + 32);

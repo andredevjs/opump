@@ -70,9 +70,10 @@ describe('OptimisticStateService', () => {
     });
 
     it('applies pending sell optimistically', () => {
-      // First do a confirmed buy to have realistic reserves
+      // First do a confirmed buy to have realistic reserves (use high threshold)
       const sim = new BondingCurveSimulator();
-      const buyResult = sim.simulateBuy(BondingCurveSimulator.getInitialReserves(), 10_000_000n);
+      const largeCapReserves = { ...BondingCurveSimulator.getInitialReserves(), graduationThreshold: 100_000_000_000n };
+      const buyResult = sim.simulateBuy(largeCapReserves, 10_000_000n);
 
       service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
       service.addPendingTrade(TOKEN_A, 'tx-sell', 'sell', buyResult.tokensOut / 2n);
@@ -97,7 +98,8 @@ describe('OptimisticStateService', () => {
 
     it('applies buys and sells sequentially', () => {
       const sim = new BondingCurveSimulator();
-      const buyResult = sim.simulateBuy(BondingCurveSimulator.getInitialReserves(), 10_000_000n);
+      const largeCapReserves = { ...BondingCurveSimulator.getInitialReserves(), graduationThreshold: 100_000_000_000n };
+      const buyResult = sim.simulateBuy(largeCapReserves, 10_000_000n);
 
       service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
       service.addPendingTrade(TOKEN_A, 'tx-buy', 'buy', 500_000n);

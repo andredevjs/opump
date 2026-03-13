@@ -19,6 +19,14 @@ function initialReserves(): Reserves {
   return BondingCurveSimulator.getInitialReserves();
 }
 
+/** Reserves with a very high graduation threshold for large-amount tests. */
+function largeCapReserves(): Reserves {
+  return {
+    ...BondingCurveSimulator.getInitialReserves(),
+    graduationThreshold: 100_000_000_000n, // 1000 BTC — effectively no cap
+  };
+}
+
 describe('BondingCurveSimulator', () => {
   describe('getInitialReserves', () => {
     it('returns correct initial values', () => {
@@ -146,14 +154,14 @@ describe('BondingCurveSimulator', () => {
 
     it('price impact is positive for buys (large enough to show)', () => {
       // Need a large buy relative to 30 BTC virtual reserve for integer-visible impact
-      const result = simulator.simulateBuy(initialReserves(), 500_000_000n); // 5 BTC
+      const result = simulator.simulateBuy(largeCapReserves(), 500_000_000n); // 5 BTC
 
       expect(result.priceImpactBps).toBeGreaterThan(0);
     });
 
     it('larger buys have larger price impact', () => {
-      const small = simulator.simulateBuy(initialReserves(), 500_000_000n); // 5 BTC
-      const large = simulator.simulateBuy(initialReserves(), 2_000_000_000n); // 20 BTC
+      const small = simulator.simulateBuy(largeCapReserves(), 500_000_000n); // 5 BTC
+      const large = simulator.simulateBuy(largeCapReserves(), 2_000_000_000n); // 20 BTC
 
       expect(large.priceImpactBps).toBeGreaterThan(small.priceImpactBps);
     });
@@ -175,7 +183,7 @@ describe('BondingCurveSimulator', () => {
     });
 
     it('new price is higher than before (large buy)', () => {
-      const reserves = initialReserves();
+      const reserves = largeCapReserves();
       const priceBefore = simulator.calculatePrice(reserves.virtualBtcReserve, reserves.virtualTokenSupply);
       // Large buy to visibly move price past integer truncation
       const result = simulator.simulateBuy(reserves, 500_000_000n);
@@ -236,7 +244,7 @@ describe('BondingCurveSimulator', () => {
 
     it('price impact is positive for sells (measured as price drop)', () => {
       // Large buy first to move price enough for integer-visible impact
-      const buyResult = simulator.simulateBuy(initialReserves(), 500_000_000n);
+      const buyResult = simulator.simulateBuy(largeCapReserves(), 500_000_000n);
       const sellResult = simulator.simulateSell(buyResult.newReserves, buyResult.tokensOut);
 
       expect(sellResult.priceImpactBps).toBeGreaterThan(0);
@@ -253,7 +261,7 @@ describe('BondingCurveSimulator', () => {
 
     it('new price is lower after sell (large amounts)', () => {
       // Large buy to move price up visibly, then sell it back
-      const buyResult = simulator.simulateBuy(initialReserves(), 500_000_000n);
+      const buyResult = simulator.simulateBuy(largeCapReserves(), 500_000_000n);
       const priceBefore = simulator.calculatePrice(
         buyResult.newReserves.virtualBtcReserve,
         buyResult.newReserves.virtualTokenSupply,
@@ -274,7 +282,7 @@ describe('BondingCurveSimulator', () => {
     });
 
     it('handles maximum allowed sell tax (5%)', () => {
-      const buyResult = simulator.simulateBuy(initialReserves(), 10_000_000n);
+      const buyResult = simulator.simulateBuy(largeCapReserves(), 10_000_000n);
       const sellResult = simulator.simulateSell(buyResult.newReserves, buyResult.tokensOut, 500n);
 
       expect(sellResult.fees.flywheel).toBeGreaterThan(0n);
@@ -283,7 +291,7 @@ describe('BondingCurveSimulator', () => {
 
     it('very large buy does not overflow', () => {
       // 10 BTC buy
-      const result = simulator.simulateBuy(initialReserves(), 1_000_000_000n);
+      const result = simulator.simulateBuy(largeCapReserves(), 1_000_000_000n);
 
       expect(result.tokensOut).toBeGreaterThan(0n);
       expect(result.newReserves.virtualBtcReserve).toBeGreaterThan(INITIAL_VIRTUAL_BTC_SATS);

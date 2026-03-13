@@ -12,6 +12,7 @@ import { WebSocketService } from './services/WebSocketService.js';
 import { OptimisticStateService } from './services/OptimisticStateService.js';
 import { IndexerService } from './services/IndexerService.js';
 import { MempoolService } from './services/MempoolService.js';
+import { MigrationService } from './services/MigrationService.js';
 
 const app = new HyperExpress.Server();
 
@@ -20,6 +21,8 @@ const optimisticService = new OptimisticStateService();
 const wsService = new WebSocketService(app);
 const indexerService = new IndexerService(wsService, optimisticService);
 const mempoolService = new MempoolService(wsService, optimisticService);
+const migrationService = new MigrationService(wsService);
+indexerService.setMigrationService(migrationService);
 
 export { optimisticService };
 
@@ -78,6 +81,7 @@ async function start(): Promise<void> {
   // Start background services
   await indexerService.start();
   mempoolService.start();
+  await migrationService.resume();
 
   // Start HTTP server
   await app.listen(config.port);
@@ -89,6 +93,7 @@ function shutdown(): void {
   console.log('[SERVER] Shutting down...');
   indexerService.stop();
   mempoolService.stop();
+  migrationService.stop();
   wsService.stop();
   closeDb()
     .then(() => {

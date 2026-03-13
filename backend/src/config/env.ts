@@ -16,6 +16,13 @@ export interface Config {
   s3AccessKey: string;
   s3SecretKey: string;
   s3PublicUrl: string;
+  // Migration
+  nativeSwapAddress: string;
+  migrationWalletMnemonic: string;
+  migrationFloorPrice: number;
+  migrationAntibotBlocks: number;
+  migrationMaxTokensPerReservation: number;
+  migrationMaxReserves5BlocksPercent: number;
 }
 
 function _required(key: string): string {
@@ -46,4 +53,11 @@ export const config: Config = {
   s3AccessKey: optional('S3_ACCESS_KEY', ''),
   s3SecretKey: optional('S3_SECRET_KEY', ''),
   s3PublicUrl: optional('S3_PUBLIC_URL', ''),
+  // Migration
+  nativeSwapAddress: optional('NATIVE_SWAP_ADDRESS', '0x035884f9ac2b6ae75d7778553e7d447899e9a82e247d7ced48f22aa102681e70'),
+  migrationWalletMnemonic: optional('MIGRATION_WALLET_MNEMONIC', ''),
+  migrationFloorPrice: parseInt(optional('MIGRATION_FLOOR_PRICE', '1000'), 10),
+  migrationAntibotBlocks: parseInt(optional('MIGRATION_ANTIBOT_BLOCKS', '10'), 10),
+  migrationMaxTokensPerReservation: parseInt(optional('MIGRATION_MAX_TOKENS_PER_RESERVATION', '0'), 10),
+  migrationMaxReserves5BlocksPercent: parseInt(optional('MIGRATION_MAX_RESERVES_5BLOCKS_PERCENT', '50'), 10),
 };

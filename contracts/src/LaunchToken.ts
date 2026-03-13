@@ -32,7 +32,7 @@ import {
   RESERVATION_TTL_BLOCKS,
 } from './lib/Constants';
 
-import { BuyEvent, SellEvent, GraduationEvent, ReservationEvent, FeeClaimedEvent } from './events/Events';
+import { BuyEvent, SellEvent, GraduationEvent, ReservationEvent, FeeClaimedEvent, MigrationEvent } from './events/Events';
 
 @final
 export class LaunchToken extends OP20 {
@@ -43,6 +43,7 @@ export class LaunchToken extends OP20 {
   private readonly realBtcReservePtr: u16 = Blockchain.nextPointer;
   private readonly totalVolumeSatsPtr: u16 = Blockchain.nextPointer;
   private readonly graduatedPtr: u16 = Blockchain.nextPointer;
+  private readonly migratedPtr: u16 = Blockchain.nextPointer;
 
   // Fee pools
   private readonly creatorFeePoolPtr: u16 = Blockchain.nextPointer;
@@ -77,6 +78,7 @@ export class LaunchToken extends OP20 {
   private readonly realBtcReserve: StoredU256 = new StoredU256(this.realBtcReservePtr, EMPTY_POINTER);
   private readonly totalVolumeSats: StoredU256 = new StoredU256(this.totalVolumeSatsPtr, EMPTY_POINTER);
   private readonly graduated: StoredBoolean = new StoredBoolean(this.graduatedPtr, false);
+  private readonly migrated: StoredBoolean = new StoredBoolean(this.migratedPtr, false);
 
   private readonly creatorFeePool: StoredU256 = new StoredU256(this.creatorFeePoolPtr, EMPTY_POINTER);
   private readonly minterFeePool: StoredU256 = new StoredU256(this.minterFeePoolPtr, EMPTY_POINTER);
@@ -463,6 +465,47 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
+  @method({ name: 'recipient', type: ABIDataTypes.ADDRESS })
+  @returns({ name: 'tokenAmount', type: ABIDataTypes.UINT256 })
+  @emit('Migration')
+  public migrate(calldata: Calldata): BytesWriter {
+    const recipient = calldata.readAddress();
+    const sender = Blockchain.tx.sender;
+
+    if (!this.graduated.value) {
+      throw new Revert('Not graduated');
+    }
+    if (this.migrated.value) {
+      throw new Revert('Already migrated');
+    }
+
+    this.onlyDeployer(sender);
+
+    // Remaining tokens on the curve that were never minted
+    const liquidityTokens = this.virtualTokenSupply.value;
+
+    // Mint liquidity tokens to the recipient address
+    this._mint(recipient, liquidityTokens);
+
+    this.migrated.value = true;
+
+    const realBtc = this.realBtcReserve.value;
+    this.emitEvent(new MigrationEvent(recipient, liquidityTokens, realBtc));
+
+    const writer = new BytesWriter(32);
+    writer.writeU256(liquidityTokens);
+    return writer;
+  }
+
+  @view
+  @method()
+  @returns({ name: 'isMigrated', type: ABIDataTypes.BOOL })
+  public isMigrated(calldata: Calldata): BytesWriter {
+    const writer = new BytesWriter(1);
+    writer.writeBoolean(this.migrated.value);
+    return writer;
+  }
+
   @view
   @method()
   @returns(
@@ -547,6 +590,21 @@ export class LaunchToken extends OP20 {
   }
 
   @view
+  @method()
+  @returns(
+    { name: 'platformFees', type: ABIDataTypes.UINT256 },
+    { name: 'creatorFees', type: ABIDataTypes.UINT256 },
+    { name: 'minterFees', type: ABIDataTypes.UINT256 },
+  )
+  public getFeePools(calldata: Calldata): BytesWriter {
+    const writer = new BytesWriter(32 * 3);
+    writer.writeU256(this.platformFeePool.value);
+    writer.writeU256(this.creatorFeePool.value);
+    writer.writeU256(this.minterFeePool.value);
+    return writer;
+  }
+
+  @view
   @method({ name: 'addr', type: ABIDataTypes.ADDRESS })
   @returns(
     { name: 'amount', type: ABIDataTypes.UINT256 },
@@ -621,7 +679,7 @@ export class LaunchToken extends OP20 {
 
     if (realBtc >= threshold) {
       this.graduated.value = true;
-      this.emitEvent(new GraduationEvent(Blockchain.tx.origin, realBtc));
+      this.emitEvent(new GraduationEvent(Blockchain.tx.sender, realBtc));
     }
   }
 

@@ -14,9 +14,9 @@ export interface Token {
   realBtcReserve: string;
 
   // Derived
-  currentPriceSats: number; // price per 1 token in sats
-  marketCapSats: number;
-  volume24hSats: number;
+  currentPriceSats: number; // price per 1 token in sats — converted from string at API boundary
+  marketCapSats: number; // converted from string at API boundary
+  volume24hSats: number; // converted from string at API boundary
   priceChange24h: number; // percent
   tradeCount24h: number;
   holderCount: number;
@@ -38,7 +38,7 @@ export interface Token {
   graduationProgress: number; // 0-100
 }
 
-export type TokenStatus = 'active' | 'graduated' | 'new';
+export type TokenStatus = 'active' | 'graduated' | 'migrating' | 'migrated' | 'new';
 
 export interface TokenSortOption {
   label: string;

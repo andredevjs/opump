@@ -113,6 +113,17 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     ],
   },
   {
+    name: 'getFeePools',
+    type: BitcoinAbiTypes.Function,
+    constant: true,
+    inputs: [],
+    outputs: [
+      { name: 'platformFees', type: ABIDataTypes.UINT256 },
+      { name: 'creatorFees', type: ABIDataTypes.UINT256 },
+      { name: 'minterFees', type: ABIDataTypes.UINT256 },
+    ],
+  },
+  {
     name: 'getReservation',
     type: BitcoinAbiTypes.Function,
     constant: true,
@@ -204,6 +215,7 @@ export type GetPriceResult = CallResult<{ priceSatsPerToken: bigint }, []>;
 export type GetConfigResult = CallResult<{ creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint }, []>;
 export type IsGraduatedResult = CallResult<{ isGraduated: boolean }, []>;
 export type GetMinterInfoResult = CallResult<{ shares: bigint; buyBlock: bigint; eligible: boolean }, []>;
+export type GetFeePoolsResult = CallResult<{ platformFees: bigint; creatorFees: bigint; minterFees: bigint }, []>;
 export type GetReservationResult = CallResult<{ amount: bigint; expiryBlock: bigint }, []>;
 
 // ============ LaunchToken Interface ============
@@ -220,6 +232,7 @@ export interface ILaunchTokenContract extends IOP20Contract {
   getReserves(): Promise<GetReservesResult>;
   getPrice(): Promise<GetPriceResult>;
   getConfig(): Promise<GetConfigResult>;
+  getFeePools(): Promise<GetFeePoolsResult>;
   isGraduated(): Promise<IsGraduatedResult>;
   getMinterInfo(addr: Address): Promise<GetMinterInfoResult>;
   getReservation(addr: Address): Promise<GetReservationResult>;

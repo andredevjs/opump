@@ -36,7 +36,7 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
 
   useEffect(() => {
     if (!connected || !walletAddress || !hashedMLDSAKey) return;
-    // Fetch minter info from contract
+    // Fetch minter info and fee pool from contract
     (async () => {
       try {
         const { getLaunchTokenContract } = await import('@/services/contract');
@@ -48,33 +48,21 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
           shares: String(result.properties.shares ?? '0'),
           eligible: Boolean(result.properties.eligible),
         });
+
+        // Fetch on-chain fee pool totals instead of iterating trades
+        const poolResult = await contract.getFeePools();
+        setMinterPoolSats(Number(poolResult.properties.minterFees));
       } catch {
         // Silently fail — user may not be a minter
       }
     })();
   }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
 
-  // Fetch total minter fees from trade history
-  useEffect(() => {
-    if (!connected) return;
-    let cancelled = false;
-    import('@/services/api').then(({ getTrades }) =>
-      getTrades(tokenAddress, 1, 200).then((res) => {
-        if (cancelled) return;
-        let total = 0;
-        for (const t of res.trades) {
-          total += parseInt(String(t.fees?.minter ?? 0), 10) || 0;
-        }
-        setMinterPoolSats(total);
-      }).catch(() => {}),
-    );
-    return () => { cancelled = true; };
-  }, [tokenAddress, connected]);
-
   if (!connected) return null;
   if (minterInfo && minterInfo.shares === '0') return null;
 
   const handleClaim = async () => {
+    if (!walletAddress) return;
     setClaiming(true);
     setClaimResult(null);
     try {
@@ -82,7 +70,7 @@ function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
       const contract = getLaunchTokenContract(tokenAddress);
       const sim = await contract.claimMinterReward();
       const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress!,
+        refundTo: walletAddress,
       });
       setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
     } catch (err) {
@@ -138,26 +126,29 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
 
   const isCreator = connected && walletAddress === creatorAddress;
 
-  // Fetch total creator fees from trade history
+  // Fetch on-chain creator fee pool instead of iterating trades
   useEffect(() => {
     if (!isCreator) return;
     let cancelled = false;
-    import('@/services/api').then(({ getTrades }) =>
-      getTrades(tokenAddress, 1, 200).then((res) => {
-        if (cancelled) return;
-        let total = 0;
-        for (const t of res.trades) {
-          total += parseInt(String(t.fees?.creator ?? 0), 10) || 0;
+    (async () => {
+      try {
+        const { getLaunchTokenContract } = await import('@/services/contract');
+        const contract = getLaunchTokenContract(tokenAddress);
+        const poolResult = await contract.getFeePools();
+        if (!cancelled) {
+          setClaimableSats(Number(poolResult.properties.creatorFees));
         }
-        setClaimableSats(total);
-      }).catch(() => {}),
-    );
+      } catch {
+        // Silently fail
+      }
+    })();
     return () => { cancelled = true; };
   }, [tokenAddress, isCreator]);
 
   if (!isCreator) return null;
 
   const handleClaim = async () => {
+    if (!walletAddress) return;
     setClaiming(true);
     setClaimResult(null);
     try {
@@ -165,7 +156,7 @@ function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string
       const contract = getLaunchTokenContract(tokenAddress);
       const sim = await contract.claimCreatorFees();
       const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress!,
+        refundTo: walletAddress,
       });
       setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
       setClaimableSats(0);
@@ -376,7 +367,8 @@ export function TokenPage() {
                   />
                   <GraduationProgress
                     progress={token.graduationProgress}
-                    realBtcSats={parseInt(token.realBtcReserve)}
+                    realBtcSats={Number(token.realBtcReserve)}
+                    status={token.status}
                   />
                 </div>
               </TabsContent>
@@ -386,21 +378,48 @@ export function TokenPage() {
 
         {/* Trade panel sidebar */}
         <div className="space-y-6">
-          {token.status === 'graduated' ? (
+          {token.status === 'migrated' ? (
+            <Card className="text-center py-8">
+              <Badge variant="bull" className="mb-3 text-base px-4 py-1">Trading on MotoSwap</Badge>
+              <p className="text-text-secondary text-sm mt-2">
+                This token has migrated to MotoSwap DEX for open-market trading.
+              </p>
+              {MOTOSWAP_URL && (
+                <a
+                  href={`${MOTOSWAP_URL}/swap?token=${token.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-4 px-6 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Trade on MotoSwap
+                </a>
+              )}
+            </Card>
+          ) : token.status === 'migrating' ? (
+            <Card className="text-center py-8">
+              <Badge variant="warning" className="mb-3 text-base px-4 py-1 animate-pulse">Migrating</Badge>
+              <p className="text-text-secondary text-sm mt-2">
+                This token is being migrated to MotoSwap DEX.
+              </p>
+              <p className="text-text-muted text-xs mt-1">
+                Liquidity pool creation in progress. Trading will be available shortly.
+              </p>
+              <div className="mt-4 flex justify-center">
+                <div className="h-5 w-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            </Card>
+          ) : token.status === 'graduated' ? (
             <Card className="text-center py-8">
               <Badge variant="warning" className="mb-3 text-base px-4 py-1">Graduated</Badge>
               <p className="text-text-secondary text-sm mt-2">
                 This token has graduated from the bonding curve.
               </p>
               <p className="text-text-muted text-xs mt-1">
-                Bonding curve trading is closed. DEX liquidity migration coming soon.
+                DEX liquidity migration starting soon.
               </p>
-              <button
-                disabled
-                className="inline-block mt-4 px-6 py-2 bg-elevated text-text-muted rounded-lg text-sm font-medium cursor-not-allowed"
-              >
-                DEX Migration Coming Soon
-              </button>
+              <div className="mt-4 flex justify-center">
+                <div className="h-5 w-5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+              </div>
             </Card>
           ) : (
             <TradePanel token={token} />
@@ -410,7 +429,8 @@ export function TokenPage() {
             <h3 className="text-sm font-medium text-text-secondary mb-3">Graduation Progress</h3>
             <GraduationProgress
               progress={token.graduationProgress}
-              realBtcSats={parseInt(token.realBtcReserve)}
+              realBtcSats={Number(token.realBtcReserve)}
+              status={token.status}
             />
           </Card>
 

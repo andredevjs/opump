@@ -26,6 +26,11 @@ export type FeeClaimedEvent = {
     readonly amount: bigint;
     readonly feeType: bigint;
 };
+export type MigrationEvent = {
+    readonly recipient: Address;
+    readonly tokenAmount: bigint;
+    readonly btcReserve: bigint;
+};
 
 // ------------------------------------------------------------------
 // Call Results
@@ -102,6 +107,26 @@ export type ClaimMinterReward = CallResult<
 >;
 
 /**
+ * @description Represents the result of the migrate function call.
+ */
+export type Migrate = CallResult<
+    {
+        tokenAmount: bigint;
+    },
+    OPNetEvent<MigrationEvent>[]
+>;
+
+/**
+ * @description Represents the result of the isMigrated function call.
+ */
+export type IsMigrated = CallResult<
+    {
+        isMigrated: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
  * @description Represents the result of the getReserves function call.
  */
 export type GetReserves = CallResult<
@@ -161,6 +186,18 @@ export type GetMinterInfo = CallResult<
 >;
 
 /**
+ * @description Represents the result of the getFeePools function call.
+ */
+export type GetFeePools = CallResult<
+    {
+        platformFees: bigint;
+        creatorFees: bigint;
+        minterFees: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
  * @description Represents the result of the getReservation function call.
  */
 export type GetReservation = CallResult<
@@ -182,10 +219,13 @@ export interface ILaunchToken extends IOP_NETContract {
     claimPlatformFees(): Promise<ClaimPlatformFees>;
     claimCreatorFees(): Promise<ClaimCreatorFees>;
     claimMinterReward(): Promise<ClaimMinterReward>;
+    migrate(recipient: Address): Promise<Migrate>;
+    isMigrated(): Promise<IsMigrated>;
     getReserves(): Promise<GetReserves>;
     getPrice(): Promise<GetPrice>;
     getConfig(): Promise<GetConfig>;
     isGraduated(): Promise<IsGraduated>;
+    getFeePools(): Promise<GetFeePools>;
     getMinterInfo(addr: Address): Promise<GetMinterInfo>;
     getReservation(addr: Address): Promise<GetReservation>;
 }

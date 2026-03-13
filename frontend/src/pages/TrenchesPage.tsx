@@ -13,6 +13,7 @@ const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Graduated', value: 'graduated' },
+  { label: 'On DEX', value: 'migrated' },
   { label: 'New', value: 'new' },
 ];
 

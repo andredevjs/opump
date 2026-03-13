@@ -4,6 +4,7 @@ import { getTradesCollection } from '../db/models/Trade.js';
 import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { WebSocketService } from './WebSocketService.js';
 import type { OptimisticStateService } from './OptimisticStateService.js';
+import type { MigrationService } from './MigrationService.js';
 import { TOKEN_DECIMALS } from '../../../shared/constants/bonding-curve.js';
 
 const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
@@ -31,6 +32,12 @@ interface GraduationEventData {
   finalBtcReserve: bigint;
 }
 
+interface MigrationEventData {
+  recipient: string;
+  tokenAmount: bigint;
+  btcReserve: bigint;
+}
+
 interface TokenDeployedEventData {
   creator: string;
   tokenAddress: string;
@@ -44,10 +51,16 @@ export class IndexerService {
   private processing = false;
   private syncingReserves = false;
 
+  private migrationService: MigrationService | null = null;
+
   constructor(
     private wsService: WebSocketService,
     private optimisticService: OptimisticStateService,
   ) {}
+
+  setMigrationService(service: MigrationService): void {
+    this.migrationService = service;
+  }
 
   private async getProvider(): Promise<import('opnet').JSONRpcProvider> {
     if (!this.provider) {
@@ -184,7 +197,7 @@ export class IndexerService {
         continue;
       }
 
-      const interactionTx = tx as { contractAddress?: string; hash: string; from?: { p2tr: (network: unknown) => string; toHex: () => string } } & typeof tx;
+      const interactionTx = tx as { contractAddress?: string; hash: string } & typeof tx;
       const contractAddr = interactionTx.contractAddress;
 
       if (!contractAddr) continue;
@@ -224,6 +237,11 @@ export class IndexerService {
             if (gradData) {
               await this.processGraduation(contractAddr, blockNumber);
               affectedTokens.add(contractAddr);
+            }
+          } else if (eventType === 'Migration' && isKnownToken) {
+            const migrationData = this.decodeMigrationEvent(event);
+            if (migrationData) {
+              console.log(`[Indexer] Migration event for ${contractAddr}: ${migrationData.tokenAmount} tokens to ${migrationData.recipient}`);
             }
           } else if (eventType === 'TokenDeployed' && isFactory) {
             const deployData = this.decodeTokenDeployedEvent(event);
@@ -325,6 +343,21 @@ export class IndexerService {
     return {
       creator: this.readAddressFromEventData(data, 0),
       tokenAddress: this.readAddressFromEventData(data, 32),
+    };
+  }
+
+  /**
+   * Decode a Migration event from the on-chain event data.
+   * Layout: recipient(32) + tokenAmount(32) + btcReserve(32)
+   */
+  private decodeMigrationEvent(event: unknown): MigrationEventData | null {
+    const data = this.getEventData(event);
+    if (!data || data.length < 96) return null;
+
+    return {
+      recipient: this.readAddressFromEventData(data, 0),
+      tokenAmount: this.readU256FromEventData(data, 32),
+      btcReserve: this.readU256FromEventData(data, 64),
     };
   }
 
@@ -658,6 +691,13 @@ export class IndexerService {
     });
 
     console.log(`[Indexer] Token ${tokenAddress} graduated at block ${blockNumber}`);
+
+    // Trigger migration to NativeSwap DEX
+    if (this.migrationService) {
+      this.migrationService.startMigration(tokenAddress).catch((err) => {
+        console.error(`[Indexer] Failed to start migration for ${tokenAddress}:`, err instanceof Error ? err.message : err);
+      });
+    }
   }
 
   /**
@@ -685,23 +725,28 @@ export class IndexerService {
 
     for (const tokenAddress of tokenAddresses) {
       try {
-        // Aggregate 24h volume
-        const volumeAgg = await tradesCol.aggregate([
-          { $match: { tokenAddress, status: 'confirmed', createdAt: { $gte: oneDayAgo } } },
-          { $group: { _id: null, volume: { $sum: { $toLong: '$btcAmount' } }, count: { $sum: 1 } } },
-        ]).toArray();
-
-        const volume24h = volumeAgg.length > 0 ? String(volumeAgg[0].volume) : '0';
+        // Aggregate 24h volume using application-level BigInt to avoid $toLong overflow
+        const recentTrades = await tradesCol
+          .find({ tokenAddress, status: 'confirmed', createdAt: { $gte: oneDayAgo } }, { projection: { btcAmount: 1 } })
+          .toArray();
+        let volume24hBig = 0n;
+        for (const t of recentTrades) {
+          volume24hBig += BigInt(String(t.btcAmount) || '0');
+        }
+        const volume24h = volume24hBig.toString();
 
         // Total trade count
         const tradeCount = await tradesCol.countDocuments({ tokenAddress, status: 'confirmed' });
 
-        // Total volume
-        const totalVolumeAgg = await tradesCol.aggregate([
-          { $match: { tokenAddress, status: 'confirmed' } },
-          { $group: { _id: null, total: { $sum: { $toLong: '$btcAmount' } } } },
-        ]).toArray();
-        const volumeTotal = totalVolumeAgg.length > 0 ? String(totalVolumeAgg[0].total) : '0';
+        // Total volume using application-level BigInt
+        const allTrades = await tradesCol
+          .find({ tokenAddress, status: 'confirmed' }, { projection: { btcAmount: 1 } })
+          .toArray();
+        let volumeTotalBig = 0n;
+        for (const t of allTrades) {
+          volumeTotalBig += BigInt(String(t.btcAmount) || '0');
+        }
+        const volumeTotal = volumeTotalBig.toString();
 
         // Fetch current token to compute market cap from current price
         const token = await tokens.findOne({ _id: tokenAddress });
@@ -710,7 +755,7 @@ export class IndexerService {
           const priceSats = BigInt(token.currentPriceSats || '0');
           const supply = BigInt(token.virtualTokenSupply || '0');
           if (supply > 0n) {
-            marketCapSats = String(priceSats * supply / (10n ** 8n));
+            marketCapSats = String(priceSats * supply / DECIMALS_FACTOR);
           }
         }
 
@@ -753,11 +798,15 @@ export class IndexerService {
     const tradesCol = getTradesCollection();
     const totalTrades = await tradesCol.countDocuments({ status: 'confirmed' });
 
-    const volumeAgg = await tradesCol.aggregate([
-      { $match: { status: 'confirmed' } },
-      { $group: { _id: null, total: { $sum: { $toLong: '$btcAmount' } } } },
-    ]).toArray();
-    const totalVolumeSats = volumeAgg.length > 0 ? String(volumeAgg[0].total) : '0';
+    // Aggregate total volume using application-level BigInt to avoid $toLong overflow
+    const allConfirmed = await tradesCol
+      .find({ status: 'confirmed' }, { projection: { btcAmount: 1 } })
+      .toArray();
+    let totalVolumeBig = 0n;
+    for (const t of allConfirmed) {
+      totalVolumeBig += BigInt(String(t.btcAmount) || '0');
+    }
+    const totalVolumeSats = totalVolumeBig.toString();
 
     await stats.updateOne(
       { _id: 'current' },
