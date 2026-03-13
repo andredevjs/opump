@@ -1,12 +1,19 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BigNumber from 'bignumber.js';
 import { Copy, Check, ExternalLink, LogOut, Coins } from 'lucide-react';
 import { useWalletStore } from '@/stores/wallet-store';
-import { useTradeStore, getKnownTokenAddresses } from '@/stores/trade-store';
-import { useTokenStore } from '@/stores/token-store';
+import { getKnownTokenAddresses } from '@/stores/trade-store';
 import { formatBtc, formatTokenAmount, shortenAddress } from '@/lib/format';
+import { mapApiTokenToToken } from '@/lib/mappers';
+import * as api from '@/services/api';
 import type { Token } from '@/types/token';
+
+interface HoldingEntry {
+  address: string;
+  units: string;
+  token: Token | null;
+}
 
 interface WalletPopoverContentProps {
   onClose: () => void;
@@ -15,61 +22,43 @@ interface WalletPopoverContentProps {
 export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
   const navigate = useNavigate();
   const { address, balanceSats, disconnect, hashedMLDSAKey, publicKey } = useWalletStore();
-  const holdings = useTradeStore((s) => s.holdings);
-  const setHolding = useTradeStore((s) => s.setHolding);
-  const tokens = useTokenStore((s) => s.tokens);
-  const fetchToken = useTokenStore((s) => s.fetchToken);
   const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(false);
-  // Local metadata cache for tokens not in the global tokens[] list
-  const [localTokens, setLocalTokens] = useState<Record<string, Token>>({});
+  const [loading, setLoading] = useState(true);
+  const [entries, setEntries] = useState<HoldingEntry[]>([]);
+  const fetched = useRef(false);
 
-  // Look up token from global store first, fall back to local cache
-  const resolveToken = useCallback(
-    (addr: string): Token | undefined => {
-      return tokens.find((t) => t.address === addr) ?? localTokens[addr];
-    },
-    [tokens, localTokens],
-  );
-
-  // Fetch on-chain balances and token metadata when popover opens
+  // Fetch everything into local state only — no global store mutations
   useEffect(() => {
-    if (!hashedMLDSAKey || !publicKey) return;
-    let cancelled = false;
+    if (!hashedMLDSAKey || !publicKey || fetched.current) return;
+    fetched.current = true;
+
     const addresses = getKnownTokenAddresses();
-    if (addresses.length === 0) return;
-
-    setLoading(true);
-
-    import('@/services/contract').then(({ fetchBalanceOf }) => {
-      let pending = addresses.length;
-      for (const addr of addresses) {
-        fetchBalanceOf(addr, hashedMLDSAKey, publicKey)
-          .then((balance) => { if (!cancelled) setHolding(addr, balance); })
-          .catch(() => {})
-          .finally(() => {
-            pending--;
-            if (pending === 0 && !cancelled) setLoading(false);
-          });
-      }
-    });
-
-    // Ensure token metadata is available for every known address
-    for (const addr of addresses) {
-      const inStore = tokens.find((t) => t.address === addr);
-      if (!inStore && !localTokens[addr]) {
-        fetchToken(addr)
-          .then((token) => {
-            if (token && !cancelled) {
-              setLocalTokens((prev) => ({ ...prev, [addr]: token }));
-            }
-          })
-          .catch(() => {});
-      }
+    if (addresses.length === 0) {
+      setLoading(false);
+      return;
     }
 
+    let cancelled = false;
+
+    // Fetch balances and metadata in parallel, all into local state
+    import('@/services/contract').then(({ fetchBalanceOf }) => {
+      const promises = addresses.map(async (addr) => {
+        const [balance, token] = await Promise.all([
+          fetchBalanceOf(addr, hashedMLDSAKey, publicKey).catch(() => '0'),
+          api.getToken(addr).then(mapApiTokenToToken).catch(() => null),
+        ]);
+        return { address: addr, units: balance, token };
+      });
+
+      Promise.all(promises).then((results) => {
+        if (cancelled) return;
+        // Only show non-zero holdings
+        setEntries(results.filter((e) => e.units !== '0'));
+        setLoading(false);
+      });
+    });
+
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hashedMLDSAKey, publicKey]);
 
   const handleCopy = useCallback(async () => {
@@ -94,8 +83,6 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
     onClose();
   }, [disconnect, onClose]);
 
-  const entries = Object.entries(holdings).filter(([, v]) => v !== '0' && v !== undefined);
-
   return (
     <div className="w-72 sm:w-80">
       {/* Header — address + BTC balance */}
@@ -118,7 +105,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
           Holdings
         </p>
 
-        {loading && entries.length === 0 ? (
+        {loading ? (
           <div className="space-y-2 px-2 py-1">
             {[1, 2, 3].map((i) => (
               <div key={i} className="flex items-center justify-between animate-pulse">
@@ -143,9 +130,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
           </div>
         ) : (
           <div className="space-y-0.5">
-            {entries.map(([tokenAddress, units]) => {
-              const token = resolveToken(tokenAddress);
-              // Token metadata still loading — show a placeholder row
+            {entries.map(({ address: tokenAddress, units, token }) => {
               if (!token) {
                 return (
                   <div
@@ -153,7 +138,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
                     className="w-full flex items-center justify-between px-2 py-2 rounded-lg"
                   >
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-elevated animate-pulse" />
+                      <div className="w-6 h-6 rounded-full bg-elevated" />
                       <span className="text-xs font-mono text-text-muted">
                         {shortenAddress(tokenAddress, 4)}
                       </span>

@@ -20,18 +20,16 @@ export function WalletButton() {
             <span className="font-mono text-text-secondary">{shortenAddress(address, 4)}</span>
           </button>
         </Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Content
-            side="bottom"
-            align="end"
-            sideOffset={8}
-            collisionPadding={8}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-            className="bg-card border border-border rounded-xl shadow-lg z-50 origin-top-right transition-[opacity,transform] duration-150 data-[state=open]:opacity-100 data-[state=open]:scale-100 data-[state=closed]:opacity-0 data-[state=closed]:scale-95"
-          >
-            <WalletPopoverContent onClose={() => setOpen(false)} />
-          </Popover.Content>
-        </Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          collisionPadding={8}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="bg-card border border-border rounded-xl shadow-lg z-50"
+        >
+          <WalletPopoverContent onClose={() => setOpen(false)} />
+        </Popover.Content>
       </Popover.Root>
     );
   }
