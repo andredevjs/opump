@@ -6,6 +6,7 @@ import {
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
   MINTER_FEE_BPS,
+  TOKEN_DECIMALS_FACTOR,
 } from './Constants';
 
 /**
@@ -76,10 +77,12 @@ export class BondingCurve {
   }
 
   /**
-   * Calculate price: virtualBtcReserve / virtualTokenSupply (sats per token base unit)
+   * Calculate price in sats per whole token.
+   * Scales by 10^8 (TOKEN_DECIMALS_FACTOR) to convert from per-base-unit to per-token,
+   * avoiding integer truncation to zero.
    */
   static calculatePrice(virtualBtc: u256, virtualToken: u256): u256 {
     if (virtualToken == u256.Zero) return u256.Zero;
-    return SafeMath.div(virtualBtc, virtualToken);
+    return SafeMath.div(SafeMath.mul(virtualBtc, TOKEN_DECIMALS_FACTOR), virtualToken);
   }
 }

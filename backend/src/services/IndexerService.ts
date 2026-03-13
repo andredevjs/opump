@@ -426,6 +426,18 @@ export class IndexerService {
     // Calculate fees using the simulator
     const fees = this.calculateFeeBreakdown(data.btcIn);
 
+    // Recalculate price from reserves (event newPrice may be unscaled from older contracts)
+    const token = await getTokensCollection().findOne({ _id: tokenAddress });
+    let scaledPrice: string;
+    if (token) {
+      const vBtc = BigInt(token.virtualBtcReserve || '0');
+      const vToken = BigInt(token.virtualTokenSupply || '0');
+      scaledPrice = vToken > 0n ? ((vBtc * DECIMALS_FACTOR) / vToken).toString() : '0';
+    } else {
+      // Fallback: use event price (may be correctly scaled from updated contracts)
+      scaledPrice = data.newPrice.toString();
+    }
+
     // Upsert — if the MempoolService already registered this trade as pending, update it
     await trades.updateOne(
       { _id: txHash },
@@ -436,7 +448,7 @@ export class IndexerService {
           traderAddress: data.buyer,
           btcAmount: data.btcIn.toString(),
           tokenAmount: data.tokensOut.toString(),
-          pricePerToken: data.newPrice.toString(),
+          pricePerToken: scaledPrice,
           fees: {
             platform: fees.platform.toString(),
             creator: fees.creator.toString(),
@@ -465,14 +477,14 @@ export class IndexerService {
       traderAddress: data.buyer,
       btcAmount: data.btcIn.toString(),
       tokenAmount: data.tokensOut.toString(),
-      pricePerToken: data.newPrice.toString(),
+      pricePerToken: scaledPrice,
       status: 'confirmed',
       blockNumber,
     });
 
     // Broadcast price update
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: data.newPrice.toString(),
+      currentPriceSats: scaledPrice,
       isOptimistic: false,
     });
   }
@@ -490,6 +502,17 @@ export class IndexerService {
     const trades = getTradesCollection();
     const fees = this.calculateFeeBreakdown(data.btcOut);
 
+    // Recalculate price from reserves (event newPrice may be unscaled from older contracts)
+    const sellToken = await getTokensCollection().findOne({ _id: tokenAddress });
+    let scaledSellPrice: string;
+    if (sellToken) {
+      const vBtc = BigInt(sellToken.virtualBtcReserve || '0');
+      const vToken = BigInt(sellToken.virtualTokenSupply || '0');
+      scaledSellPrice = vToken > 0n ? ((vBtc * DECIMALS_FACTOR) / vToken).toString() : '0';
+    } else {
+      scaledSellPrice = data.newPrice.toString();
+    }
+
     await trades.updateOne(
       { _id: txHash },
       {
@@ -499,7 +522,7 @@ export class IndexerService {
           traderAddress: data.seller,
           btcAmount: data.btcOut.toString(),
           tokenAmount: data.tokensIn.toString(),
-          pricePerToken: data.newPrice.toString(),
+          pricePerToken: scaledSellPrice,
           fees: {
             platform: fees.platform.toString(),
             creator: fees.creator.toString(),
@@ -526,13 +549,13 @@ export class IndexerService {
       traderAddress: data.seller,
       btcAmount: data.btcOut.toString(),
       tokenAmount: data.tokensIn.toString(),
-      pricePerToken: data.newPrice.toString(),
+      pricePerToken: scaledSellPrice,
       status: 'confirmed',
       blockNumber,
     });
 
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: data.newPrice.toString(),
+      currentPriceSats: scaledSellPrice,
       isOptimistic: false,
     });
   }

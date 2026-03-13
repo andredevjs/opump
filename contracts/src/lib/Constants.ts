@@ -37,3 +37,6 @@ export const MAX_SELL_TAX_BPS: u256 = u256.fromU32(500); // 5%
 
 // Penalty
 export const CANCEL_PENALTY_BPS: u256 = u256.fromU32(5000); // 50%
+
+// Token decimals scaling factor for price calculation (10^8)
+export const TOKEN_DECIMALS_FACTOR: u256 = u256.fromString('100000000');

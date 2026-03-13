@@ -329,7 +329,8 @@ export function registerTokenRoutes(app: HyperExpress.Server): void {
     if (_optimisticService && _optimisticService.hasPending(address)) {
       const optimistic = _optimisticService.getOptimisticPrice(address);
       const vToken = optimistic.reserves.virtualTokenSupply;
-      const price = vToken > 0n ? optimistic.reserves.virtualBtcReserve / vToken : 0n;
+      const decimalsFactor = 10n ** BigInt(TOKEN_DECIMALS);
+      const price = vToken > 0n ? (optimistic.reserves.virtualBtcReserve * decimalsFactor) / vToken : 0n;
       res.json({
         currentPriceSats: price.toString(),
         virtualBtcReserve: optimistic.reserves.virtualBtcReserve.toString(),
