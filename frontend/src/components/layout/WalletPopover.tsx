@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BigNumber from 'bignumber.js';
 import { Copy, Check, ExternalLink, LogOut, Coins } from 'lucide-react';
@@ -6,7 +6,7 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore, getKnownTokenAddresses } from '@/stores/trade-store';
 import { useTokenStore } from '@/stores/token-store';
 import { formatBtc, formatTokenAmount, shortenAddress } from '@/lib/format';
-import { useState } from 'react';
+import type { Token } from '@/types/token';
 
 interface WalletPopoverContentProps {
   onClose: () => void;
@@ -17,12 +17,22 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
   const { address, balanceSats, disconnect, hashedMLDSAKey, publicKey } = useWalletStore();
   const holdings = useTradeStore((s) => s.holdings);
   const setHolding = useTradeStore((s) => s.setHolding);
-  const getToken = useTokenStore((s) => s.getToken);
+  const tokens = useTokenStore((s) => s.tokens);
   const fetchToken = useTokenStore((s) => s.fetchToken);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Local metadata cache for tokens not in the global tokens[] list
+  const [localTokens, setLocalTokens] = useState<Record<string, Token>>({});
 
-  // Fetch on-chain balances when popover opens
+  // Look up token from global store first, fall back to local cache
+  const resolveToken = useCallback(
+    (addr: string): Token | undefined => {
+      return tokens.find((t) => t.address === addr) ?? localTokens[addr];
+    },
+    [tokens, localTokens],
+  );
+
+  // Fetch on-chain balances and token metadata when popover opens
   useEffect(() => {
     if (!hashedMLDSAKey || !publicKey) return;
     let cancelled = false;
@@ -41,12 +51,22 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
             pending--;
             if (pending === 0 && !cancelled) setLoading(false);
           });
-
-        // Also ensure token metadata is loaded
-        const existing = getToken(addr);
-        if (!existing) fetchToken(addr).catch(() => {});
       }
     });
+
+    // Ensure token metadata is available for every known address
+    for (const addr of addresses) {
+      const inStore = tokens.find((t) => t.address === addr);
+      if (!inStore && !localTokens[addr]) {
+        fetchToken(addr)
+          .then((token) => {
+            if (token && !cancelled) {
+              setLocalTokens((prev) => ({ ...prev, [addr]: token }));
+            }
+          })
+          .catch(() => {});
+      }
+    }
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -124,8 +144,25 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
         ) : (
           <div className="space-y-0.5">
             {entries.map(([tokenAddress, units]) => {
-              const token = getToken(tokenAddress);
-              if (!token) return null;
+              const token = resolveToken(tokenAddress);
+              // Token metadata still loading — show a placeholder row
+              if (!token) {
+                return (
+                  <div
+                    key={tokenAddress}
+                    className="w-full flex items-center justify-between px-2 py-2 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-elevated animate-pulse" />
+                      <span className="text-xs font-mono text-text-muted">
+                        {shortenAddress(tokenAddress, 4)}
+                      </span>
+                    </div>
+                    <p className="text-sm font-mono text-text-primary">{formatTokenAmount(units)}</p>
+                  </div>
+                );
+              }
+
               const valueSats = new BigNumber(units).times(token.currentPriceSats).toNumber();
 
               return (
