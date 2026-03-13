@@ -41,7 +41,7 @@ const INITIAL_FORM: LaunchFormData = {
 };
 
 const DEPLOY_PHASES: DeployPhase[] = [
-  { label: 'Deploying contract on OPNet...', status: 'pending' },
+  { label: 'Deploying contract — waiting for block confirmation (~10 min)...', status: 'pending' },
   { label: 'Registering token with factory...', status: 'pending' },
   { label: 'Saving token metadata...', status: 'pending' },
 ];

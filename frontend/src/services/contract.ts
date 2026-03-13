@@ -165,13 +165,13 @@ export async function fetchBalanceOf(
  */
 export async function waitForConfirmation(
   txHash: string,
-  pollIntervalMs = 5000,
-  timeoutMs = 300_000,
+  pollIntervalMs = 10_000,
+  timeoutMs = 900_000,
 ): Promise<void> {
   const provider = getProvider();
   const start = Date.now();
 
-  // Wait before the first poll — the node needs time to index the broadcast tx
+  // Wait before first poll — node needs time to index the broadcast
   await new Promise((r) => setTimeout(r, pollIntervalMs));
 
   while (Date.now() - start < timeoutMs) {
@@ -179,12 +179,12 @@ export async function waitForConfirmation(
       const receipt = await provider.getTransactionReceipt(txHash);
       if (receipt) return;
     } catch {
-      // RPC may return "transaction not found" until it's mined — keep polling
+      // "transaction not found" is expected until the next block is mined (~10 min on testnet)
     }
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
 
-  throw new Error(`Transaction ${txHash.slice(0, 12)}... not confirmed after ${timeoutMs / 1000}s`);
+  throw new Error(`Transaction ${txHash.slice(0, 12)}... not confirmed after ${Math.round(timeoutMs / 60_000)} minutes. Check block explorer.`);
 }
 
 /**
