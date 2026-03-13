@@ -14,7 +14,7 @@ export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
-  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding } = useTradeStore();
+  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade } = useTradeStore();
   const [executing, setExecuting] = useState(false);
 
   // Extract stable primitives to avoid re-creating callbacks when token object ref changes
@@ -117,6 +117,30 @@ export function useTradeSimulation(token: Token | null) {
         });
 
         updatePendingStatus(txId, 'mempool');
+
+        // Optimistic trade entry — appears instantly in TradeHistory
+        addWsTrade(tokenAddress, {
+          txHash: result.txHash,
+          type: 'buy',
+          traderAddress: walletAddress,
+          btcAmount: btcSats,
+          tokenAmount: sim.outputAmount,
+          status: 'pending',
+          pricePerToken: String(sim.pricePerToken),
+        });
+
+        // Optimistic price update from simulation
+        const { usePriceStore } = await import('@/stores/price-store');
+        const { useTokenStore } = await import('@/stores/token-store');
+        usePriceStore.getState().setLivePrice(tokenAddress, {
+          currentPriceSats: String(sim.newPriceSats),
+          virtualBtcReserve: sim.newVirtualBtc,
+          virtualTokenSupply: sim.newVirtualToken,
+          realBtcReserve: token?.realBtcReserve ?? '0',
+          isOptimistic: true,
+        });
+        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
+
         toast(`Buy detected in mempool`, { icon: '📡' });
 
         await waitForConfirmation(result.txHash);
@@ -190,6 +214,30 @@ export function useTradeSimulation(token: Token | null) {
         });
 
         updatePendingStatus(txId, 'mempool');
+
+        // Optimistic trade entry — appears instantly in TradeHistory
+        addWsTrade(tokenAddress, {
+          txHash: result.txHash,
+          type: 'sell',
+          traderAddress: walletAddress,
+          btcAmount: sim.outputAmount,
+          tokenAmount: tokenUnits,
+          status: 'pending',
+          pricePerToken: String(sim.pricePerToken),
+        });
+
+        // Optimistic price update from simulation
+        const { usePriceStore } = await import('@/stores/price-store');
+        const { useTokenStore } = await import('@/stores/token-store');
+        usePriceStore.getState().setLivePrice(tokenAddress, {
+          currentPriceSats: String(sim.newPriceSats),
+          virtualBtcReserve: sim.newVirtualBtc,
+          virtualTokenSupply: sim.newVirtualToken,
+          realBtcReserve: token?.realBtcReserve ?? '0',
+          isOptimistic: true,
+        });
+        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
+
         toast(`Sell detected in mempool`, { icon: '📡' });
 
         await waitForConfirmation(result.txHash);

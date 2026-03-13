@@ -120,6 +120,12 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
   addWsTrade: (tokenAddress, trade) =>
     set((state) => {
       const existing = state.recentTrades[tokenAddress] ?? [];
+      const dupeIndex = existing.findIndex((t) => t.txHash === trade.txHash);
+      if (dupeIndex !== -1) {
+        const updated = [...existing];
+        updated[dupeIndex] = { ...updated[dupeIndex], ...trade };
+        return { recentTrades: { ...state.recentTrades, [tokenAddress]: updated } };
+      }
       return {
         recentTrades: {
           ...state.recentTrades,
