@@ -225,7 +225,7 @@ export interface ILaunchToken extends IOP_NETContract {
     getPrice(): Promise<GetPrice>;
     getConfig(): Promise<GetConfig>;
     isGraduated(): Promise<IsGraduated>;
-    getFeePools(): Promise<GetFeePools>;
     getMinterInfo(addr: Address): Promise<GetMinterInfo>;
+    getFeePools(): Promise<GetFeePools>;
     getReservation(addr: Address): Promise<GetReservation>;
 }
