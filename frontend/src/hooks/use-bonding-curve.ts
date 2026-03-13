@@ -14,13 +14,17 @@ export function useBondingCurve(token: Token | null) {
     () => new BigNumber(token?.virtualTokenSupply ?? '0'),
     [token?.virtualTokenSupply],
   );
+  const realBtc = useMemo(
+    () => new BigNumber(token?.realBtcReserve ?? '0'),
+    [token?.realBtcReserve],
+  );
 
   const simulateBuy = useCallback(
     (btcSats: string): TradeSimulation | null => {
       if (!hasToken || !btcSats || btcSats === '0') return null;
-      return calculateBuy(virtualBtc, virtualToken, btcSats);
+      return calculateBuy(virtualBtc, virtualToken, btcSats, realBtc);
     },
-    [hasToken, virtualBtc, virtualToken],
+    [hasToken, virtualBtc, virtualToken, realBtc],
   );
 
   const simulateSell = useCallback(

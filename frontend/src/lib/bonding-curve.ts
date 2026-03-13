@@ -12,6 +12,7 @@ export function calculateBuy(
   virtualBtcReserve: BigNumber,
   virtualTokenSupply: BigNumber,
   btcInputSats: string,
+  realBtcReserve?: BigNumber,
 ): TradeSimulation | null {
   const input = new BigNumber(btcInputSats);
   if (input.isNaN() || !input.isFinite() || input.isLessThanOrEqualTo(0)) return null;
@@ -19,6 +20,12 @@ export function calculateBuy(
   // Fee rounds UP (protocol's favor)
   const fee = input.times(TOTAL_FEE_PERCENT).div(100).integerValue(BigNumber.ROUND_CEIL);
   const btcAfterFee = input.minus(fee);
+
+  // Prevent buying beyond graduation threshold
+  if (realBtcReserve) {
+    const newRealBtc = realBtcReserve.plus(btcAfterFee);
+    if (newRealBtc.isGreaterThan(GRADUATION_THRESHOLD_SATS)) return null;
+  }
 
   const newVirtualBtc = virtualBtcReserve.plus(btcAfterFee);
   if (newVirtualBtc.isLessThanOrEqualTo(0)) return null;

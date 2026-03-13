@@ -9,6 +9,7 @@ import {
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
   TOKEN_DECIMALS,
+  GRADUATION_THRESHOLD_SATS,
 } from '../../../shared/constants/bonding-curve.js';
 
 const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
@@ -18,6 +19,7 @@ export interface Reserves {
   virtualTokenSupply: bigint;
   kConstant: bigint;
   realBtcReserve: bigint;
+  graduationThreshold?: bigint;
 }
 
 export interface FeeBreakdown {
@@ -67,6 +69,12 @@ export class BondingCurveSimulator {
 
     // Net BTC into curve
     const netBtc = btcAmountSats - fees.total;
+
+    // Prevent buying beyond graduation threshold
+    const graduationThreshold = reserves.graduationThreshold ?? GRADUATION_THRESHOLD_SATS;
+    if (reserves.realBtcReserve + netBtc > graduationThreshold) {
+      throw new Error('Exceeds graduation threshold');
+    }
 
     // Calculate tokens out: tokensOut = vToken - (k / (vBtc + netBtc))
     const newVirtualBtc = reserves.virtualBtcReserve + netBtc;

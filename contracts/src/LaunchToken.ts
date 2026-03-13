@@ -203,6 +203,13 @@ export class LaunchToken extends OP20 {
     // Net BTC going into the curve
     const netBtc = SafeMath.sub(SafeMath.sub(btcAmount, totalFee), flywheelFee);
 
+    // Prevent buying beyond graduation threshold
+    const currentRealBtc = this.realBtcReserve.value;
+    const threshold = this.graduationThreshold.value;
+    if (SafeMath.add(currentRealBtc, netBtc) > threshold) {
+      throw new Revert('Exceeds graduation threshold');
+    }
+
     // Calculate tokens out
     const vBtc = this.virtualBtcReserve.value;
     const vToken = this.virtualTokenSupply.value;

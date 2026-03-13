@@ -14,6 +14,7 @@ import {
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
   TOKEN_DECIMALS,
+  GRADUATION_THRESHOLD_SATS,
 } from "./constants.mts";
 
 const DECIMALS_FACTOR = 10n ** BigInt(TOKEN_DECIMALS);
@@ -23,6 +24,7 @@ export interface Reserves {
   virtualTokenSupply: bigint;
   kConstant: bigint;
   realBtcReserve: bigint;
+  graduationThreshold?: bigint;
 }
 
 export interface FeeBreakdown {
@@ -64,6 +66,12 @@ export class BondingCurveSimulator {
     const priceBefore = this.calculatePrice(reserves.virtualBtcReserve, reserves.virtualTokenSupply);
     const fees = this.calculateFees(btcAmountSats, buyTaxBps);
     const netBtc = btcAmountSats - fees.total;
+
+    // Prevent buying beyond graduation threshold
+    const graduationThreshold = reserves.graduationThreshold ?? GRADUATION_THRESHOLD_SATS;
+    if (reserves.realBtcReserve + netBtc > graduationThreshold) {
+      throw new Error("Exceeds graduation threshold");
+    }
 
     const newVirtualBtc = reserves.virtualBtcReserve + netBtc;
     const newVirtualToken = reserves.kConstant / newVirtualBtc;
