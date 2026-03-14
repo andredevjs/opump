@@ -146,7 +146,7 @@ export function useTradeSimulation(token: Token | null) {
         useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
 
         // Optimistic chart candle update so the trade shows on the chart immediately
-        usePriceStore.getState().addTradeCandle(tokenAddress, sim.pricePerToken, Number(btcSats));
+        usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(btcSats));
 
         toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
 
@@ -259,7 +259,7 @@ export function useTradeSimulation(token: Token | null) {
         useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
 
         // Optimistic chart candle update so the trade shows on the chart immediately
-        usePriceStore.getState().addTradeCandle(tokenAddress, sim.pricePerToken, Number(sim.outputAmount));
+        usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(sim.outputAmount));
 
         toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
 
