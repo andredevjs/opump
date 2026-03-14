@@ -292,7 +292,7 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
     // Aggregate trades into OHLCV buckets
     // Uses blockTimestamp (falls back to createdAt) for time bucketing
     const pipeline = [
-      { $match: { tokenAddress: address, status: 'confirmed' } },
+      { $match: { tokenAddress: address } },
       {
         $addFields: {
           ts: {
@@ -352,6 +352,53 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
       timeframe: timeframe as TimeframeKey,
       tokenAddress: address,
     });
+  });
+
+  // POST /v1/trades — submit a trade from the frontend (mempool-first fast path)
+  app.post('/v1/trades', async (req, res) => {
+    let body: { txHash: string; tokenAddress: string; type: string; traderAddress: string; btcAmount: string; tokenAmount: string; pricePerToken: string };
+    try {
+      body = await req.json();
+    } catch {
+      res.status(400).json({ error: 'BadRequest', message: 'Invalid JSON body', statusCode: 400 });
+      return;
+    }
+
+    if (!body.txHash || !body.tokenAddress || !body.type || !body.traderAddress) {
+      res.status(400).json({ error: 'BadRequest', message: 'Missing required fields', statusCode: 400 });
+      return;
+    }
+
+    if (body.type !== 'buy' && body.type !== 'sell') {
+      res.status(400).json({ error: 'BadRequest', message: 'type must be buy or sell', statusCode: 400 });
+      return;
+    }
+
+    const trades = getTradesCollection();
+    const existing = await trades.findOne({ _id: body.txHash });
+    if (existing) {
+      // Already tracked — return 200 (idempotent)
+      res.json(existing);
+      return;
+    }
+
+    const now = new Date();
+    const doc = {
+      _id: body.txHash,
+      tokenAddress: body.tokenAddress,
+      type: body.type as 'buy' | 'sell',
+      traderAddress: body.traderAddress,
+      btcAmount: body.btcAmount || '0',
+      tokenAmount: body.tokenAmount || '0',
+      pricePerToken: body.pricePerToken || '0',
+      fees: { platform: '0', creator: '0', minter: '0' },
+      priceImpactBps: 0,
+      status: 'pending' as const,
+      createdAt: now,
+    };
+
+    await trades.insertOne(doc);
+    res.status(201).json(doc);
   });
 
   // POST /v1/tokens — register a new token

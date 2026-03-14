@@ -144,7 +144,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     // W12: Track consecutive polling failures and log after threshold
     let consecutiveFailures = 0;
 
-    // Fallback polling in case WebSocket disconnects
+    // Fallback polling in case WebSocket disconnects — refresh both price and chart
     intervalRef.current = window.setInterval(() => {
       if (!wsClient.isConnected()) {
         api.getTokenPrice(token.address).then((price) => {
@@ -163,6 +163,11 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
             console.warn(`[usePriceFeed] ${consecutiveFailures} consecutive polling failures for ${token.address}`);
           }
         });
+
+        // Also refresh OHLCV so the chart stays current without WS
+        api.getOHLCV(token.address, timeframeRef.current).then((resp) => {
+          if (!cancelled) setCandles(token.address, resp.candles);
+        }).catch(() => { /* best-effort */ });
       }
     }, PRICE_UPDATE_INTERVAL_MS);
 

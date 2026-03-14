@@ -59,8 +59,11 @@ export function TradeHistory({ token }: TradeHistoryProps) {
     });
   }, [token.address]);
 
-  // Poll faster when there are pending trades so status updates quickly after confirmation
-  const hasPending = useMemo(() => trades.some((t) => t.status !== 'confirmed'), [trades]);
+  // Poll faster when there are pending trades (API or WS) so status updates quickly
+  const hasPending = useMemo(
+    () => trades.some((t) => t.status !== 'confirmed') || wsTrades.some((t) => t.status !== 'confirmed'),
+    [trades, wsTrades],
+  );
   const pollMs = hasPending ? FAST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
 
   useEffect(() => {
