@@ -233,8 +233,7 @@ async function processBuyEvent(
 ): Promise<void> {
   const fees = calculateFeeBreakdown(data.btcIn);
 
-  // Calculate price from trade amounts since contract's calculatePrice()
-  // does integer division without decimals factor and may return 0
+  // Effective trade price (gross btcIn / tokensOut) for the trade record
   const pricePerToken = data.tokensOut > 0n
     ? toDisplayPrice((data.btcIn * PRICE_PRECISION) / data.tokensOut)
     : "0";
@@ -262,8 +261,11 @@ async function processBuyEvent(
 
   await saveTrade(trade);
 
-  // priceSats is in sats-per-whole-token after toDisplayPrice()
-  const priceSats = Number(pricePerToken);
+  // Use the contract's post-trade spot price (newPrice) for OHLCV candles.
+  // This is the canonical price from the on-chain reserves after the trade,
+  // consistent across all trades and avoiding gross/net BTC mismatches.
+  const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+  const priceSats = Number(spotPrice);
   const volumeSats = Number(data.btcIn);
   const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
   await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
@@ -305,8 +307,9 @@ async function processSellEvent(
 
   await saveTrade(trade);
 
-  // priceSats is in sats-per-whole-token after toDisplayPrice()
-  const priceSats = Number(pricePerToken);
+  // Use the contract's post-trade spot price (newPrice) for OHLCV candles.
+  const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+  const priceSats = Number(spotPrice);
   const volumeSats = Number(data.btcOut);
   const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
   await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
