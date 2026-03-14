@@ -21,24 +21,29 @@ export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
   useEffect(() => {
     if (!connected || !walletAddress || !hashedMLDSAKey) return;
     setError(null);
-    // Fetch minter info and fee pool from contract
     (async () => {
+      const { getLaunchTokenContract } = await import('@/services/contract');
+      const { Address } = await import('@btc-vision/transaction');
+      const contract = getLaunchTokenContract(tokenAddress);
+      const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
+
+      // Fetch minter info and fee pool independently so one failure doesn't block the other
       try {
-        const { getLaunchTokenContract } = await import('@/services/contract');
-        const { Address } = await import('@btc-vision/transaction');
-        const contract = getLaunchTokenContract(tokenAddress);
-        const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
         const result = await contract.getMinterInfo(addr);
         setMinterInfo({
           shares: String(result.properties.shares ?? '0'),
           eligible: Boolean(result.properties.eligible),
         });
+      } catch (err) {
+        console.warn('[MinterRewardCard] getMinterInfo failed:', err);
+        setError('Failed to load minter data');
+      }
 
-        // Fetch on-chain fee pool totals instead of iterating trades
+      try {
         const poolResult = await contract.getFeePools();
         setMinterPoolSats(Number(poolResult.properties.minterFees));
-      } catch {
-        setError('Failed to load minter data');
+      } catch (err) {
+        console.warn('[MinterRewardCard] getFeePools failed:', err);
       }
     })();
   }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);

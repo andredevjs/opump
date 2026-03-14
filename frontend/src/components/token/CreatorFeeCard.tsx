@@ -33,9 +33,11 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
         if (!cancelled) {
           setClaimableSats(Number(poolResult.properties.creatorFees));
         }
-      } catch {
+      } catch (err) {
+        console.warn('[CreatorFeeCard] getFeePools failed:', err);
         if (!cancelled) {
           setError('Failed to load fee data');
+          setClaimableSats(0);
         }
       }
     })();
