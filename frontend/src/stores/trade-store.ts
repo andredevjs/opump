@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import BigNumber from 'bignumber.js';
 import type { PendingTransaction } from '@/types/trade';
 
@@ -54,7 +55,9 @@ interface TradeStore {
   dropWsTrade: (tokenAddress: string, txHash: string) => void;
 }
 
-export const useTradeStore = create<TradeStore>((set, get) => ({
+export const useTradeStore = create<TradeStore>()(
+  persist(
+    (set, get) => ({
   pendingTransactions: [],
   holdings: {},
   recentTrades: {},
@@ -157,4 +160,13 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
         },
       };
     }),
-}));
+}),
+    {
+      name: 'opump:trade-store',
+      partialize: (state) => ({
+        recentTrades: state.recentTrades,
+        holdings: state.holdings,
+      }),
+    },
+  ),
+);
