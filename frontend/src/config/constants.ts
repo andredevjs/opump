@@ -52,6 +52,7 @@ export const CHART_THEME = {
   borderColor: '#2a2a3d',
   upColor: '#22c55e',
   downColor: '#ef4444',
+  lineColor: '#f7931a',
   volumeColor: '#f7931a',
   errorBg: '#0a0a12',
   errorCardBg: '#12121a',

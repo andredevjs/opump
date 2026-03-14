@@ -1,11 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
 import { CHART_THEME } from '@/config/constants';
-
-/** Minimum number of candle slots visible so candles never look oversized */
-const MIN_VISIBLE_BARS = 160;
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
@@ -16,7 +13,7 @@ interface PriceChartProps {
 export function PriceChart({ candles, loading, className }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   useEffect(() => {
@@ -58,14 +55,15 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       handleScroll: { vertTouchDrag: false },
     });
 
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: CHART_THEME.upColor,
-      downColor: CHART_THEME.downColor,
-      borderUpColor: CHART_THEME.upColor,
-      borderDownColor: CHART_THEME.downColor,
-      wickUpColor: CHART_THEME.upColor,
-      wickDownColor: CHART_THEME.downColor,
-      borderVisible: false,
+    const lineSeries = chart.addLineSeries({
+      color: CHART_THEME.lineColor,
+      lineWidth: 2,
+      lineType: LineType.Curved,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
+      lastValueVisible: true,
+      priceLineVisible: false,
     });
 
     const volumeSeries = chart.addHistogramSeries({
@@ -78,7 +76,7 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
     });
 
     chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
+    lineSeriesRef.current = lineSeries;
     volumeSeriesRef.current = volumeSeries;
 
     return () => {
@@ -88,20 +86,17 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
   }, []);
 
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current) return;
+    if (!lineSeriesRef.current || !volumeSeriesRef.current) return;
 
     if (candles.length === 0) {
-      candleSeriesRef.current.setData([]);
+      lineSeriesRef.current.setData([]);
       volumeSeriesRef.current.setData([]);
       return;
     }
 
-    const candleData = candles.map((c) => ({
+    const lineData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
+      value: c.close,
     }));
 
     const volumeData = candles.map((c) => ({
@@ -110,20 +105,11 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       color: c.close >= c.open ? `${CHART_THEME.upColor}40` : `${CHART_THEME.downColor}40`,
     }));
 
-    candleSeriesRef.current.setData(candleData);
+    lineSeriesRef.current.setData(lineData);
     volumeSeriesRef.current.setData(volumeData);
 
     if (chartRef.current && candles.length > 0) {
-      const ts = chartRef.current.timeScale();
-      if (candles.length < MIN_VISIBLE_BARS) {
-        // Few candles: show a wider time window so candles stay slim
-        const last = candles[candles.length - 1].time;
-        const interval = candles.length > 1 ? candles[1].time - candles[0].time : 60;
-        const from = (last - interval * MIN_VISIBLE_BARS) as UTCTimestamp;
-        ts.setVisibleRange({ from, to: (last + interval * 5) as UTCTimestamp });
-      } else {
-        ts.fitContent();
-      }
+      chartRef.current.timeScale().fitContent();
     }
   }, [candles]);
 
