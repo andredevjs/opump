@@ -77,10 +77,10 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
       return { blocksProcessed: 0, tradesFound: 0, lastBlock, skipped: "no_new_blocks" };
     }
 
-    // Auto-catch-up: if we're way behind (e.g. lastBlock=0 or thousands of blocks behind),
-    // skip ahead to near the tip so we only scan recent blocks.
+    // Auto-catch-up: only skip if we're massively behind (500+ blocks).
+    // Small gaps are processed normally so trades aren't permanently lost.
     const gap = currentBlockNum - lastBlock;
-    if (gap > maxBlocks * 2) {
+    if (gap > 500) {
       const skipTo = currentBlockNum - maxBlocks;
       console.log(`[Indexer] Gap too large (${gap} blocks). Skipping from ${lastBlock} to ${skipTo}`);
       await setLastBlockIndexed(skipTo);

@@ -17,10 +17,12 @@ export default async (req: Request, _context: Context) => {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
-  // Authenticate all non-OPTIONS requests
-  const authHeader = req.headers.get('Authorization');
-  if (!INDEXER_API_KEY || authHeader !== `Bearer ${INDEXER_API_KEY}`) {
-    return error('Unauthorized', 401, 'Unauthorized');
+  // Authenticate if INDEXER_API_KEY is configured; skip auth if unset (deploy previews)
+  if (INDEXER_API_KEY) {
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader !== `Bearer ${INDEXER_API_KEY}`) {
+      return error('Unauthorized', 401, 'Unauthorized');
+    }
   }
 
   // GET — return basic indexer status (no sensitive data)
@@ -45,8 +47,8 @@ export default async (req: Request, _context: Context) => {
   }
 
   try {
-    // Process up to 10 blocks per HTTP call (more than the scheduled 2)
-    const result = await runIndexer(10);
+    // Process up to 50 blocks per HTTP call to catch up on deploy previews
+    const result = await runIndexer(50);
     return json(result);
   } catch (err) {
     return error(err instanceof Error ? err.message : "Indexer error", 500, "InternalError");
