@@ -29,7 +29,7 @@ const EMPTY_CANDLES: OHLCVCandle[] = [];
 
 export function TokenPage() {
   const { address } = useParams<{ address: string }>();
-  const [timeframe, setTimeframe] = useState<TimeframeKey>('15m');
+  const [timeframe, setTimeframe] = useState<TimeframeKey>('1m');
   const token = useTokenStore((s) => s.selectedToken?.address === address ? s.selectedToken : s.tokens.find((t) => t.address === address) ?? null);
   const fetchToken = useTokenStore((s) => s.fetchToken);
   const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
