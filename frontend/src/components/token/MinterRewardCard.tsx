@@ -30,18 +30,24 @@ export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
       // Fetch minter info and fee pool independently so one failure doesn't block the other
       try {
         const result = await contract.getMinterInfo(addr);
-        setMinterInfo({
-          shares: String(result.properties.shares ?? '0'),
-          eligible: Boolean(result.properties.eligible),
-        });
+        if (result.revert) {
+          setError(`Contract reverted: ${result.revert}`);
+        } else {
+          setMinterInfo({
+            shares: String(result.properties.shares ?? '0'),
+            eligible: Boolean(result.properties.eligible),
+          });
+        }
       } catch (err) {
         console.warn('[MinterRewardCard] getMinterInfo failed:', err);
-        setError('Failed to load minter data');
+        setError(err instanceof Error ? err.message : 'Failed to load minter data');
       }
 
       try {
         const poolResult = await contract.getFeePools();
-        setMinterPoolSats(Number(poolResult.properties.minterFees));
+        if (!poolResult.revert) {
+          setMinterPoolSats(Number(poolResult.properties.minterFees));
+        }
       } catch (err) {
         console.warn('[MinterRewardCard] getFeePools failed:', err);
       }

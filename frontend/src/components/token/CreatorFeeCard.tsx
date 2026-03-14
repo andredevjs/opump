@@ -30,14 +30,16 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
         const { getLaunchTokenContract } = await import('@/services/contract');
         const contract = getLaunchTokenContract(tokenAddress);
         const poolResult = await contract.getFeePools();
-        if (!cancelled) {
-          setClaimableSats(Number(poolResult.properties.creatorFees));
+        if (cancelled) return;
+        if (poolResult.revert) {
+          setError(`Contract reverted: ${poolResult.revert}`);
+          return;
         }
+        setClaimableSats(Number(poolResult.properties.creatorFees));
       } catch (err) {
         console.warn('[CreatorFeeCard] getFeePools failed:', err);
         if (!cancelled) {
-          setError('Failed to load fee data');
-          setClaimableSats(0);
+          setError(err instanceof Error ? err.message : 'Failed to load fee data');
         }
       }
     })();
@@ -66,7 +68,8 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
     }
   };
 
-  const nothingToClaim = claimableSats !== null && claimableSats === 0;
+  const loaded = claimableSats !== null && !error;
+  const nothingToClaim = loaded && claimableSats === 0;
 
   return (
     <Card>
@@ -78,11 +81,13 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
         As the token creator, you earn 0.25% of every trade.
       </p>
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
-      <p className="text-sm font-mono text-text-primary mb-3">
-        {claimableSats === null
-          ? 'Loading...'
-          : `${formatBtc(claimableSats)} available`}
-      </p>
+      {!error && (
+        <p className="text-sm font-mono text-text-primary mb-3">
+          {claimableSats === null
+            ? 'Loading...'
+            : `${formatBtc(claimableSats)} available`}
+        </p>
+      )}
       {nothingToClaim && (
         <p className="text-xs text-text-muted mb-2">No fees to claim yet.</p>
       )}
@@ -93,7 +98,7 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
         size="sm"
         variant="secondary"
         onClick={handleClaim}
-        disabled={claiming || nothingToClaim}
+        disabled={claiming || nothingToClaim || !!error}
         className="w-full"
       >
         {claiming ? 'Claiming...' : 'Claim Creator Fees'}
