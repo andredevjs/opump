@@ -53,6 +53,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
   const appendCandle = usePriceStore((s) => s.appendCandle);
   const updateLastCandle = usePriceStore((s) => s.updateLastCandle);
   const setLivePrice = usePriceStore((s) => s.setLivePrice);
+  const setActiveTimeframe = usePriceStore((s) => s.setActiveTimeframe);
   const addWsTrade = useTradeStore((s) => s.addWsTrade);
   const confirmWsTrade = useTradeStore((s) => s.confirmWsTrade);
   const dropWsTrade = useTradeStore((s) => s.dropWsTrade);
@@ -62,6 +63,9 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
 
   useEffect(() => {
     if (!token) return;
+
+    // Track active timeframe so optimistic trades can update candles
+    setActiveTimeframe(token.address, timeframe);
 
     // Clear stale candles immediately and show loading
     clearCandles(token.address);
@@ -170,5 +174,5 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [token?.address, timeframe, clearCandles, setLoading, setCandles, updateTokenPrice,
-      setLivePrice, addWsTrade, confirmWsTrade, dropWsTrade, appendCandle, updateLastCandle]);
+      setLivePrice, setActiveTimeframe, addWsTrade, confirmWsTrade, dropWsTrade, appendCandle, updateLastCandle]);
 }
