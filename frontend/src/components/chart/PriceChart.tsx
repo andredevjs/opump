@@ -1,8 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
 import { CHART_THEME } from '@/config/constants';
+
+/** Minimum number of candle slots visible so candles never look oversized */
+const MIN_VISIBLE_BARS = 160;
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
@@ -19,7 +22,6 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // S30: Use shared chart theme for colors
     const chart = createChart(containerRef.current, {
       autoSize: true,
       layout: {
@@ -29,20 +31,29 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
         fontSize: CHART_THEME.fontSize,
       },
       grid: {
-        vertLines: { color: CHART_THEME.gridColor },
-        horzLines: { color: CHART_THEME.gridColor },
+        vertLines: { visible: false },
+        horzLines: { color: CHART_THEME.gridColor, style: 4 },
       },
       crosshair: {
-        vertLine: { color: CHART_THEME.crosshairColor, width: 1, style: 2 },
-        horzLine: { color: CHART_THEME.crosshairColor, width: 1, style: 2 },
+        mode: CrosshairMode.Normal,
+        vertLine: { color: CHART_THEME.crosshairColor, width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
+        horzLine: { color: CHART_THEME.crosshairColor, width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
       },
       rightPriceScale: {
         borderColor: CHART_THEME.borderColor,
-        scaleMargins: { top: 0.1, bottom: 0.25 },
+        scaleMargins: { top: 0.05, bottom: 0.2 },
+        borderVisible: false,
       },
       timeScale: {
         borderColor: CHART_THEME.borderColor,
         timeVisible: true,
+        secondsVisible: false,
+        borderVisible: false,
+        rightOffset: 5,
+        barSpacing: 6,
+        minBarSpacing: 2,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
       handleScroll: { vertTouchDrag: false },
     });
@@ -54,6 +65,7 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       borderDownColor: CHART_THEME.downColor,
       wickUpColor: CHART_THEME.upColor,
       wickDownColor: CHART_THEME.downColor,
+      borderVisible: false,
     });
 
     const volumeSeries = chart.addHistogramSeries({
@@ -62,7 +74,7 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       priceScaleId: '',
     });
     volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.85, bottom: 0 },
     });
 
     chartRef.current = chart;
@@ -95,20 +107,28 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
     const volumeData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
-      color: c.close >= c.open ? `${CHART_THEME.upColor}4d` : `${CHART_THEME.downColor}4d`,
+      color: c.close >= c.open ? `${CHART_THEME.upColor}40` : `${CHART_THEME.downColor}40`,
     }));
 
     candleSeriesRef.current.setData(candleData);
     volumeSeriesRef.current.setData(volumeData);
 
-    // S23: Fit content after data loads so all candles are visible
     if (chartRef.current && candles.length > 0) {
-      chartRef.current.timeScale().fitContent();
+      const ts = chartRef.current.timeScale();
+      if (candles.length < MIN_VISIBLE_BARS) {
+        // Few candles: show a wider time window so candles stay slim
+        const last = candles[candles.length - 1].time;
+        const interval = candles.length > 1 ? candles[1].time - candles[0].time : 60;
+        const from = (last - interval * MIN_VISIBLE_BARS) as UTCTimestamp;
+        ts.setVisibleRange({ from, to: (last + interval * 5) as UTCTimestamp });
+      } else {
+        ts.fitContent();
+      }
     }
   }, [candles]);
 
   return (
-    <div className={cn('relative w-full h-[400px]', className)}>
+    <div className={cn('relative w-full h-[500px]', className)}>
       <div ref={containerRef} className="w-full h-full" />
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface/60 backdrop-blur-sm z-10">
