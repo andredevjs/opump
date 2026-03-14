@@ -76,6 +76,21 @@ Set `VITE_MOTOSWAP_URL` to link graduated tokens to MotoSwap DEX (optional).
 
 Deployed addresses are stored in the backend `.env` file under `FACTORY_ADDRESS`.
 
+## Mempool-First Architecture
+
+**CRITICAL — This is the #1 recurring mistake. Read carefully.**
+
+OPump is a **mempool-first** system. Everything reacts to mempool events, NOT confirmed blocks:
+
+- **Trades, token creates, and all user actions appear in the UI as soon as the transaction hits the mempool.** Users must never wait for a block confirmation to see their action reflected.
+- **Charts, balances, trade history, token lists — all update from mempool events.** The frontend subscribes to WebSocket events that fire on mempool detection, not on confirmation.
+- **Bitcoin confirmations are just confirmations** — they confirm what already happened. One confirmation is sufficient. Do not gate any UI state or data updates behind confirmation counts.
+- **The backend indexes mempool transactions** and treats them as the source of truth for current state. Confirmed blocks simply mark those transactions as confirmed.
+- **Never write code that waits for a block/confirmation before updating UI state.** If a user buys a token, the trade shows immediately, the chart updates immediately, the balance updates immediately.
+- **Status flow**: `mempool (pending)` → `1 confirmation (confirmed)` → done. There is no "waiting for N confirmations" logic.
+
+If you find yourself writing code that checks confirmation count > 0 before displaying data, or that delays UI updates until a block is mined — **you are doing it wrong. Stop and fix it.**
+
 ## Constitution
 
 ### Principles
@@ -84,3 +99,4 @@ Deployed addresses are stored in the backend `.env` file under `FACTORY_ADDRESS`
 2. All contract math uses SafeMath — no raw u256 arithmetic
 3. Frontend never holds signing keys — OPWallet handles all signing
 4. All API responses follow shared type definitions in shared/types/
+5. Mempool-first: all UI updates on mempool detection, not block confirmation
