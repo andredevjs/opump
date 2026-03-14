@@ -48,7 +48,6 @@ const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
   const updateTokenPrice = useTokenStore((s) => s.updateTokenPrice);
   const setCandles = usePriceStore((s) => s.setCandles);
-  const clearCandles = usePriceStore((s) => s.clearCandles);
   const setLoading = usePriceStore((s) => s.setLoading);
   const appendCandle = usePriceStore((s) => s.appendCandle);
   const updateLastCandle = usePriceStore((s) => s.updateLastCandle);
@@ -67,19 +66,23 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     // Track active timeframe so optimistic trades can update candles
     setActiveTimeframe(token.address, timeframe);
 
-    // Clear stale candles immediately and show loading
-    clearCandles(token.address);
-    setLoading(token.address, true);
+    // Only show loading if we have no candles yet (preserves optimistic data)
+    const existing = usePriceStore.getState().candles[token.address];
+    if (!existing || existing.length === 0) {
+      setLoading(token.address, true);
+    }
 
     let cancelled = false;
     api.getOHLCV(token.address, timeframe).then((resp) => {
       if (!cancelled) {
-        setCandles(token.address, resp.candles);
+        // Only replace candles if the API returned data; keep optimistic candles otherwise
+        if (resp.candles.length > 0) {
+          setCandles(token.address, resp.candles);
+        }
         setLoading(token.address, false);
       }
     }).catch(() => {
       if (!cancelled) {
-        setCandles(token.address, []);
         setLoading(token.address, false);
       }
     });
@@ -165,8 +168,11 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         });
 
         // Also refresh OHLCV so the chart stays current without WS
+        // Only update if API returns data — don't overwrite optimistic candles with empty
         api.getOHLCV(token.address, timeframeRef.current).then((resp) => {
-          if (!cancelled) setCandles(token.address, resp.candles);
+          if (!cancelled && resp.candles.length > 0) {
+            setCandles(token.address, resp.candles);
+          }
         }).catch(() => { /* best-effort */ });
       }
     }, PRICE_UPDATE_INTERVAL_MS);
@@ -178,6 +184,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       unsubTrades();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [token?.address, timeframe, clearCandles, setLoading, setCandles, updateTokenPrice,
+  }, [token?.address, timeframe, setLoading, setCandles, updateTokenPrice,
       setLivePrice, setActiveTimeframe, addWsTrade, confirmWsTrade, dropWsTrade, appendCandle, updateLastCandle]);
 }
