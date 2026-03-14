@@ -8,6 +8,7 @@ import * as api from '@/services/api';
 
 const EMPTY_WS_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
 const POLL_INTERVAL_MS = 15_000;
+const FAST_POLL_INTERVAL_MS = 5_000;
 
 interface TradeHistoryProps {
   token: Token;
@@ -45,12 +46,15 @@ export function TradeHistory({ token }: TradeHistoryProps) {
     });
   }, [token.address]);
 
-  // Fetch on mount + poll every 15s
+  // Poll faster when there are pending trades so status updates quickly after confirmation
+  const hasPending = useMemo(() => trades.some((t) => t.status !== 'confirmed'), [trades]);
+  const pollMs = hasPending ? FAST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
+
   useEffect(() => {
     fetchTrades();
-    const id = setInterval(fetchTrades, POLL_INTERVAL_MS);
+    const id = setInterval(fetchTrades, pollMs);
     return () => clearInterval(id);
-  }, [fetchTrades]);
+  }, [fetchTrades, pollMs]);
 
   return (
     <div className="overflow-x-auto">
@@ -101,10 +105,18 @@ export function TradeHistory({ token }: TradeHistoryProps) {
 
           {/* Historical trades (deduplicated against WS trades) */}
           {deduplicatedTrades.map((trade) => (
-            <tr key={trade.id} className="border-b border-border/30 hover:bg-elevated/50 transition-colors">
+            <tr key={trade.id} className={cn(
+              'border-b border-border/30 transition-colors',
+              trade.status !== 'confirmed' ? 'bg-accent/5 animate-pulse' : 'hover:bg-elevated/50',
+            )}>
               <td className="py-2 px-2">
-                <span className={cn('font-medium uppercase', trade.type === 'buy' ? 'text-bull' : 'text-bear')}>
-                  {trade.type}
+                <span className="flex items-center gap-1">
+                  {trade.status !== 'confirmed' && (
+                    <span className="inline-block w-2 h-2 rounded-full bg-accent animate-spin" />
+                  )}
+                  <span className={cn('font-medium uppercase', trade.type === 'buy' ? 'text-bull' : 'text-bear')}>
+                    {trade.type}
+                  </span>
                 </span>
               </td>
               <td className="text-right py-2 px-2 font-mono text-text-secondary">
@@ -117,7 +129,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
                 {shortenAddress(trade.traderAddress, 4)}
               </td>
               <td className="text-right py-2 px-2 text-text-muted">
-                {timeAgo(trade.timestamp)}
+                {trade.status !== 'confirmed' ? 'pending' : timeAgo(trade.timestamp)}
               </td>
             </tr>
           ))}
