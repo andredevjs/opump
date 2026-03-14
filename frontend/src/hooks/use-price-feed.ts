@@ -4,7 +4,8 @@ import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { useTradeStore } from '@/stores/trade-store';
 import { PRICE_UPDATE_INTERVAL_MS } from '@/config/constants';
-import type { TimeframeKey } from '@/types/api';
+import type { TimeframeKey, OHLCVCandle } from '@/types/api';
+import type { TradeDocument } from '@shared/types/trade';
 import { wsClient } from '@/services/websocket';
 import * as api from '@/services/api';
 
@@ -45,6 +46,36 @@ const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
   '1d': 86400,
 };
 
+/** Build OHLCV candles from raw trade documents (fallback when OHLCV endpoint returns empty) */
+function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
+  const bucketSeconds = TIMEFRAME_SECONDS[tf];
+  const buckets = new Map<number, OHLCVCandle>();
+
+  // trades are newest-first from API, reverse for chronological order
+  const sorted = [...trades].reverse();
+
+  for (const t of sorted) {
+    const price = Number(t.pricePerToken);
+    const volume = Number(t.btcAmount);
+    if (!price || isNaN(price)) continue;
+
+    const tsSec = Math.floor(new Date(t.createdAt).getTime() / 1000);
+    const bucket = Math.floor(tsSec / bucketSeconds) * bucketSeconds;
+
+    const existing = buckets.get(bucket);
+    if (existing) {
+      existing.high = Math.max(existing.high, price);
+      existing.low = Math.min(existing.low, price);
+      existing.close = price;
+      existing.volume += volume;
+    } else {
+      buckets.set(bucket, { time: bucket, open: price, high: price, low: price, close: price, volume });
+    }
+  }
+
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+}
+
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
   const updateTokenPrice = useTokenStore((s) => s.updateTokenPrice);
   const setCandles = usePriceStore((s) => s.setCandles);
@@ -73,14 +104,28 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     }
 
     let cancelled = false;
-    api.getOHLCV(token.address, timeframe).then((resp) => {
-      if (!cancelled) {
-        // Only replace candles if the API returned data; keep optimistic candles otherwise
-        if (resp.candles.length > 0) {
-          setCandles(token.address, resp.candles);
-        }
+    api.getOHLCV(token.address, timeframe).then(async (resp) => {
+      if (cancelled) return;
+
+      if (resp.candles.length > 0) {
+        setCandles(token.address, resp.candles);
         setLoading(token.address, false);
+        return;
       }
+
+      // OHLCV empty — fallback: build candles from trades API (covers pending trades
+      // that the OHLCV aggregation may exclude)
+      try {
+        const tradesResp = await api.getTrades(token.address, 1, 200);
+        if (!cancelled && tradesResp.trades.length > 0) {
+          const fallbackCandles = buildCandlesFromTrades(tradesResp.trades, timeframe);
+          if (fallbackCandles.length > 0) {
+            setCandles(token.address, fallbackCandles);
+          }
+        }
+      } catch { /* best-effort */ }
+
+      if (!cancelled) setLoading(token.address, false);
     }).catch(() => {
       if (!cancelled) {
         setLoading(token.address, false);
@@ -167,12 +212,23 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           }
         });
 
-        // Also refresh OHLCV so the chart stays current without WS
-        // Only update if API returns data — don't overwrite optimistic candles with empty
-        api.getOHLCV(token.address, timeframeRef.current).then((resp) => {
-          if (!cancelled && resp.candles.length > 0) {
+        // Also refresh chart data without WS
+        api.getOHLCV(token.address, timeframeRef.current).then(async (resp) => {
+          if (cancelled) return;
+          if (resp.candles.length > 0) {
             setCandles(token.address, resp.candles);
+            return;
           }
+          // Fallback: build candles from trades
+          try {
+            const tradesResp = await api.getTrades(token.address, 1, 200);
+            if (!cancelled && tradesResp.trades.length > 0) {
+              const fallbackCandles = buildCandlesFromTrades(tradesResp.trades, timeframeRef.current);
+              if (fallbackCandles.length > 0) {
+                setCandles(token.address, fallbackCandles);
+              }
+            }
+          } catch { /* best-effort */ }
         }).catch(() => { /* best-effort */ });
       }
     }, PRICE_UPDATE_INTERVAL_MS);
