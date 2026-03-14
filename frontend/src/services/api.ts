@@ -161,4 +161,26 @@ export function triggerIndexer(): Promise<unknown> {
   });
 }
 
+/**
+ * Submit a trade to Redis immediately after broadcast so all users see it
+ * without waiting for the indexer to scan the block.
+ * Fire-and-forget — errors are silently ignored.
+ */
+export function submitTrade(trade: {
+  txHash: string;
+  tokenAddress: string;
+  type: 'buy' | 'sell';
+  traderAddress: string;
+  btcAmount: string;
+  tokenAmount: string;
+  pricePerToken: string;
+}): Promise<unknown> {
+  return request('/v1/trades', {
+    method: 'POST',
+    body: JSON.stringify(trade),
+  }).catch(() => {
+    // Best-effort — optimistic UI already shows the trade locally
+  });
+}
+
 export { ApiError };

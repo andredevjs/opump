@@ -120,6 +120,19 @@ export function useTradeSimulation(token: Token | null) {
           pricePerToken: String(sim.pricePerToken),
         });
 
+        // Submit trade to Redis so ALL users see it immediately
+        import('@/services/api').then(({ submitTrade }) => {
+          submitTrade({
+            txHash: result.txHash,
+            tokenAddress,
+            type: 'buy',
+            traderAddress: walletAddress,
+            btcAmount: btcSats,
+            tokenAmount: sim.outputAmount,
+            pricePerToken: String(sim.pricePerToken),
+          });
+        });
+
         // Optimistic price update from simulation
         const { usePriceStore } = await import('@/stores/price-store');
         const { useTokenStore } = await import('@/stores/token-store');
@@ -147,7 +160,6 @@ export function useTradeSimulation(token: Token | null) {
         // Trigger indexer then refresh token data so UI updates
         import('@/services/api').then(async ({ triggerIndexer }) => {
           await triggerIndexer();
-          // Refresh token data (price, reserves, stats) from the API
           const { useTokenStore: tokenStore } = await import('@/stores/token-store');
           if (tokenAddress) tokenStore.getState().fetchToken(tokenAddress);
         });
@@ -219,6 +231,19 @@ export function useTradeSimulation(token: Token | null) {
           tokenAmount: tokenUnits,
           status: 'pending',
           pricePerToken: String(sim.pricePerToken),
+        });
+
+        // Submit trade to Redis so ALL users see it immediately
+        import('@/services/api').then(({ submitTrade }) => {
+          submitTrade({
+            txHash: result.txHash,
+            tokenAddress,
+            type: 'sell',
+            traderAddress: walletAddress,
+            btcAmount: sim.outputAmount,
+            tokenAmount: tokenUnits,
+            pricePerToken: String(sim.pricePerToken),
+          });
         });
 
         // Optimistic price update from simulation
