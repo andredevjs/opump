@@ -129,7 +129,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
                 {shortenAddress(trade.traderAddress, 4)}
               </td>
               <td className="text-right py-2 px-2 text-text-muted">
-                {trade.status !== 'confirmed' ? 'pending' : timeAgo(trade.timestamp)}
+                {timeAgo(trade.timestamp)}
               </td>
             </tr>
           ))}
