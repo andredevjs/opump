@@ -41,6 +41,19 @@ export function TradeHistory({ token }: TradeHistoryProps) {
         status: (t.status === 'confirmed' ? 'confirmed' : 'mempool') as Trade['status'],
       }));
       setTrades(mapped);
+
+      // Reconcile: if API shows a trade as confirmed but the WS entry is still
+      // pending (no WebSocket server in Netlify to push trade_confirmed), update it.
+      const store = useTradeStore.getState();
+      const wsTradesForToken = store.recentTrades[token.address] ?? [];
+      for (const apiTrade of res.trades) {
+        if (apiTrade.status === 'confirmed') {
+          const wsTrade = wsTradesForToken.find((t) => t.txHash === apiTrade._id);
+          if (wsTrade && wsTrade.status !== 'confirmed') {
+            store.confirmWsTrade(token.address, apiTrade._id);
+          }
+        }
+      }
     }).catch((err) => {
       console.error('[TradeHistory] API error:', err);
     });

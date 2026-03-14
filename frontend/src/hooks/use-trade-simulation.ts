@@ -11,7 +11,7 @@ export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
-  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade } = useTradeStore();
+  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade, confirmWsTrade } = useTradeStore();
   const [executing, setExecuting] = useState(false);
 
   // Extract stable primitives to avoid re-creating callbacks when token object ref changes
@@ -152,6 +152,7 @@ export function useTradeSimulation(token: Token | null) {
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
+        confirmWsTrade(tokenAddress, result.txHash);
         addHolding(tokenAddress, sim.outputAmount);
         toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
@@ -171,7 +172,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
-     realBtcReserve, addPending, deductBalance, updatePendingStatus, addWsTrade, addHolding, removePending, addBalance],
+     realBtcReserve, addPending, deductBalance, updatePendingStatus, addWsTrade, confirmWsTrade, addHolding, removePending, addBalance],
   );
 
   /**
@@ -265,6 +266,7 @@ export function useTradeSimulation(token: Token | null) {
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
+        confirmWsTrade(tokenAddress, result.txHash);
         addBalance(Number(sim.outputAmount));
         toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
@@ -284,7 +286,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
-     realBtcReserve, addPending, removeHolding, updatePendingStatus, addWsTrade, addBalance, addHolding, removePending],
+     realBtcReserve, addPending, removeHolding, updatePendingStatus, addWsTrade, confirmWsTrade, addBalance, addHolding, removePending],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };
