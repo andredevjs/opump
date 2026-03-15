@@ -76,6 +76,25 @@ function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLC
   return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
 }
 
+/**
+ * Merge trade-built candles into OHLCV candles.
+ * OHLCV candles take priority (indexed on-chain data); trade candles fill
+ * time buckets not yet covered by the indexer — this ensures pending trades
+ * appear on the chart immediately.
+ */
+function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
+  if (trades.length === 0) return ohlcv;
+  const tradeCandles = buildCandlesFromTrades(trades, tf);
+  if (tradeCandles.length === 0) return ohlcv;
+  if (ohlcv.length === 0) return tradeCandles;
+
+  const ohlcvTimes = new Set(ohlcv.map((c) => c.time));
+  const newCandles = tradeCandles.filter((c) => !ohlcvTimes.has(c.time));
+  if (newCandles.length === 0) return ohlcv;
+
+  return [...ohlcv, ...newCandles].sort((a, b) => a.time - b.time);
+}
+
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
   const updateTokenPrice = useTokenStore((s) => s.updateTokenPrice);
   const setCandles = usePriceStore((s) => s.setCandles);
@@ -104,28 +123,18 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     }
 
     let cancelled = false;
-    api.getOHLCV(token.address, timeframe).then(async (resp) => {
+    // Fetch OHLCV and recent trades in parallel, then merge so pending
+    // trades always appear on the chart even before the indexer catches up.
+    Promise.all([
+      api.getOHLCV(token.address, timeframe),
+      api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
+    ]).then(([ohlcvResp, tradesResp]) => {
       if (cancelled) return;
-
-      if (resp.candles.length > 0) {
-        setCandles(token.address, resp.candles);
-        setLoading(token.address, false);
-        return;
+      const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframe);
+      if (merged.length > 0) {
+        setCandles(token.address, merged);
       }
-
-      // OHLCV empty — fallback: build candles from trades API (covers pending trades
-      // that the OHLCV aggregation may exclude)
-      try {
-        const tradesResp = await api.getTrades(token.address, 1, 200);
-        if (!cancelled && tradesResp.trades.length > 0) {
-          const fallbackCandles = buildCandlesFromTrades(tradesResp.trades, timeframe);
-          if (fallbackCandles.length > 0) {
-            setCandles(token.address, fallbackCandles);
-          }
-        }
-      } catch { /* best-effort */ }
-
-      if (!cancelled) setLoading(token.address, false);
+      setLoading(token.address, false);
     }).catch(() => {
       if (!cancelled) {
         setLoading(token.address, false);
@@ -212,23 +221,16 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           }
         });
 
-        // Also refresh chart data without WS
-        api.getOHLCV(token.address, timeframeRef.current).then(async (resp) => {
+        // Also refresh chart data without WS — merge trades so pending ones show
+        Promise.all([
+          api.getOHLCV(token.address, timeframeRef.current),
+          api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
+        ]).then(([ohlcvResp, tradesResp]) => {
           if (cancelled) return;
-          if (resp.candles.length > 0) {
-            setCandles(token.address, resp.candles);
-            return;
+          const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
+          if (merged.length > 0) {
+            setCandles(token.address, merged);
           }
-          // Fallback: build candles from trades
-          try {
-            const tradesResp = await api.getTrades(token.address, 1, 200);
-            if (!cancelled && tradesResp.trades.length > 0) {
-              const fallbackCandles = buildCandlesFromTrades(tradesResp.trades, timeframeRef.current);
-              if (fallbackCandles.length > 0) {
-                setCandles(token.address, fallbackCandles);
-              }
-            }
-          } catch { /* best-effort */ }
         }).catch(() => { /* best-effort */ });
       }
     }, PRICE_UPDATE_INTERVAL_MS);
