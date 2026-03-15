@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
 import { CHART_THEME } from '@/config/constants';
@@ -58,6 +58,7 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
     const lineSeries = chart.addLineSeries({
       color: CHART_THEME.lineColor,
       lineWidth: 2,
+      lineType: LineType.Curved,
       crosshairMarkerVisible: true,
       crosshairMarkerRadius: 4,
       crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
