@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
 import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
@@ -9,6 +9,8 @@ import * as api from '@/services/api';
 const EMPTY_WS_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
 const POLL_INTERVAL_MS = 15_000;
 const FAST_POLL_INTERVAL_MS = 5_000;
+/** Trades older than this are treated as confirmed for display (Bitcoin block time ~10min) */
+const PENDING_AGE_THRESHOLD_MS = 15 * 60 * 1000;
 
 interface TradeHistoryProps {
   token: Token;
@@ -27,19 +29,27 @@ export function TradeHistory({ token }: TradeHistoryProps) {
 
   const fetchTrades = useCallback(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
-      const mapped: Trade[] = res.trades.map((t) => ({
-        id: t._id,
-        txHash: t._id,
-        type: t.type,
-        tokenAddress: t.tokenAddress,
-        tokenAmount: String(t.tokenAmount),
-        btcAmount: Number(t.btcAmount),
-        priceSats: Number(t.pricePerToken || 0),
-        fee: Number(t.fees?.platform || 0),
-        traderAddress: t.traderAddress,
-        timestamp: new Date(t.createdAt).getTime(),
-        status: (t.status === 'confirmed' ? 'confirmed' : 'mempool') as Trade['status'],
-      }));
+      const now = Date.now();
+      const mapped: Trade[] = res.trades.map((t) => {
+        const timestamp = new Date(t.createdAt).getTime();
+        const age = now - timestamp;
+        // Per mempool-first architecture: trades older than ~15min are
+        // effectively confirmed even if the indexer hasn't caught up yet.
+        const isOldPending = t.status !== 'confirmed' && age > PENDING_AGE_THRESHOLD_MS;
+        return {
+          id: t._id,
+          txHash: t._id,
+          type: t.type,
+          tokenAddress: t.tokenAddress,
+          tokenAmount: String(t.tokenAmount),
+          btcAmount: Number(t.btcAmount),
+          priceSats: Number(t.pricePerToken || 0),
+          fee: Number(t.fees?.platform || 0),
+          traderAddress: t.traderAddress,
+          timestamp,
+          status: (t.status === 'confirmed' || isOldPending ? 'confirmed' : 'mempool') as Trade['status'],
+        };
+      });
       setTrades(mapped);
 
       // Reconcile: if API shows a trade as confirmed but the WS entry is still
@@ -65,6 +75,19 @@ export function TradeHistory({ token }: TradeHistoryProps) {
     [trades, wsTrades],
   );
   const pollMs = hasPending ? FAST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
+
+  // When pending trades exist, trigger the indexer so it processes any new blocks
+  // (scheduled function may not run on deploy previews)
+  const indexerTriggered = useRef(false);
+  useEffect(() => {
+    if (hasPending && !indexerTriggered.current) {
+      indexerTriggered.current = true;
+      api.triggerIndexer().finally(() => {
+        // Allow re-triggering after 30s if still pending
+        setTimeout(() => { indexerTriggered.current = false; }, 30_000);
+      });
+    }
+  }, [hasPending]);
 
   useEffect(() => {
     fetchTrades();

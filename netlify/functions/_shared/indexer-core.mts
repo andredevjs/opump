@@ -19,6 +19,7 @@ import {
   releaseIndexerLock,
   graduateToken,
   getHolderCount,
+  TRADE_KEY,
 } from "./redis-queries.mts";
 import {
   PRICE_PRECISION,
@@ -193,6 +194,35 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
           } catch (err) {
             console.error(`[Indexer] Error processing ${eventType} event in tx ${tx.hash}:`, err instanceof Error ? err.message : err);
           }
+        }
+      }
+
+      // Bulk-confirm any pending trades whose txHash appears in this block.
+      // Safety net: even if event parsing misses a trade, its inclusion in a
+      // block proves it was confirmed on-chain.
+      const blockTxHashes = block.transactions.map((tx: { hash: string }) => tx.hash).filter(Boolean);
+      if (blockTxHashes.length > 0) {
+        const statusPipe = redis.pipeline();
+        for (const txHash of blockTxHashes) {
+          statusPipe.hget(TRADE_KEY(txHash), "status");
+        }
+        const statuses = await statusPipe.exec();
+
+        const confirmPipe = redis.pipeline();
+        let needConfirm = false;
+        for (let i = 0; i < blockTxHashes.length; i++) {
+          if (statuses[i] === "pending") {
+            confirmPipe.hset(TRADE_KEY(blockTxHashes[i]), {
+              status: "confirmed",
+              blockNumber: String(blockNum),
+              blockTimestamp: normalizeBlockTime(block.time).toISOString(),
+            });
+            needConfirm = true;
+          }
+        }
+        if (needConfirm) {
+          await confirmPipe.exec();
+          console.log(`[Indexer] Bulk-confirmed pending trades in block ${blockNum}`);
         }
       }
 
