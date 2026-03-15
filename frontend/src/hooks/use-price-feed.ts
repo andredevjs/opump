@@ -123,16 +123,20 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     }
 
     let cancelled = false;
-    // Fetch OHLCV and recent trades in parallel, then merge so pending
-    // trades always appear on the chart even before the indexer catches up.
+    // Fetch OHLCV, trades, and price (for 24h change) in parallel
     Promise.all([
       api.getOHLCV(token.address, timeframe),
       api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
-    ]).then(([ohlcvResp, tradesResp]) => {
+      api.getTokenPrice(token.address).catch(() => null),
+    ]).then(([ohlcvResp, tradesResp, priceResp]) => {
       if (cancelled) return;
       const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframe);
       if (merged.length > 0) {
         setCandles(token.address, merged);
+      }
+      // Seed 24h change from price endpoint
+      if (priceResp) {
+        updateTokenPrice(token.address, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
       }
       setLoading(token.address, false);
     }).catch(() => {
@@ -150,7 +154,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       // Merge with existing — don't overwrite reserves with undefined
       setLivePrice(token.address, d);
       if (d.currentPriceSats != null) {
-        updateTokenPrice(token.address, Number(d.currentPriceSats), 0);
+        // Preserve existing 24h change — WS events don't carry it
+        const existing = useTokenStore.getState().selectedToken;
+        const currentChange = existing?.address === token.address ? existing.priceChange24h : 0;
+        updateTokenPrice(token.address, Number(d.currentPriceSats), currentChange);
       }
     });
 
@@ -213,7 +220,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
             realBtcReserve: price.realBtcReserve,
             isOptimistic: price.isOptimistic,
           });
-          updateTokenPrice(token.address, Number(price.currentPriceSats), 0);
+          updateTokenPrice(token.address, Number(price.currentPriceSats), price.change24hBps / 100);
         }).catch(() => {
           consecutiveFailures++;
           if (consecutiveFailures >= 3) {

@@ -15,6 +15,41 @@ import type { TokenDocument } from '../../../shared/types/token.js';
 import type { OptimisticStateService } from '../services/OptimisticStateService.js';
 import { verifyTokenOnChain } from '../services/on-chain-verify.js';
 
+/**
+ * Calculate the 24h price change in basis points (1 bps = 0.01%).
+ * Compares current price to the price at or closest to 24 hours ago.
+ */
+async function getChange24hBps(tokenAddress: string, currentPriceSats: string): Promise<number> {
+  const trades = getTradesCollection();
+  const currentPrice = parseFloat(currentPriceSats);
+  if (!currentPrice || isNaN(currentPrice)) return 0;
+
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // Find the most recent trade at or before 24h ago
+  const refTrade = await trades.findOne(
+    { tokenAddress, createdAt: { $lte: cutoff } },
+    { sort: { createdAt: -1 }, projection: { pricePerToken: 1 } },
+  );
+
+  let refPrice: number;
+
+  if (refTrade) {
+    refPrice = parseFloat(refTrade.pricePerToken);
+  } else {
+    // Token is less than 24h old — use the earliest trade as reference
+    const oldest = await trades.findOne(
+      { tokenAddress },
+      { sort: { createdAt: 1 }, projection: { pricePerToken: 1 } },
+    );
+    if (!oldest) return 0;
+    refPrice = parseFloat(oldest.pricePerToken);
+  }
+
+  if (!refPrice || isNaN(refPrice)) return 0;
+  return Math.round(((currentPrice - refPrice) / refPrice) * 10000);
+}
+
 // Per-wallet rate limiter for token creation (max 3 per hour per wallet)
 const TOKEN_CREATE_WINDOW_MS = 3_600_000; // 1 hour
 const TOKEN_CREATE_MAX = 3;
@@ -162,8 +197,14 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
       tokens.countDocuments(filter),
     ]);
 
+    // Compute 24h change for each token in parallel
+    const changes = await Promise.all(
+      results.map((t) => getChange24hBps(t._id, t.currentPriceSats)),
+    );
+    const enriched = results.map((t, i) => ({ ...t, priceChange24hBps: changes[i] }));
+
     res.json({
-      tokens: results,
+      tokens: enriched,
       pagination: {
         page,
         limit,
@@ -239,26 +280,29 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
     // Use optimistic state if available
     if (optimisticService && optimisticService.hasPending(address)) {
       const optimistic = optimisticService.getOptimisticPrice(address);
+      const displayPrice = toDisplayPrice(optimistic.reserves.virtualBtcReserve, optimistic.reserves.virtualTokenSupply);
+      const change24hBps = await getChange24hBps(address, displayPrice);
       res.json({
-        currentPriceSats: toDisplayPrice(optimistic.reserves.virtualBtcReserve, optimistic.reserves.virtualTokenSupply),
+        currentPriceSats: displayPrice,
         virtualBtcReserve: optimistic.reserves.virtualBtcReserve.toString(),
         virtualTokenSupply: optimistic.reserves.virtualTokenSupply.toString(),
         realBtcReserve: optimistic.reserves.realBtcReserve.toString(),
         isOptimistic: true,
         pendingBuySats: optimistic.pendingBuySats.toString(),
         pendingSellTokens: optimistic.pendingSellTokens.toString(),
-        change24hBps: 0,
+        change24hBps,
       });
       return;
     }
 
+    const change24hBps = await getChange24hBps(address, token.currentPriceSats);
     res.json({
       currentPriceSats: token.currentPriceSats,
       virtualBtcReserve: token.virtualBtcReserve,
       virtualTokenSupply: token.virtualTokenSupply,
       realBtcReserve: token.realBtcReserve,
       isOptimistic: false,
-      change24hBps: 0,
+      change24hBps,
     });
   });
 

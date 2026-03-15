@@ -5,7 +5,7 @@ import type { Token } from '@/types/token';
  * Map an API token response to the frontend Token type.
  * Single source of truth for API → frontend conversion.
  */
-export function mapApiTokenToToken(t: TokenDetailResponse): Token {
+export function mapApiTokenToToken(t: TokenDetailResponse & { priceChange24hBps?: number }): Token {
   const threshold = parseFloat(t.config.graduationThreshold);
 
   return {
@@ -21,7 +21,7 @@ export function mapApiTokenToToken(t: TokenDetailResponse): Token {
     virtualTokenSupply: t.virtualTokenSupply,
     realBtcReserve: t.realBtcReserve,
     currentPriceSats: parseFloat(t.currentPriceSats),
-    priceChange24h: 0,
+    priceChange24h: (t.priceChange24hBps ?? 0) / 100,
     volume24hSats: parseFloat(t.volume24h),
     marketCapSats: parseFloat(t.marketCapSats),
     holderCount: t.holderCount,
