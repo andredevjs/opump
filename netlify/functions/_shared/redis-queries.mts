@@ -272,10 +272,19 @@ export async function graduateToken(contractAddress: string, blockNumber: number
 
 /**
  * Save a trade and update all indexes + holder tracking.
+ * If the trade already exists, its original createdAt is preserved so that
+ * confirmation by the indexer doesn't overwrite the original trade time.
  */
 export async function saveTrade(trade: TradeDocument): Promise<void> {
   const redis = getRedis();
   const key = TRADE_KEY(trade._id);
+
+  // Preserve the original createdAt if this trade was already submitted
+  const existingCreatedAt = await redis.hget(key, "createdAt") as string | null;
+  if (existingCreatedAt) {
+    trade = { ...trade, createdAt: new Date(existingCreatedAt) };
+  }
+
   const flat = flattenTrade(trade);
   const createdAtMs = trade.createdAt instanceof Date ? trade.createdAt.getTime() : Date.now();
 
