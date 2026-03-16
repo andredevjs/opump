@@ -156,12 +156,25 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       // Merge with existing — don't overwrite reserves with undefined
       setLivePrice(token.address, d);
       if (d.currentPriceSats != null) {
+        const newPrice = Number(d.currentPriceSats);
         // Recalculate 24h change from reference price — WS events don't carry it
         const existing = useTokenStore.getState().selectedToken;
         const oldPrice = existing?.address === token.address ? existing.currentPriceSats : 0;
         const oldChange = existing?.address === token.address ? existing.priceChange24h : 0;
-        const newChange = computeOptimistic24hChange(oldPrice, oldChange, Number(d.currentPriceSats));
-        updateTokenPrice(token.address, Number(d.currentPriceSats), newChange);
+        const newChange = computeOptimistic24hChange(oldPrice, oldChange, newPrice);
+        updateTokenPrice(token.address, newPrice, newChange);
+
+        // Sync chart's last candle close to the spot price so chart and header match
+        const candles = usePriceStore.getState().candles[token.address] ?? [];
+        const last = candles[candles.length - 1];
+        if (last) {
+          updateLastCandle(token.address, {
+            ...last,
+            high: Math.max(last.high, newPrice),
+            low: Math.min(last.low, newPrice),
+            close: newPrice,
+          });
+        }
       }
 
       // Update market cap and graduation progress from WS reserve data
