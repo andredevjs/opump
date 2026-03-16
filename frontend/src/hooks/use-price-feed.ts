@@ -274,28 +274,30 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     });
 
     function refreshFromServer() {
+      if (!token) return;
+      const addr = token.address;
       Promise.all([
-        api.getOHLCV(token.address, timeframeRef.current),
-        api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
-        api.getTokenPrice(token.address).catch(() => null),
+        api.getOHLCV(addr, timeframeRef.current),
+        api.getTrades(addr, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
+        api.getTokenPrice(addr).catch(() => null),
       ]).then(([ohlcvResp, tradesResp, priceResp]) => {
         if (cancelled) return;
         const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
         if (merged.length > 0) {
-          setCandles(token.address, merged);
+          setCandles(addr, merged);
         }
         if (priceResp) {
           lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
-          setLivePrice(token.address, {
+          setLivePrice(addr, {
             currentPriceSats: priceResp.currentPriceSats,
             virtualBtcReserve: priceResp.virtualBtcReserve,
             virtualTokenSupply: priceResp.virtualTokenSupply,
             realBtcReserve: priceResp.realBtcReserve,
             isOptimistic: priceResp.isOptimistic,
           });
-          updateTokenPrice(token.address, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
+          updateTokenPrice(addr, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
         }
-        applySpotPriceToLastCandle(token.address);
+        applySpotPriceToLastCandle(addr);
       }).catch(() => {});
     }
 
