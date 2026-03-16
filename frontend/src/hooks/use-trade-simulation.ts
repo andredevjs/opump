@@ -158,12 +158,11 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
-        // Trigger indexer then refresh token data so UI updates
-        import('@/services/api').then(async ({ triggerIndexer }) => {
-          await triggerIndexer();
-          const { useTokenStore: tokenStore } = await import('@/stores/token-store');
-          if (tokenAddress) tokenStore.getState().fetchToken(tokenAddress);
-        });
+        // Nudge the indexer to pick up the confirmed block — don't refetch token
+        // data because WebSocket events already updated price, trades, and chart.
+        // Calling fetchToken() here would race with the indexer and overwrite
+        // the optimistic price with stale DB data.
+        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
         addBalance(btcSatsNum); // Refund on failure
@@ -272,12 +271,9 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
-        // Trigger indexer then refresh token data so UI updates
-        import('@/services/api').then(async ({ triggerIndexer }) => {
-          await triggerIndexer();
-          const { useTokenStore: tokenStore } = await import('@/stores/token-store');
-          if (tokenAddress) tokenStore.getState().fetchToken(tokenAddress);
-        });
+        // Nudge the indexer to pick up the confirmed block — don't refetch token
+        // data because WebSocket events already updated price, trades, and chart.
+        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
         addHolding(tokenAddress, tokenUnits); // Refund on failure
