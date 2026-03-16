@@ -293,16 +293,8 @@ export class IndexerService {
     // Calculate fees using the simulator
     const fees = this.calculateFeeBreakdown(data.btcIn);
 
-    // Recalculate price from reserves and normalize to sats per whole token
-    const token = await getTokensCollection().findOne({ _id: tokenAddress });
-    let displayPrice: string;
-    if (token) {
-      const vBtc = BigInt(token.virtualBtcReserve || '0');
-      const vToken = BigInt(token.virtualTokenSupply || '0');
-      displayPrice = toDisplayPrice(vBtc, vToken);
-    } else {
-      displayPrice = scaledToDisplayPrice(data.newPrice);
-    }
+    // Use the on-chain newPrice from the event — DB reserves may be stale
+    const displayPrice = scaledToDisplayPrice(data.newPrice);
 
     // Upsert — if the MempoolService already registered this trade as pending, update it
     await trades.updateOne(
@@ -336,6 +328,12 @@ export class IndexerService {
     // Remove from optimistic state
     this.optimisticService.removePendingTrade(tokenAddress, txHash);
 
+    // Update token document price immediately so API endpoints return fresh data
+    await getTokensCollection().updateOne(
+      { _id: tokenAddress },
+      { $set: { currentPriceSats: displayPrice, updatedAt: new Date() } },
+    );
+
     // Broadcast trade
     this.wsService.broadcast(`token:trades:${tokenAddress}`, 'new_trade', {
       txHash,
@@ -353,6 +351,11 @@ export class IndexerService {
       currentPriceSats: displayPrice,
       isOptimistic: false,
     });
+
+    // Sync reserves from chain in background to keep DB reserves accurate
+    this.syncTokenReserves(tokenAddress).catch((err) => {
+      console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
+    });
   }
 
   /**
@@ -368,16 +371,8 @@ export class IndexerService {
     const trades = getTradesCollection();
     const fees = this.calculateFeeBreakdown(data.btcOut);
 
-    // Recalculate price from reserves and normalize to sats per whole token
-    const sellToken = await getTokensCollection().findOne({ _id: tokenAddress });
-    let sellDisplayPrice: string;
-    if (sellToken) {
-      const vBtc = BigInt(sellToken.virtualBtcReserve || '0');
-      const vToken = BigInt(sellToken.virtualTokenSupply || '0');
-      sellDisplayPrice = toDisplayPrice(vBtc, vToken);
-    } else {
-      sellDisplayPrice = scaledToDisplayPrice(data.newPrice);
-    }
+    // Use the on-chain newPrice from the event — DB reserves may be stale
+    const sellDisplayPrice = scaledToDisplayPrice(data.newPrice);
 
     await trades.updateOne(
       { _id: txHash },
@@ -409,6 +404,12 @@ export class IndexerService {
 
     this.optimisticService.removePendingTrade(tokenAddress, txHash);
 
+    // Update token document price immediately so API endpoints return fresh data
+    await getTokensCollection().updateOne(
+      { _id: tokenAddress },
+      { $set: { currentPriceSats: sellDisplayPrice, updatedAt: new Date() } },
+    );
+
     this.wsService.broadcast(`token:trades:${tokenAddress}`, 'new_trade', {
       txHash,
       type: 'sell',
@@ -423,6 +424,11 @@ export class IndexerService {
     this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
       currentPriceSats: sellDisplayPrice,
       isOptimistic: false,
+    });
+
+    // Sync reserves from chain in background to keep DB reserves accurate
+    this.syncTokenReserves(tokenAddress).catch((err) => {
+      console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
     });
   }
 
