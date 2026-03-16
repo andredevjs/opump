@@ -110,6 +110,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
   const intervalRef = useRef<number>();
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
+  const lastSpotPriceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -124,6 +125,21 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     }
 
     let cancelled = false;
+
+    function applySpotPriceToLastCandle(address: string) {
+      const spotPrice = lastSpotPriceRef.current;
+      if (spotPrice == null || spotPrice <= 0) return;
+      const candles = usePriceStore.getState().candles[address] ?? [];
+      const last = candles[candles.length - 1];
+      if (!last || last.close === spotPrice) return;
+      updateLastCandle(address, {
+        ...last,
+        high: Math.max(last.high, spotPrice),
+        low: Math.min(last.low, spotPrice),
+        close: spotPrice,
+      });
+    }
+
     // Fetch OHLCV, trades, and price (for 24h change) in parallel
     Promise.all([
       api.getOHLCV(token.address, timeframe),
@@ -137,8 +153,14 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }
       // Seed 24h change from price endpoint
       if (priceResp) {
+        // Seed spot ref only if WS hasn't already set it (WS is faster & more current)
+        if (lastSpotPriceRef.current == null) {
+          lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
+        }
         updateTokenPrice(token.address, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
       }
+      // Re-apply spot price after setCandles to prevent execution-price snap-back
+      applySpotPriceToLastCandle(token.address);
       setLoading(token.address, false);
     }).catch(() => {
       if (!cancelled) {
@@ -157,6 +179,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       setLivePrice(token.address, d);
       if (d.currentPriceSats != null) {
         const newPrice = Number(d.currentPriceSats);
+        lastSpotPriceRef.current = newPrice;
         // Recalculate 24h change from reference price — WS events don't carry it
         const existing = useTokenStore.getState().selectedToken;
         const oldPrice = existing?.address === token.address ? existing.currentPriceSats : 0;
@@ -165,16 +188,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         updateTokenPrice(token.address, newPrice, newChange);
 
         // Sync chart's last candle close to the spot price so chart and header match
-        const candles = usePriceStore.getState().candles[token.address] ?? [];
-        const last = candles[candles.length - 1];
-        if (last) {
-          updateLastCandle(token.address, {
-            ...last,
-            high: Math.max(last.high, newPrice),
-            low: Math.min(last.low, newPrice),
-            close: newPrice,
-          });
-        }
+        applySpotPriceToLastCandle(token.address);
       }
 
       // Update market cap and graduation progress from WS reserve data
@@ -207,8 +221,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const bucketSeconds = TIMEFRAME_SECONDS[tf];
         const nowSec = Math.floor(Date.now() / 1000);
         const bucketTime = Math.floor(nowSec / bucketSeconds) * bucketSeconds;
-        const price = Number(d.pricePerToken);
+        const execPrice = Number(d.pricePerToken);
         const volume = Number(d.btcAmount);
+        // Use spot price for close so chart matches header; execution price for high/low
+        const closePrice = lastSpotPriceRef.current ?? execPrice;
 
         const candles = usePriceStore.getState().candles[token.address] ?? [];
         const last = candles[candles.length - 1];
@@ -217,18 +233,18 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           updateLastCandle(token.address, {
             time: bucketTime,
             open: last.open,
-            high: Math.max(last.high, price),
-            low: Math.min(last.low, price),
-            close: price,
+            high: Math.max(last.high, execPrice),
+            low: Math.min(last.low, execPrice),
+            close: closePrice,
             volume: last.volume + volume,
           });
         } else {
           appendCandle(token.address, {
             time: bucketTime,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
+            open: execPrice,
+            high: execPrice,
+            low: Math.min(execPrice, closePrice),
+            close: closePrice,
             volume,
           });
         }
@@ -247,6 +263,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       if (!wsClient.isConnected()) {
         api.getTokenPrice(token.address).then((price) => {
           consecutiveFailures = 0;
+          lastSpotPriceRef.current = Number(price.currentPriceSats);
           setLivePrice(token.address, {
             currentPriceSats: price.currentPriceSats,
             virtualBtcReserve: price.virtualBtcReserve,
@@ -255,6 +272,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
             isOptimistic: price.isOptimistic,
           });
           updateTokenPrice(token.address, Number(price.currentPriceSats), price.change24hBps / 100);
+          applySpotPriceToLastCandle(token.address);
         }).catch(() => {
           consecutiveFailures++;
           if (consecutiveFailures >= 3) {
@@ -271,6 +289,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
           if (merged.length > 0) {
             setCandles(token.address, merged);
+            applySpotPriceToLastCandle(token.address);
           }
         }).catch(() => { /* best-effort */ });
       }
@@ -278,6 +297,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
 
     return () => {
       cancelled = true;
+      lastSpotPriceRef.current = null;
       setLoading(token.address, false);
       unsubPrice();
       unsubTrades();
