@@ -163,7 +163,16 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
     const filter: Filter<TokenDocument> = {};
 
     if (status && status !== 'all') {
-      filter.status = status as TokenStatus;
+      if (status === 'new') {
+        // "New" = active tokens created in the last 24 hours
+        filter.status = 'active';
+        filter.createdAt = { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+      } else if (status === 'migrated') {
+        // "On DEX" = tokens that graduated, are migrating, or have migrated
+        filter.status = { $in: ['graduated', 'migrating', 'migrated'] } as any;
+      } else {
+        filter.status = status as TokenStatus;
+      }
     }
 
     if (search) {

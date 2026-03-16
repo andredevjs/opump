@@ -68,7 +68,7 @@ export const useTokenStore = create<TokenStore>((set, get) => {
 
       const result = await api.getTokens({
         search: filter.search || undefined,
-        status: filter.status === 'all' ? undefined : filter.status as 'active' | 'graduated',
+        status: filter.status === 'all' ? undefined : filter.status,
         sort: sortMap[filter.sort] || 'volume24h',
         order: 'desc',
       });
