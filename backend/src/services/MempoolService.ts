@@ -4,7 +4,7 @@ import { getTradesCollection } from '../db/models/Trade.js';
 import type { WebSocketService } from './WebSocketService.js';
 import type { OptimisticStateService } from './OptimisticStateService.js';
 import { decodeBuyEvent, decodeSellEvent } from './EventDecoder.js';
-import { toDisplayPrice } from '../utils/price.js';
+import { toDisplayPrice, scaledToDisplayPrice } from '../utils/price.js';
 import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { PendingTransaction } from '../types/contracts.js';
 
@@ -134,7 +134,7 @@ export class MempoolService {
                 buyData.buyer || senderAddr,
                 buyData.btcIn.toString(),
                 buyData.tokensOut.toString(),
-                buyData.newPrice.toString(),
+                scaledToDisplayPrice(buyData.newPrice),
               );
             }
           } else if (eventType === 'Sell') {
@@ -147,7 +147,7 @@ export class MempoolService {
                 sellData.seller || senderAddr,
                 sellData.btcOut.toString(),
                 sellData.tokensIn.toString(),
-                sellData.newPrice.toString(),
+                scaledToDisplayPrice(sellData.newPrice),
               );
             }
           }
@@ -289,7 +289,21 @@ export class MempoolService {
       createdAt: new Date(),
     });
 
-    // Add to optimistic state
+    // Seed confirmed reserves from DB if not already present
+    // (cleanup() removes state entries with no pending adjustments,
+    // so we must re-hydrate before simulating)
+    if (!this.optimisticService.hasPending(tokenAddress)) {
+      const tokenDoc = await getTokensCollection().findOne({ _id: tokenAddress });
+      if (tokenDoc) {
+        this.optimisticService.setConfirmedReserves(tokenAddress, {
+          virtualBtcReserve: BigInt(tokenDoc.virtualBtcReserve || '0'),
+          virtualTokenSupply: BigInt(tokenDoc.virtualTokenSupply || '0'),
+          kConstant: BigInt(tokenDoc.kConstant || '0'),
+          realBtcReserve: BigInt(tokenDoc.realBtcReserve || '0'),
+        });
+      }
+    }
+
     let amount: bigint;
     try {
       amount = type === 'buy' ? BigInt(btcAmount) : BigInt(tokenAmount);

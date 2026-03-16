@@ -32,7 +32,8 @@
       "Bash(find /Users/nosfter/Developer/zero.n/projects/opump/frontend/node_modules/@btc-vision/transaction -name \"*nisat*\" -o -name \"*wallet*\" 2>/dev/null | head -10)",
       "WebFetch(domain:deploy-preview-2--opump.netlify.app)",
       "WebFetch(domain:docs.motoswap.org)",
-      "WebFetch(domain:docs.opnet.org)"
+      "WebFetch(domain:docs.opnet.org)",
+      "Bash(find:*)"
     ]
   }
 }

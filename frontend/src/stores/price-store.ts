@@ -9,15 +9,6 @@ interface LivePrice {
   isOptimistic: boolean;
 }
 
-const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '1h': 3600,
-  '4h': 14400,
-  '1d': 86400,
-};
-
 interface PriceStore {
   // token address -> candles
   candles: Record<string, OHLCVCandle[]>;
@@ -34,13 +25,11 @@ interface PriceStore {
   updateLastCandle: (address: string, candle: OHLCVCandle) => void;
   setLivePrice: (address: string, price: Partial<LivePrice>) => void;
   setActiveTimeframe: (address: string, timeframe: TimeframeKey) => void;
-  /** Add an optimistic trade data point to the chart candles */
-  addTradeCandle: (address: string, price: number, volume: number) => void;
 }
 
 const MAX_CANDLES = 500;
 
-export const usePriceStore = create<PriceStore>((set, get) => ({
+export const usePriceStore = create<PriceStore>((set) => ({
   candles: {},
   loading: {},
   livePrices: {},
@@ -105,35 +94,19 @@ export const usePriceStore = create<PriceStore>((set, get) => ({
     set((state) => ({
       activeTimeframes: { ...state.activeTimeframes, [address]: timeframe },
     })),
-
-  addTradeCandle: (address, price, volume) => {
-    const state = get();
-    const tf = state.activeTimeframes[address] ?? '15m';
-    const bucketSeconds = TIMEFRAME_SECONDS[tf];
-    const nowSec = Math.floor(Date.now() / 1000);
-    const bucketTime = Math.floor(nowSec / bucketSeconds) * bucketSeconds;
-
-    const candles = state.candles[address] ?? [];
-    const last = candles[candles.length - 1];
-
-    if (last && last.time === bucketTime) {
-      get().updateLastCandle(address, {
-        time: bucketTime,
-        open: last.open,
-        high: Math.max(last.high, price),
-        low: Math.min(last.low, price),
-        close: price,
-        volume: last.volume + volume,
-      });
-    } else {
-      get().appendCandle(address, {
-        time: bucketTime,
-        open: price,
-        high: price,
-        low: price,
-        close: price,
-        volume,
-      });
-    }
-  },
 }));
+
+const _chartedTxHashes: Record<string, Set<string>> = {};
+
+export function markTxCharted(address: string, txHash: string): void {
+  if (!_chartedTxHashes[address]) _chartedTxHashes[address] = new Set();
+  _chartedTxHashes[address].add(txHash);
+  if (_chartedTxHashes[address].size > 200) {
+    const entries = [..._chartedTxHashes[address]];
+    _chartedTxHashes[address] = new Set(entries.slice(-100));
+  }
+}
+
+export function isTxCharted(address: string, txHash: string): boolean {
+  return _chartedTxHashes[address]?.has(txHash) ?? false;
+}

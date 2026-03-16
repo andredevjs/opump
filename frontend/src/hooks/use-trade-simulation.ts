@@ -4,35 +4,8 @@ import type { PendingTransaction, TradeSimulation } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
-import { VAULT_ADDRESS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
-import { computeOptimistic24hChange } from '@/lib/price-utils';
+import { VAULT_ADDRESS } from '@/config/constants';
 import toast from 'react-hot-toast';
-
-/** Compute optimistic stats patch from a trade simulation result. */
-function computeOptimisticStats(
-  token: Token,
-  sim: TradeSimulation,
-  btcSats: number,
-): { volume24hSats: number; tradeCount24h: number; marketCapSats: number; graduationProgress: number; realBtcReserve: string } {
-  const newVBtc = Number(sim.newVirtualBtc);
-  const newVToken = Number(sim.newVirtualToken);
-  const initTokenSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
-  const newMarketCap = newVToken > 0 ? (newVBtc / newVToken) * initTokenSupply : 0;
-  // Estimate new realBtcReserve: buy adds, sell subtracts
-  const realBtcDelta = sim.type === 'buy' ? btcSats : -btcSats;
-  const newRealBtc = Math.max(0, Number(token.realBtcReserve) + realBtcDelta);
-  const gradProgress = GRADUATION_THRESHOLD_SATS > 0
-    ? (newRealBtc / GRADUATION_THRESHOLD_SATS) * 100
-    : 0;
-
-  return {
-    volume24hSats: token.volume24hSats + btcSats,
-    tradeCount24h: token.tradeCount24h + 1,
-    marketCapSats: newMarketCap,
-    graduationProgress: Math.min(100, gradProgress),
-    realBtcReserve: String(Math.round(newRealBtc)),
-  };
-}
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
@@ -41,11 +14,8 @@ export function useTradeSimulation(token: Token | null) {
   const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade, confirmWsTrade } = useTradeStore();
   const [executing, setExecuting] = useState(false);
 
-  // Extract stable primitives to avoid re-creating callbacks when token object ref changes
   const tokenAddress = token?.address;
   const tokenSymbol = token?.symbol;
-  // W6-W7: Extract realBtcReserve so it can be a dependency
-  const realBtcReserve = token?.realBtcReserve;
 
   // Track pending timeouts for cleanup on unmount
   const timeoutIds = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -136,7 +106,6 @@ export function useTradeSimulation(token: Token | null) {
 
         updatePendingStatus(txId, 'mempool');
 
-        // Optimistic trade entry — appears instantly in TradeHistory
         addWsTrade(tokenAddress, {
           txHash: result.txHash,
           type: 'buy',
@@ -144,10 +113,9 @@ export function useTradeSimulation(token: Token | null) {
           btcAmount: btcSats,
           tokenAmount: sim.outputAmount,
           status: 'pending',
-          pricePerToken: String(sim.pricePerToken),
+          pricePerToken: String(sim.newPriceSats),
         });
 
-        // Submit trade to Redis so ALL users see it immediately
         import('@/services/api').then(({ submitTrade }) => {
           submitTrade({
             txHash: result.txHash,
@@ -156,35 +124,21 @@ export function useTradeSimulation(token: Token | null) {
             traderAddress: walletAddress,
             btcAmount: btcSats,
             tokenAmount: sim.outputAmount,
-            pricePerToken: String(sim.pricePerToken),
+            pricePerToken: String(sim.newPriceSats),
+          }).catch((err) => {
+            console.warn('[Trade] submitTrade failed, retrying once:', err);
+            submitTrade({
+              txHash: result.txHash,
+              tokenAddress,
+              type: 'buy',
+              traderAddress: walletAddress,
+              btcAmount: btcSats,
+              tokenAmount: sim.outputAmount,
+              pricePerToken: String(sim.newPriceSats),
+            }).catch(() => {});
           });
         });
 
-        // Optimistic price update from simulation
-        const { usePriceStore } = await import('@/stores/price-store');
-        const { useTokenStore } = await import('@/stores/token-store');
-        usePriceStore.getState().setLivePrice(tokenAddress, {
-          currentPriceSats: String(sim.newPriceSats),
-          virtualBtcReserve: sim.newVirtualBtc,
-          virtualTokenSupply: sim.newVirtualToken,
-          realBtcReserve: realBtcReserve ?? '0',
-          isOptimistic: true,
-        });
-        const currentToken = useTokenStore.getState().selectedToken;
-        const oldPrice = currentToken?.address === tokenAddress ? currentToken.currentPriceSats : 0;
-        const oldChange = currentToken?.address === tokenAddress ? currentToken.priceChange24h : 0;
-        const newChange = computeOptimistic24hChange(oldPrice, oldChange, sim.newPriceSats);
-        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, newChange);
-
-        // Optimistic chart candle update so the trade shows on the chart immediately
-        usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(btcSats));
-
-        // Optimistic stats: volume, trade count, market cap, graduation progress
-        if (token) {
-          useTokenStore.getState().updateTokenStats(tokenAddress, computeOptimisticStats(token, sim, btcSatsNum));
-        }
-
-        // Signal dashboard components to re-poll immediately
         window.dispatchEvent(new CustomEvent('opump:trade'));
 
         toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
@@ -210,7 +164,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
-     realBtcReserve, addPending, deductBalance, updatePendingStatus, addWsTrade, confirmWsTrade, addHolding, removePending, addBalance],
+     addPending, deductBalance, updatePendingStatus, addWsTrade, confirmWsTrade, addHolding, removePending, addBalance],
   );
 
   /**
@@ -261,7 +215,6 @@ export function useTradeSimulation(token: Token | null) {
 
         updatePendingStatus(txId, 'mempool');
 
-        // Optimistic trade entry — appears instantly in TradeHistory
         addWsTrade(tokenAddress, {
           txHash: result.txHash,
           type: 'sell',
@@ -269,10 +222,9 @@ export function useTradeSimulation(token: Token | null) {
           btcAmount: sim.outputAmount,
           tokenAmount: tokenUnits,
           status: 'pending',
-          pricePerToken: String(sim.pricePerToken),
+          pricePerToken: String(sim.newPriceSats),
         });
 
-        // Submit trade to Redis so ALL users see it immediately
         import('@/services/api').then(({ submitTrade }) => {
           submitTrade({
             txHash: result.txHash,
@@ -281,35 +233,21 @@ export function useTradeSimulation(token: Token | null) {
             traderAddress: walletAddress,
             btcAmount: sim.outputAmount,
             tokenAmount: tokenUnits,
-            pricePerToken: String(sim.pricePerToken),
+            pricePerToken: String(sim.newPriceSats),
+          }).catch((err) => {
+            console.warn('[Trade] submitTrade failed, retrying once:', err);
+            submitTrade({
+              txHash: result.txHash,
+              tokenAddress,
+              type: 'sell',
+              traderAddress: walletAddress,
+              btcAmount: sim.outputAmount,
+              tokenAmount: tokenUnits,
+              pricePerToken: String(sim.newPriceSats),
+            }).catch(() => {});
           });
         });
 
-        // Optimistic price update from simulation
-        const { usePriceStore } = await import('@/stores/price-store');
-        const { useTokenStore } = await import('@/stores/token-store');
-        usePriceStore.getState().setLivePrice(tokenAddress, {
-          currentPriceSats: String(sim.newPriceSats),
-          virtualBtcReserve: sim.newVirtualBtc,
-          virtualTokenSupply: sim.newVirtualToken,
-          realBtcReserve: realBtcReserve ?? '0',
-          isOptimistic: true,
-        });
-        const currentTokenSell = useTokenStore.getState().selectedToken;
-        const oldPriceSell = currentTokenSell?.address === tokenAddress ? currentTokenSell.currentPriceSats : 0;
-        const oldChangeSell = currentTokenSell?.address === tokenAddress ? currentTokenSell.priceChange24h : 0;
-        const newChangeSell = computeOptimistic24hChange(oldPriceSell, oldChangeSell, sim.newPriceSats);
-        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, newChangeSell);
-
-        // Optimistic chart candle update so the trade shows on the chart immediately
-        usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(sim.outputAmount));
-
-        // Optimistic stats: volume, trade count, market cap, graduation progress
-        if (token) {
-          useTokenStore.getState().updateTokenStats(tokenAddress, computeOptimisticStats(token, sim, Number(sim.outputAmount)));
-        }
-
-        // Signal dashboard components to re-poll immediately
         window.dispatchEvent(new CustomEvent('opump:trade'));
 
         toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
@@ -333,7 +271,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
-     realBtcReserve, addPending, removeHolding, updatePendingStatus, addWsTrade, confirmWsTrade, addBalance, addHolding, removePending],
+     addPending, removeHolding, updatePendingStatus, addWsTrade, confirmWsTrade, addBalance, addHolding, removePending],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

@@ -161,6 +161,47 @@ describe('OptimisticStateService', () => {
       expect(service.hasPending(TOKEN_A)).toBe(false);
       expect(service.hasPending(TOKEN_B)).toBe(true);
     });
+
+    it('re-seeding reserves after cleanup uses correct base (not initial)', () => {
+      const sim = new BondingCurveSimulator();
+      const largeCapReserves = { ...BondingCurveSimulator.getInitialReserves(), graduationThreshold: 100_000_000_000n };
+      const buyResult = sim.simulateBuy(largeCapReserves, 50_000_000n);
+
+      service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
+      service.addPendingTrade(TOKEN_A, 'tx-1', 'buy', 1_000_000n);
+      const priceWithPending = service.getOptimisticPrice(TOKEN_A);
+
+      service.removePendingTrade(TOKEN_A, 'tx-1');
+      service.cleanup();
+
+      // Re-seed with same confirmed reserves (simulates MempoolService re-hydration)
+      service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
+      service.addPendingTrade(TOKEN_A, 'tx-2', 'buy', 1_000_000n);
+      const priceAfterReseed = service.getOptimisticPrice(TOKEN_A);
+
+      // Both should produce the same optimistic price — NOT fall back to initial reserves
+      expect(priceAfterReseed.reserves.virtualBtcReserve).toBe(priceWithPending.reserves.virtualBtcReserve);
+      expect(priceAfterReseed.reserves.virtualTokenSupply).toBe(priceWithPending.reserves.virtualTokenSupply);
+    });
+
+    it('without re-seeding after cleanup, pending trade starts from initial reserves (bug scenario)', () => {
+      const sim = new BondingCurveSimulator();
+      const largeCapReserves = { ...BondingCurveSimulator.getInitialReserves(), graduationThreshold: 100_000_000_000n };
+      const buyResult = sim.simulateBuy(largeCapReserves, 50_000_000n);
+
+      service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
+      service.addPendingTrade(TOKEN_A, 'tx-1', 'buy', 1_000_000n);
+      service.removePendingTrade(TOKEN_A, 'tx-1');
+      service.cleanup();
+
+      // Add new pending WITHOUT re-seeding: should fall back to initial reserves
+      service.addPendingTrade(TOKEN_A, 'tx-2', 'buy', 1_000_000n);
+      const result = service.getOptimisticPrice(TOKEN_A);
+
+      // This demonstrates the bug: without re-seeding, reserves start from initial
+      const initialSim = sim.simulateBuy(BondingCurveSimulator.getInitialReserves(), 1_000_000n);
+      expect(result.reserves.virtualBtcReserve).toBe(initialSim.newReserves.virtualBtcReserve);
+    });
   });
 
   describe('token isolation', () => {

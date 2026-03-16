@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
-import { usePriceStore } from '@/stores/price-store';
+import { usePriceStore, isTxCharted, markTxCharted } from '@/stores/price-store';
 import { useTradeStore } from '@/stores/trade-store';
 import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TimeframeKey, OHLCVCandle } from '@/types/api';
@@ -34,8 +34,12 @@ function isPriceData(d: unknown): d is PriceWsData {
   return d !== null && typeof d === 'object';
 }
 
-function isTradeData(d: unknown): d is TradeWsData {
+function isNewTradeData(d: unknown): d is TradeWsData {
   return d !== null && typeof d === 'object' && 'txHash' in d && 'type' in d;
+}
+
+function hasTxHash(d: unknown): d is { txHash: string; reason?: string } {
+  return d !== null && typeof d === 'object' && 'txHash' in d;
 }
 
 const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
@@ -79,9 +83,9 @@ function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLC
 
 /**
  * Merge trade-built candles into OHLCV candles.
- * OHLCV candles take priority (indexed on-chain data); trade candles fill
- * time buckets not yet covered by the indexer — this ensures pending trades
- * appear on the chart immediately.
+ * For non-overlapping buckets, trade candles fill gaps not yet covered
+ * by the indexer. For overlapping buckets, trade data is merged in
+ * (expand high/low, prefer trade close which may include pending trades).
  */
 function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
   if (trades.length === 0) return ohlcv;
@@ -89,11 +93,24 @@ function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: Ti
   if (tradeCandles.length === 0) return ohlcv;
   if (ohlcv.length === 0) return tradeCandles;
 
-  const ohlcvTimes = new Set(ohlcv.map((c) => c.time));
-  const newCandles = tradeCandles.filter((c) => !ohlcvTimes.has(c.time));
-  if (newCandles.length === 0) return ohlcv;
+  const resultMap = new Map<number, OHLCVCandle>();
+  for (const c of ohlcv) {
+    resultMap.set(c.time, { ...c });
+  }
 
-  return [...ohlcv, ...newCandles].sort((a, b) => a.time - b.time);
+  for (const tc of tradeCandles) {
+    const existing = resultMap.get(tc.time);
+    if (existing) {
+      existing.high = Math.max(existing.high, tc.high);
+      existing.low = Math.min(existing.low, tc.low);
+      existing.close = tc.close;
+      existing.volume = Math.max(existing.volume, tc.volume);
+    } else {
+      resultMap.set(tc.time, { ...tc });
+    }
+  }
+
+  return Array.from(resultMap.values()).sort((a, b) => a.time - b.time);
 }
 
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
@@ -151,15 +168,12 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       if (merged.length > 0) {
         setCandles(token.address, merged);
       }
-      // Seed 24h change from price endpoint
       if (priceResp) {
-        // Seed spot ref only if WS hasn't already set it (WS is faster & more current)
         if (lastSpotPriceRef.current == null) {
           lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
         }
         updateTokenPrice(token.address, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
       }
-      // Re-apply spot price after setCandles to prevent execution-price snap-back
       applySpotPriceToLastCandle(token.address);
       setLoading(token.address, false);
     }).catch(() => {
@@ -210,21 +224,23 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     });
 
     const unsubTrades = wsClient.subscribe('token:trades', token.address, (event, data) => {
-      if (!isTradeData(data)) return;
-      const d = data;
-
       if (event === 'new_trade') {
-        addWsTrade(token.address, d);
+        if (!isNewTradeData(data)) return;
+        addWsTrade(token.address, data);
 
-        // Update candle chart in real time
+        if (isTxCharted(token.address, data.txHash)) return;
+        markTxCharted(token.address, data.txHash);
+
         const tf = timeframeRef.current;
         const bucketSeconds = TIMEFRAME_SECONDS[tf];
         const nowSec = Math.floor(Date.now() / 1000);
         const bucketTime = Math.floor(nowSec / bucketSeconds) * bucketSeconds;
-        const execPrice = Number(d.pricePerToken);
-        const volume = Number(d.btcAmount);
-        // Use spot price for close so chart matches header; execution price for high/low
-        const closePrice = lastSpotPriceRef.current ?? execPrice;
+        const execPrice = Number(data.pricePerToken);
+        const volume = Number(data.btcAmount);
+
+        const lp = usePriceStore.getState().livePrices[token.address];
+        const storeSpot = lp ? Number(lp.currentPriceSats) : 0;
+        const closePrice = storeSpot > 0 ? storeSpot : (lastSpotPriceRef.current ?? execPrice);
 
         const candles = usePriceStore.getState().candles[token.address] ?? [];
         const last = candles[candles.length - 1];
@@ -249,9 +265,11 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           });
         }
       } else if (event === 'trade_confirmed') {
-        confirmWsTrade(token.address, d.txHash);
+        if (!hasTxHash(data)) return;
+        confirmWsTrade(token.address, data.txHash);
       } else if (event === 'trade_dropped') {
-        dropWsTrade(token.address, d.txHash);
+        if (!hasTxHash(data)) return;
+        dropWsTrade(token.address, data.txHash);
       }
     });
 
@@ -280,7 +298,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           }
         });
 
-        // Also refresh chart data without WS — merge trades so pending ones show
         Promise.all([
           api.getOHLCV(token.address, timeframeRef.current),
           api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
