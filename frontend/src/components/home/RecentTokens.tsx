@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { TokenCard } from '@/components/token/TokenCard';
 import { Button } from '@/components/ui/Button';
@@ -7,16 +7,24 @@ import type { Token } from '@/types/token';
 import * as api from '@/services/api';
 import { mapApiTokenToToken } from '@/lib/mappers';
 
+const POLL_INTERVAL_MS = 5_000;
+
 export function RecentTokens() {
   const [tokens, setTokens] = useState<Token[]>([]);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     api.getTokens({ sort: 'newest', order: 'desc', limit: 6 }).then((res) => {
       setTokens(res.tokens.map(mapApiTokenToToken));
     }).catch(() => {
-      // Keep empty on error
+      // Keep existing on error
     });
   }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   return (
     <section className="max-w-7xl mx-auto px-4 py-12">

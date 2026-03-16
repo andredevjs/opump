@@ -1,106 +1,157 @@
 import { useEffect, useRef } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
 import { cn } from '@/lib/cn';
+import { CHART_THEME } from '@/config/constants';
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
+  loading?: boolean;
   className?: string;
 }
 
-export function PriceChart({ candles, className }: PriceChartProps) {
+export function PriceChart({ candles, loading, className }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
+      autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: 'transparent' },
-        textColor: '#8888a0',
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: 11,
+        background: { type: ColorType.Solid, color: CHART_THEME.background },
+        textColor: CHART_THEME.textColor,
+        fontFamily: CHART_THEME.fontFamily,
+        fontSize: CHART_THEME.fontSize,
       },
       grid: {
-        vertLines: { color: '#1a1a27' },
-        horzLines: { color: '#1a1a27' },
+        vertLines: { visible: false },
+        horzLines: { color: CHART_THEME.gridColor, style: 4 },
       },
       crosshair: {
-        vertLine: { color: '#f7931a', width: 1, style: 2 },
-        horzLine: { color: '#f7931a', width: 1, style: 2 },
+        mode: CrosshairMode.Normal,
+        vertLine: { color: CHART_THEME.crosshairColor, width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
+        horzLine: { color: CHART_THEME.crosshairColor, width: 1, style: 3, labelBackgroundColor: '#1a1a2e' },
       },
       rightPriceScale: {
-        borderColor: '#2a2a3d',
-        scaleMargins: { top: 0.1, bottom: 0.25 },
+        borderColor: CHART_THEME.borderColor,
+        scaleMargins: { top: 0.05, bottom: 0.2 },
+        borderVisible: false,
       },
       timeScale: {
-        borderColor: '#2a2a3d',
+        borderColor: CHART_THEME.borderColor,
         timeVisible: true,
+        secondsVisible: false,
+        borderVisible: false,
+        rightOffset: 5,
+        barSpacing: 6,
+        minBarSpacing: 2,
+        fixLeftEdge: false,
+        fixRightEdge: false,
       },
       handleScroll: { vertTouchDrag: false },
     });
 
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
+    const lineSeries = chart.addLineSeries({
+      color: CHART_THEME.lineColor,
+      lineWidth: 2,
+      lineType: LineType.Curved,
+      crosshairMarkerVisible: true,
+      crosshairMarkerRadius: 4,
+      crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
+      lastValueVisible: true,
+      priceLineVisible: false,
+      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+        const res = original();
+        if (res !== null) {
+          const range = res.priceRange.maxValue - res.priceRange.minValue;
+          const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
+          if (range < mid * 0.001) {
+            const margin = mid * 0.05 || 0.00000001;
+            res.priceRange.minValue -= margin;
+            res.priceRange.maxValue += margin;
+          }
+        }
+        return res;
+      },
+      priceFormat: {
+        type: 'custom',
+        formatter: (price: number) => {
+          if (price === 0) return '0';
+          const abs = Math.abs(price);
+          if (abs >= 1000) return price.toFixed(0);
+          if (abs >= 1) return price.toFixed(2);
+          if (abs >= 0.01) return price.toFixed(4);
+          if (abs >= 0.0001) return price.toFixed(6);
+          return price.toFixed(8);
+        },
+        minMove: 0.00000001,
+      },
     });
 
     const volumeSeries = chart.addHistogramSeries({
-      color: '#f7931a',
+      color: CHART_THEME.volumeColor,
       priceFormat: { type: 'volume' },
       priceScaleId: '',
     });
     volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
+      scaleMargins: { top: 0.85, bottom: 0 },
     });
 
     chartRef.current = chart;
-    candleSeriesRef.current = candleSeries;
+    lineSeriesRef.current = lineSeries;
     volumeSeriesRef.current = volumeSeries;
 
-    const handleResize = () => {
-      if (containerRef.current) {
-        chart.applyOptions({ width: containerRef.current.clientWidth });
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
     return () => {
-      window.removeEventListener('resize', handleResize);
+      chartRef.current = null;
       chart.remove();
     };
   }, []);
 
   useEffect(() => {
-    if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) return;
+    if (!lineSeriesRef.current || !volumeSeriesRef.current) return;
 
-    const candleData = candles.map((c) => ({
+    if (candles.length === 0) {
+      lineSeriesRef.current.setData([]);
+      volumeSeriesRef.current.setData([]);
+      return;
+    }
+
+    const lineData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
+      value: c.close,
     }));
 
     const volumeData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)',
+      color: c.close >= c.open ? `${CHART_THEME.upColor}40` : `${CHART_THEME.downColor}40`,
     }));
 
-    candleSeriesRef.current.setData(candleData);
+    lineSeriesRef.current.setData(lineData);
     volumeSeriesRef.current.setData(volumeData);
+
+    if (chartRef.current && candles.length > 0) {
+      chartRef.current.timeScale().fitContent();
+    }
   }, [candles]);
 
   return (
-    <div ref={containerRef} className={cn('w-full h-[400px]', className)} />
+    <div className={cn('relative w-full h-[500px]', className)}>
+      <div ref={containerRef} className="w-full h-full" />
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-surface/60 backdrop-blur-sm z-10">
+          <div className="h-6 w-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
+      {!loading && candles.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <p className="text-sm text-text-muted">No trades yet</p>
+        </div>
+      )}
+    </div>
   );
 }

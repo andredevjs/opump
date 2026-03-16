@@ -45,6 +45,7 @@ export class LaunchTokenRuntime extends ContractRuntime {
     private readonly sellSelector = this.getSelector('sell(uint256)');
     private readonly reserveSelector = this.getSelector('reserve(uint256)');
     private readonly cancelReservationSelector = this.getSelector('cancelReservation()');
+    private readonly claimPlatformFeesSelector = this.getSelector('claimPlatformFees()');
     private readonly claimCreatorFeesSelector = this.getSelector('claimCreatorFees()');
     private readonly claimMinterRewardSelector = this.getSelector('claimMinterReward()');
     private readonly getReservesSelector = this.getSelector('getReserves()');
@@ -55,6 +56,9 @@ export class LaunchTokenRuntime extends ContractRuntime {
     private readonly getReservationSelector = this.getSelector('getReservation(address)');
     private readonly balanceOfSelector = this.getSelector('balanceOf(address)');
     private readonly totalSupplySelector = this.getSelector('totalSupply()');
+    private readonly migrateSelector = this.getSelector('migrate(address)');
+    private readonly isMigratedSelector = this.getSelector('isMigrated()');
+    private readonly getFeePoolsSelector = this.getSelector('getFeePools()');
 
     public constructor(
         deployer: Address,
@@ -126,6 +130,20 @@ export class LaunchTokenRuntime extends ContractRuntime {
 
         const reader = new BinaryReader(response.response);
         return { success: reader.readBoolean(), response };
+    }
+
+    public async claimPlatformFees(sender?: Address): Promise<{ amount: bigint; response: CallResponse }> {
+        const calldata = new BinaryWriter();
+        calldata.writeSelector(this.claimPlatformFeesSelector);
+
+        const response = await this.execute({
+            calldata: calldata.getBuffer(),
+            ...(sender ? { sender, txOrigin: sender } : {}),
+        });
+        this.handleResponse(response);
+
+        const reader = new BinaryReader(response.response);
+        return { amount: reader.readU256(), response };
     }
 
     public async claimCreatorFees(sender?: Address): Promise<{ amount: bigint; response: CallResponse }> {
@@ -274,6 +292,40 @@ export class LaunchTokenRuntime extends ContractRuntime {
         this.handleResponse(response);
 
         return new BinaryReader(response.response).readU256();
+    }
+
+    public async migrate(recipient: Address, sender?: Address): Promise<{ tokenAmount: bigint; response: CallResponse }> {
+        const calldata = new BinaryWriter();
+        calldata.writeSelector(this.migrateSelector);
+        calldata.writeAddress(recipient);
+        const response = await this.execute({
+            calldata: calldata.getBuffer(),
+            ...(sender ? { sender, txOrigin: sender } : {}),
+        });
+        this.handleResponse(response);
+        const reader = new BinaryReader(response.response);
+        return { tokenAmount: reader.readU256(), response };
+    }
+
+    public async isMigrated(): Promise<boolean> {
+        const calldata = new BinaryWriter();
+        calldata.writeSelector(this.isMigratedSelector);
+        const response = await this.execute({ calldata: calldata.getBuffer() });
+        this.handleResponse(response);
+        return new BinaryReader(response.response).readBoolean();
+    }
+
+    public async getFeePools(): Promise<{ platformFees: bigint; creatorFees: bigint; minterFees: bigint }> {
+        const calldata = new BinaryWriter();
+        calldata.writeSelector(this.getFeePoolsSelector);
+        const response = await this.execute({ calldata: calldata.getBuffer() });
+        this.handleResponse(response);
+        const reader = new BinaryReader(response.response);
+        return {
+            platformFees: reader.readU256(),
+            creatorFees: reader.readU256(),
+            minterFees: reader.readU256(),
+        };
     }
 
     protected handleError(error: Error): Error {

@@ -1,10 +1,14 @@
 [build]
   base = "frontend"
-  command = "npm run build"
+  command = "cd ../netlify && npm ci && cd ../frontend && npm run build"
   publish = "dist"
+  functions = "../netlify/functions"
 
 [build.environment]
   NODE_VERSION = "24"
+
+[functions]
+  node_bundler = "esbuild"
 
 [[headers]]
   for = "/*"
@@ -18,12 +22,44 @@
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# API proxy — routes /api/* to the backend, avoiding CORS issues
+# API redirects — map REST paths to Netlify Functions
+# Functions with path params use config.path in the function file itself.
+# Only static-path routes need redirect rules here.
+
 [[redirects]]
-  from = "/api/*"
-  to = "${API_URL}/:splat"
+  from = "/api/v1/tokens"
+  to = "/.netlify/functions/tokens-list"
   status = 200
-  force = true
+
+[[redirects]]
+  from = "/api/v1/simulate/buy"
+  to = "/.netlify/functions/simulate-buy"
+  status = 200
+
+[[redirects]]
+  from = "/api/v1/simulate/sell"
+  to = "/.netlify/functions/simulate-sell"
+  status = 200
+
+[[redirects]]
+  from = "/api/v1/stats"
+  to = "/.netlify/functions/stats"
+  status = 200
+
+[[redirects]]
+  from = "/api/v1/upload/image"
+  to = "/.netlify/functions/upload-image"
+  status = 200
+
+[[redirects]]
+  from = "/api/v1/indexer/run"
+  to = "/.netlify/functions/indexer-run"
+  status = 200
+
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
 
 # SPA fallback — must come after more specific redirects
 [[redirects]]

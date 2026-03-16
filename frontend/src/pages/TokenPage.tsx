@@ -6,6 +6,8 @@ import { TradePanel } from '@/components/trade/TradePanel';
 import { TradeHistory } from '@/components/trade/TradeHistory';
 import { TokenPrice } from '@/components/token/TokenPrice';
 import { TokenBadge } from '@/components/token/TokenBadge';
+import { MinterRewardCard } from '@/components/token/MinterRewardCard';
+import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { BondingCurveVisual } from '@/components/shared/BondingCurveVisual';
 import { AddressDisplay } from '@/components/shared/AddressDisplay';
@@ -18,152 +20,28 @@ import { usePriceStore } from '@/stores/price-store';
 import { usePriceFeed } from '@/hooks/use-price-feed';
 import { formatBtc, formatNumber, timeAgo } from '@/lib/format';
 import type { TimeframeKey } from '@/types/api';
-import { Globe, Twitter, Send, MessageCircle, Github, Gift, Coins } from 'lucide-react';
-import { useWalletStore } from '@/stores/wallet-store';
-import { Button } from '@/components/ui/Button';
+import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
+
+import type { OHLCVCandle } from '@/types/api';
 
 const MOTOSWAP_URL = import.meta.env.VITE_MOTOSWAP_URL || '';
-
-function MinterRewardCard({ tokenAddress }: { tokenAddress: string }) {
-  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
-  const [claiming, setClaiming] = useState(false);
-  const [minterInfo, setMinterInfo] = useState<{ shares: string; eligible: boolean } | null>(null);
-  const [claimResult, setClaimResult] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!connected || !walletAddress || !hashedMLDSAKey) return;
-    // Fetch minter info from contract
-    (async () => {
-      try {
-        const { getLaunchTokenContract } = await import('@/services/contract');
-        const { Address } = await import('@btc-vision/transaction');
-        const contract = getLaunchTokenContract(tokenAddress);
-        const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
-        const result = await contract.getMinterInfo(addr);
-        setMinterInfo({
-          shares: String(result.properties.shares ?? '0'),
-          eligible: Boolean(result.properties.eligible),
-        });
-      } catch {
-        // Silently fail — user may not be a minter
-      }
-    })();
-  }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
-
-  if (!connected) return null;
-  if (minterInfo && minterInfo.shares === '0') return null;
-
-  const handleClaim = async () => {
-    setClaiming(true);
-    setClaimResult(null);
-    try {
-      const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const sim = await contract.claimMinterReward();
-      const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress!,
-      });
-      setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
-    } catch (err) {
-      setClaimResult(err instanceof Error ? err.message : 'Claim failed');
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 mb-3">
-        <Gift size={16} className="text-accent" />
-        <h3 className="text-sm font-medium text-text-secondary">Minter Rewards</h3>
-      </div>
-      <p className="text-xs text-text-muted mb-3">
-        Early buyers in the first ~30 days earn a share of minter fees proportional to their purchase.
-      </p>
-      {minterInfo && !minterInfo.eligible && (
-        <p className="text-xs text-yellow-400 mb-2">Hold period not yet met. Keep holding!</p>
-      )}
-      {claimResult && (
-        <p className="text-xs text-text-secondary mb-2">{claimResult}</p>
-      )}
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={handleClaim}
-        disabled={claiming || (minterInfo !== null && !minterInfo.eligible)}
-        className="w-full"
-      >
-        {claiming ? 'Claiming...' : 'Claim Minter Reward'}
-      </Button>
-    </Card>
-  );
-}
-
-function CreatorFeeCard({ tokenAddress, creatorAddress }: { tokenAddress: string; creatorAddress: string }) {
-  const { connected, address: walletAddress } = useWalletStore();
-  const [claiming, setClaiming] = useState(false);
-  const [claimResult, setClaimResult] = useState<string | null>(null);
-
-  // Only show to the token creator
-  if (!connected || walletAddress !== creatorAddress) return null;
-
-  const handleClaim = async () => {
-    setClaiming(true);
-    setClaimResult(null);
-    try {
-      const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const sim = await contract.claimCreatorFees();
-      const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress!,
-      });
-      setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
-    } catch (err) {
-      setClaimResult(err instanceof Error ? err.message : 'Claim failed');
-    } finally {
-      setClaiming(false);
-    }
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 mb-3">
-        <Coins size={16} className="text-accent" />
-        <h3 className="text-sm font-medium text-text-secondary">Creator Fees</h3>
-      </div>
-      <p className="text-xs text-text-muted mb-3">
-        As the token creator, you earn 0.25% of every trade. Claim your accumulated fees here.
-      </p>
-      {claimResult && (
-        <p className="text-xs text-text-secondary mb-2">{claimResult}</p>
-      )}
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={handleClaim}
-        disabled={claiming}
-        className="w-full"
-      >
-        {claiming ? 'Claiming...' : 'Claim Creator Fees'}
-      </Button>
-    </Card>
-  );
-}
+const EMPTY_CANDLES: OHLCVCandle[] = [];
 
 export function TokenPage() {
   const { address } = useParams<{ address: string }>();
-  const [timeframe, setTimeframe] = useState<TimeframeKey>('15m');
+  const [timeframe, setTimeframe] = useState<TimeframeKey>('1m');
   const token = useTokenStore((s) => s.selectedToken?.address === address ? s.selectedToken : s.tokens.find((t) => t.address === address) ?? null);
   const fetchToken = useTokenStore((s) => s.fetchToken);
-  const candles = usePriceStore((s) => (address ? s.candles[address] ?? [] : []));
+  const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
+  const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
 
-  // Fetch token from API if not in store
+  // S24: Fetch token from API if not in store — depend on address and fetchToken
   useEffect(() => {
     if (!token && address) {
       fetchToken(address);
     }
-  }, [address, token]);
+  }, [address, fetchToken, token]);
 
   usePriceFeed(token, timeframe);
 
@@ -235,7 +113,7 @@ export function TokenPage() {
               <span className="text-sm font-medium text-text-secondary">Price Chart</span>
               <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} />
             </div>
-            <PriceChart candles={candles} />
+            <PriceChart candles={candles} loading={chartLoading} />
           </Card>
 
           {/* Stats row */}
@@ -315,7 +193,8 @@ export function TokenPage() {
                   />
                   <GraduationProgress
                     progress={token.graduationProgress}
-                    realBtcSats={parseInt(token.realBtcReserve)}
+                    realBtcSats={Number(token.realBtcReserve)}
+                    status={token.status}
                   />
                 </div>
               </TabsContent>
@@ -325,21 +204,48 @@ export function TokenPage() {
 
         {/* Trade panel sidebar */}
         <div className="space-y-6">
-          {token.status === 'graduated' ? (
+          {token.status === 'migrated' ? (
+            <Card className="text-center py-8">
+              <Badge variant="bull" className="mb-3 text-base px-4 py-1">Trading on MotoSwap</Badge>
+              <p className="text-text-secondary text-sm mt-2">
+                This token has migrated to MotoSwap DEX for open-market trading.
+              </p>
+              {MOTOSWAP_URL && (
+                <a
+                  href={`${MOTOSWAP_URL}/swap?token=${token.address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-4 px-6 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Trade on MotoSwap
+                </a>
+              )}
+            </Card>
+          ) : token.status === 'migrating' ? (
+            <Card className="text-center py-8">
+              <Badge variant="warning" className="mb-3 text-base px-4 py-1 animate-pulse">Migrating</Badge>
+              <p className="text-text-secondary text-sm mt-2">
+                This token is being migrated to MotoSwap DEX.
+              </p>
+              <p className="text-text-muted text-xs mt-1">
+                Liquidity pool creation in progress. Trading will be available shortly.
+              </p>
+              <div className="mt-4 flex justify-center">
+                <div className="h-5 w-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              </div>
+            </Card>
+          ) : token.status === 'graduated' ? (
             <Card className="text-center py-8">
               <Badge variant="warning" className="mb-3 text-base px-4 py-1">Graduated</Badge>
               <p className="text-text-secondary text-sm mt-2">
                 This token has graduated from the bonding curve.
               </p>
               <p className="text-text-muted text-xs mt-1">
-                Bonding curve trading is closed. DEX liquidity migration coming soon.
+                DEX liquidity migration starting soon.
               </p>
-              <button
-                disabled
-                className="inline-block mt-4 px-6 py-2 bg-elevated text-text-muted rounded-lg text-sm font-medium cursor-not-allowed"
-              >
-                DEX Migration Coming Soon
-              </button>
+              <div className="mt-4 flex justify-center">
+                <div className="h-5 w-5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
+              </div>
             </Card>
           ) : (
             <TradePanel token={token} />
@@ -349,7 +255,8 @@ export function TokenPage() {
             <h3 className="text-sm font-medium text-text-secondary mb-3">Graduation Progress</h3>
             <GraduationProgress
               progress={token.graduationProgress}
-              realBtcSats={parseInt(token.realBtcReserve)}
+              realBtcSats={Number(token.realBtcReserve)}
+              status={token.status}
             />
           </Card>
 

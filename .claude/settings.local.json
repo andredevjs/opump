@@ -27,7 +27,13 @@
       "Bash(grep \"\"version\"\":*)",
       "Bash(source:*)",
       "mcp__opnet-bob__opnet_incident_report",
-      "Bash(npm test:*)"
+      "Bash(npm test:*)",
+      "mcp__opnet-bob__opnet_opnet_cli",
+      "Bash(find /Users/nosfter/Developer/zero.n/projects/opump/frontend/node_modules/@btc-vision/transaction -name \"*nisat*\" -o -name \"*wallet*\" 2>/dev/null | head -10)",
+      "WebFetch(domain:deploy-preview-2--opump.netlify.app)",
+      "WebFetch(domain:docs.motoswap.org)",
+      "WebFetch(domain:docs.opnet.org)",
+      "Bash(find:*)"
     ]
   }
 }

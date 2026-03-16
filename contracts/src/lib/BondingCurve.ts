@@ -6,6 +6,7 @@ import {
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
   MINTER_FEE_BPS,
+  PRICE_PRECISION,
 } from './Constants';
 
 /**
@@ -17,6 +18,10 @@ export class BondingCurve {
   /**
    * Calculate tokens out for a given BTC input.
    * tokensOut = virtualTokenSupply - (k / (virtualBtcReserve + netBtc))
+   *
+   * Integer division floors, so tokensOut may be slightly more than exact.
+   * This rounding consistently favors the buyer by a dust amount.
+   * The k-constant invariant is preserved because newVirtualBtc * newVirtualToken <= k.
    */
   static calculateBuy(
     virtualBtc: u256,
@@ -61,6 +66,9 @@ export class BondingCurve {
   /**
    * Split the total fee into platform, creator, and minter portions.
    * Returns [platformFee, creatorFee, minterFee]
+   *
+   * INVARIANT: TOTAL_FEE_BPS == PLATFORM_FEE_BPS + CREATOR_FEE_BPS + MINTER_FEE_BPS
+   * Minter gets the rounding remainder (total - platform - creator) to ensure no dust is lost.
    */
   static splitFees(amount: u256): StaticArray<u256> {
     const total = BondingCurve.calculateTotalFee(amount);
@@ -76,10 +84,12 @@ export class BondingCurve {
   }
 
   /**
-   * Calculate price: virtualBtcReserve / virtualTokenSupply (sats per token base unit)
+   * Calculate price with 10^18 precision.
+   * Returns (virtualBtc * 10^18) / virtualToken.
+   * Consumers divide by 10^18 to get sats per whole token.
    */
   static calculatePrice(virtualBtc: u256, virtualToken: u256): u256 {
     if (virtualToken == u256.Zero) return u256.Zero;
-    return SafeMath.div(virtualBtc, virtualToken);
+    return SafeMath.div(SafeMath.mul(virtualBtc, PRICE_PRECISION), virtualToken);
   }
 }

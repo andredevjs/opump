@@ -1,6 +1,5 @@
 /**
  * Token types shared across backend and frontend.
- * Matches data-model.md MongoDB schema.
  */
 
 export interface TokenSocials {
@@ -27,7 +26,8 @@ export interface TokenConfig {
   airdropConfig?: AirdropConfig;
 }
 
-export type TokenStatus = 'active' | 'graduated';
+// 'new' reserved for future use: pre-funded tokens awaiting first trade
+export type TokenStatus = 'active' | 'graduated' | 'migrating' | 'migrated' | 'new';
 
 export interface TokenDocument {
   _id: string; // token contract address (primary key)
@@ -55,10 +55,21 @@ export interface TokenDocument {
   volumeTotal: string;
   marketCapSats: string;
   tradeCount: number;
+  tradeCount24h?: number;
   holderCount: number;
   deployBlock: number;
   deployTxHash: string;
   graduatedAt?: number;
+
+  // Migration
+  migrationStatus?: 'pending' | 'tokens_minted' | 'pool_created' | 'liquidity_listed' | 'complete';
+  migrationLiquidityTokens?: string; // actual minted amount from migrate() — used for pool creation
+  migrationTxHashes?: {
+    migrate?: string;
+    createPool?: string;
+    listLiquidity?: string;
+  };
+  nativeSwapPoolToken?: string;
 
   createdAt: Date;
   updatedAt: Date;

@@ -1,6 +1,5 @@
 /**
  * Trade types shared across backend and frontend.
- * Matches data-model.md MongoDB schema.
  */
 
 export type TradeType = 'buy' | 'sell';

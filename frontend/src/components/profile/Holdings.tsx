@@ -4,6 +4,7 @@ import BigNumber from 'bignumber.js';
 import { useTradeStore, getKnownTokenAddresses } from '@/stores/trade-store';
 import { useTokenStore } from '@/stores/token-store';
 import { useWalletStore } from '@/stores/wallet-store';
+import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 import { formatTokenAmount, formatBtc } from '@/lib/format';
 import { Card } from '@/components/ui/Card';
 
@@ -45,8 +46,8 @@ export function Holdings() {
     <div className="space-y-3">
       {entries.map(([address, units]) => {
         const token = getToken(address);
-        if (!token) return null;
-        const valueSats = new BigNumber(units).times(token.currentPriceSats).toNumber();
+        if (!token?.currentPriceSats) return null;
+        const valueSats = new BigNumber(units).times(token.currentPriceSats).div(TOKEN_UNITS_PER_TOKEN).toNumber();
 
         return (
           <Card

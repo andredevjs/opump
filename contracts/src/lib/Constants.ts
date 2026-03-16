@@ -1,7 +1,8 @@
 import { u256 } from '@btc-vision/as-bignum/assembly';
 
 // Virtual reserves (initial bonding curve state)
-export const INITIAL_VIRTUAL_BTC: u256 = u256.fromString('3000000000'); // 30 BTC = 3B sats
+// virtualBtc is small relative to graduation threshold to create ~100x price curve
+export const INITIAL_VIRTUAL_BTC: u256 = u256.fromString('767000'); // 0.00767 BTC — ~100x at graduation
 export const INITIAL_VIRTUAL_TOKEN: u256 = u256.fromString('100000000000000000'); // 1B * 10^8
 
 // Default max supply
@@ -21,6 +22,7 @@ export const TOTAL_FEE_BPS: u256 = u256.fromU32(150); // 1.5% total
 export const FEE_DENOMINATOR: u256 = u256.fromU32(10000);
 
 // Minter reward timing
+// Assumes ~10-minute Bitcoin blocks (mainnet). Adjust for testnet/regtest.
 export const MINTER_WINDOW_BLOCKS: u256 = u256.fromU32(4320); // ~30 days
 export const MINTER_HOLD_BLOCKS: u256 = u256.fromU32(4320); // must hold ~30 days
 
@@ -35,5 +37,9 @@ export const RESERVATION_TTL_BLOCKS: u256 = u256.fromU32(3);
 export const MAX_BUY_TAX_BPS: u256 = u256.fromU32(300); // 3%
 export const MAX_SELL_TAX_BPS: u256 = u256.fromU32(500); // 5%
 
-// Penalty
+// Reserved for future cancellation refund mechanism — not yet implemented
 export const CANCEL_PENALTY_BPS: u256 = u256.fromU32(5000); // 50%
+
+// Price precision factor for on-chain price calculation (10^18)
+// Needed because initial price is sub-sat with small virtualBtc
+export const PRICE_PRECISION: u256 = u256.fromString('1000000000000000000');

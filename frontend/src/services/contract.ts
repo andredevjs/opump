@@ -10,7 +10,7 @@
  */
 
 import { getContract, JSONRpcProvider, TransactionOutputFlags, type CallResult } from 'opnet';
-import { networks, type Network } from '@btc-vision/bitcoin';
+import { networks, Transaction as BitcoinTransaction, type Network, toSatoshi } from '@btc-vision/bitcoin';
 import type { InteractionTransactionReceipt, TransactionParameters } from 'opnet';
 import {
   LAUNCH_TOKEN_ABI,
@@ -73,7 +73,7 @@ export function getLaunchTokenContract(address: string) {
 
 /**
  * Get the OPumpFactory contract instance (cached).
- * Uses OPUMP_FACTORY_ABI for typed deployToken/getStats calls.
+ * Uses OPUMP_FACTORY_ABI for typed registerToken/getStats calls.
  */
 export function getFactoryContract(address: string) {
   const cached = factoryCache.get(address);
@@ -93,7 +93,7 @@ export interface TransactionReceipt {
 
 export interface ExtraOutput {
   address: string;
-  value: number;
+  value: bigint;
 }
 
 export interface SendOptions {
@@ -101,6 +101,25 @@ export interface SendOptions {
   maximumAllowedSatToSpend?: bigint;
   feeRate?: number;
   extraOutputs?: ExtraOutput[];
+}
+
+/** F1: Re-export the actual type used by contract.setTransactionDetails() */
+import type { ParsedSimulatedTransaction } from 'opnet';
+
+/** F2: Shape passed to OPWallet's web3.deployContract() method */
+interface DeployContractParams {
+  bytecode: Uint8Array;
+  calldata: Uint8Array;
+  from: string;
+  utxos: unknown[];
+  feeRate: number;
+  priorityFee: bigint;
+  gasSatFee: bigint;
+}
+
+interface DeployContractResult {
+  contractAddress: string;
+  transaction: [string, string];
 }
 
 /**
@@ -122,19 +141,24 @@ export async function sendContractCall(
 
   const network = getNetwork();
 
-  const txParams = {
-    signer: null as null,
-    mldsaSigner: null as null,
+  // F4: Build a fully typed TransactionParameters object.
+  // signer and mldsaSigner are null because OPWallet handles signing externally.
+  const extraOutputs = options.extraOutputs?.map((o) => ({
+    address: o.address,
+    value: toSatoshi(o.value),
+  }));
+
+  const txParams: TransactionParameters = {
+    signer: null as unknown as TransactionParameters['signer'],
+    mldsaSigner: null as unknown as TransactionParameters['mldsaSigner'],
     refundTo: options.refundTo,
     maximumAllowedSatToSpend: options.maximumAllowedSatToSpend ?? 50000n,
     feeRate: options.feeRate ?? 10,
     network,
-    ...(options.extraOutputs?.length ? { extraOutputs: options.extraOutputs } : {}),
+    ...(extraOutputs?.length ? { extraOutputs } : {}),
   };
 
-  const receipt: InteractionTransactionReceipt = await sim.sendTransaction(
-    txParams as TransactionParameters,
-  );
+  const receipt: InteractionTransactionReceipt = await sim.sendTransaction(txParams);
 
   return {
     txHash: receipt.transactionId ?? '',
@@ -165,23 +189,26 @@ export async function fetchBalanceOf(
  */
 export async function waitForConfirmation(
   txHash: string,
-  pollIntervalMs = 5000,
-  timeoutMs = 120_000,
+  pollIntervalMs = 10_000,
+  timeoutMs = 900_000,
 ): Promise<void> {
   const provider = getProvider();
   const start = Date.now();
+
+  // Wait before first poll — node needs time to index the broadcast
+  await new Promise((r) => setTimeout(r, pollIntervalMs));
 
   while (Date.now() - start < timeoutMs) {
     try {
       const receipt = await provider.getTransactionReceipt(txHash);
       if (receipt) return;
     } catch {
-      // RPC error — keep polling
+      // "transaction not found" is expected until the next block is mined (~10 min on testnet)
     }
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
 
-  throw new Error(`Transaction ${txHash.slice(0, 12)}... not confirmed after ${timeoutMs / 1000}s`);
+  throw new Error(`Transaction ${txHash.slice(0, 12)}... not confirmed after ${Math.round(timeoutMs / 60_000)} minutes. Check block explorer.`);
 }
 
 /**
@@ -194,12 +221,11 @@ export async function waitForConfirmation(
  * @param valueSats - BTC amount in satoshis (bigint)
  */
 export function setupPayableCall(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  contract: { setTransactionDetails: (details: any) => void },
+  contract: { setTransactionDetails: (details: ParsedSimulatedTransaction) => void },
   to: string,
   valueSats: bigint,
 ): void {
-  contract.setTransactionDetails({
+  const details: ParsedSimulatedTransaction = {
     inputs: [],
     outputs: [
       {
@@ -209,7 +235,107 @@ export function setupPayableCall(
         flags: TransactionOutputFlags.hasTo,
       },
     ],
+  };
+  contract.setTransactionDetails(details);
+}
+
+// ============ Contract Deployment ============
+
+export interface DeployResult {
+  contractAddress: string;
+  revealTxHash: string;
+}
+
+/**
+ * Build constructor calldata for a LaunchToken deployment.
+ * Must match LaunchToken.onDeployment() parameter order.
+ */
+export async function buildLaunchTokenCalldata(opts: {
+  name: string;
+  symbol: string;
+  maxSupply?: bigint;
+  creatorAllocationBps: bigint;
+  buyTaxBps: bigint;
+  sellTaxBps: bigint;
+  flywheelDestination: bigint;
+  graduationThreshold?: bigint;
+  vaultAddress: string;
+}): Promise<Uint8Array> {
+  const { BinaryWriter } = await import('@btc-vision/transaction');
+  const writer = new BinaryWriter();
+  writer.writeStringWithLength(opts.name);
+  writer.writeStringWithLength(opts.symbol);
+  writer.writeU256(opts.maxSupply ?? 0n); // 0 = use contract default
+  writer.writeU256(opts.creatorAllocationBps);
+  writer.writeU256(opts.buyTaxBps);
+  writer.writeU256(opts.sellTaxBps);
+  writer.writeU256(opts.flywheelDestination);
+  writer.writeU256(opts.graduationThreshold ?? 0n); // 0 = use contract default
+  writer.writeStringWithLength(opts.vaultAddress);
+  return writer.getBuffer();
+}
+
+/**
+ * Deploy a LaunchToken contract via OPWallet's web3.deployContract() API.
+ * Fetches the pre-compiled WASM from the given URL, signs via OPWallet,
+ * and broadcasts the funding + reveal transactions.
+ */
+export async function deployLaunchToken(
+  bytecodeUrl: string,
+  calldata: Uint8Array,
+  walletAddress: string,
+): Promise<DeployResult> {
+  // Access OPWallet's web3 provider via window.opnet
+  const opwallet = (window as unknown as { opnet?: { web3?: {
+    deployContract: (params: DeployContractParams) => Promise<DeployContractResult>;
+  } } }).opnet;
+
+  if (!opwallet?.web3?.deployContract) {
+    throw new Error('OPWallet not found or does not support contract deployment. Make sure OPWallet extension is installed.');
+  }
+
+  // Fetch pre-compiled WASM bytecode
+  const response = await fetch(bytecodeUrl);
+  if (!response.ok) throw new Error('Failed to fetch contract bytecode');
+  const bytecode = new Uint8Array(await response.arrayBuffer());
+
+  // Get UTXOs for funding
+  const provider = getProvider();
+  const utxos = await provider.utxoManager.getUTXOs({ address: walletAddress });
+  if (utxos.length === 0) {
+    throw new Error('No UTXOs available for deployment. Fund your wallet first.');
+  }
+
+  // OPWallet signs the deployment but does NOT broadcast — we must do it ourselves
+  const result = await opwallet.web3.deployContract({
+    bytecode,
+    calldata,
+    from: walletAddress,
+    utxos,
+    feeRate: 10,
+    priorityFee: 0n,
+    gasSatFee: 10_000n,
   });
+
+  // Broadcast funding tx, then reveal tx
+  const fundingBroadcast = await provider.sendRawTransaction(result.transaction[0], false);
+  if (!fundingBroadcast.success) {
+    throw new Error(`Funding tx broadcast failed: ${fundingBroadcast.error ?? 'unknown error'}`);
+  }
+
+  const revealBroadcast = await provider.sendRawTransaction(result.transaction[1], false);
+  if (!revealBroadcast.success) {
+    throw new Error(`Reveal tx broadcast failed: ${revealBroadcast.error ?? 'unknown error'}`);
+  }
+
+  // Use txid from broadcast result, fall back to computing from raw tx
+  const revealTxId = revealBroadcast.result
+    ?? BitcoinTransaction.fromHex(result.transaction[1]).getId();
+
+  return {
+    contractAddress: result.contractAddress,
+    revealTxHash: revealTxId,
+  };
 }
 
 // Re-export for convenience
