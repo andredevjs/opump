@@ -273,10 +273,37 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }
     });
 
-    // W12: Track consecutive polling failures and log after threshold
+    function refreshFromServer() {
+      Promise.all([
+        api.getOHLCV(token.address, timeframeRef.current),
+        api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
+        api.getTokenPrice(token.address).catch(() => null),
+      ]).then(([ohlcvResp, tradesResp, priceResp]) => {
+        if (cancelled) return;
+        const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
+        if (merged.length > 0) {
+          setCandles(token.address, merged);
+        }
+        if (priceResp) {
+          lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
+          setLivePrice(token.address, {
+            currentPriceSats: priceResp.currentPriceSats,
+            virtualBtcReserve: priceResp.virtualBtcReserve,
+            virtualTokenSupply: priceResp.virtualTokenSupply,
+            realBtcReserve: priceResp.realBtcReserve,
+            isOptimistic: priceResp.isOptimistic,
+          });
+          updateTokenPrice(token.address, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
+        }
+        applySpotPriceToLastCandle(token.address);
+      }).catch(() => {});
+    }
+
+    const handleTradeEvent = () => refreshFromServer();
+    window.addEventListener('opump:trade', handleTradeEvent);
+
     let consecutiveFailures = 0;
 
-    // Fallback polling in case WebSocket disconnects — refresh both price and chart
     intervalRef.current = window.setInterval(() => {
       if (!wsClient.isConnected()) {
         api.getTokenPrice(token.address).then((price) => {
@@ -318,6 +345,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       setLoading(token.address, false);
       unsubPrice();
       unsubTrades();
+      window.removeEventListener('opump:trade', handleTradeEvent);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [token?.address, timeframe, setLoading, setCandles, updateTokenPrice,

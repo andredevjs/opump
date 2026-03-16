@@ -116,8 +116,9 @@ export function useTradeSimulation(token: Token | null) {
           pricePerToken: String(sim.newPriceSats),
         });
 
-        import('@/services/api').then(({ submitTrade }) => {
-          submitTrade({
+        try {
+          const { submitTrade } = await import('@/services/api');
+          await submitTrade({
             txHash: result.txHash,
             tokenAddress,
             type: 'buy',
@@ -125,19 +126,10 @@ export function useTradeSimulation(token: Token | null) {
             btcAmount: btcSats,
             tokenAmount: sim.outputAmount,
             pricePerToken: String(sim.newPriceSats),
-          }).catch((err) => {
-            console.warn('[Trade] submitTrade failed, retrying once:', err);
-            submitTrade({
-              txHash: result.txHash,
-              tokenAddress,
-              type: 'buy',
-              traderAddress: walletAddress,
-              btcAmount: btcSats,
-              tokenAmount: sim.outputAmount,
-              pricePerToken: String(sim.newPriceSats),
-            }).catch(() => {});
           });
-        });
+        } catch {
+          // Best effort — mempool scanner will pick it up
+        }
 
         window.dispatchEvent(new CustomEvent('opump:trade'));
 
@@ -225,8 +217,9 @@ export function useTradeSimulation(token: Token | null) {
           pricePerToken: String(sim.newPriceSats),
         });
 
-        import('@/services/api').then(({ submitTrade }) => {
-          submitTrade({
+        try {
+          const { submitTrade } = await import('@/services/api');
+          await submitTrade({
             txHash: result.txHash,
             tokenAddress,
             type: 'sell',
@@ -234,19 +227,10 @@ export function useTradeSimulation(token: Token | null) {
             btcAmount: sim.outputAmount,
             tokenAmount: tokenUnits,
             pricePerToken: String(sim.newPriceSats),
-          }).catch((err) => {
-            console.warn('[Trade] submitTrade failed, retrying once:', err);
-            submitTrade({
-              txHash: result.txHash,
-              tokenAddress,
-              type: 'sell',
-              traderAddress: walletAddress,
-              btcAmount: sim.outputAmount,
-              tokenAmount: tokenUnits,
-              pricePerToken: String(sim.newPriceSats),
-            }).catch(() => {});
           });
-        });
+        } catch {
+          // Best effort — mempool scanner will pick it up
+        }
 
         window.dispatchEvent(new CustomEvent('opump:trade'));
 
