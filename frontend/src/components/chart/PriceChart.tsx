@@ -64,6 +64,19 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
       lastValueVisible: true,
       priceLineVisible: false,
+      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+        const res = original();
+        if (res !== null) {
+          const range = res.priceRange.maxValue - res.priceRange.minValue;
+          const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
+          if (range < mid * 0.001) {
+            const margin = mid * 0.05 || 0.00000001;
+            res.priceRange.minValue -= margin;
+            res.priceRange.maxValue += margin;
+          }
+        }
+        return res;
+      },
       priceFormat: {
         type: 'custom',
         formatter: (price: number) => {
