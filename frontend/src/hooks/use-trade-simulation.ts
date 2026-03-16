@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Token } from '@/types/token';
-import type { PendingTransaction, TradeSimulation } from '@/types/trade';
+import type { PendingTransaction } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
