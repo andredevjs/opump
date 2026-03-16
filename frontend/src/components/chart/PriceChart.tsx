@@ -64,6 +64,19 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
       crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
       lastValueVisible: true,
       priceLineVisible: false,
+      priceFormat: {
+        type: 'custom',
+        formatter: (price: number) => {
+          if (price === 0) return '0';
+          const abs = Math.abs(price);
+          if (abs >= 1000) return price.toFixed(0);
+          if (abs >= 1) return price.toFixed(2);
+          if (abs >= 0.01) return price.toFixed(4);
+          if (abs >= 0.0001) return price.toFixed(6);
+          return price.toFixed(8);
+        },
+        minMove: 0.00000001,
+      },
     });
 
     const volumeSeries = chart.addHistogramSeries({
