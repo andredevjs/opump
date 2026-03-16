@@ -29,10 +29,18 @@ export function TrenchesPage() {
   const { viewMode, setViewMode } = useUIStore();
   const [page, setPage] = useState(1);
 
-  // Fetch tokens on mount
+  // Fetch tokens on mount + periodic refresh
   useEffect(() => {
     fetchTokens();
-  }, []);
+    const id = setInterval(fetchTokens, 5_000);
+    return () => clearInterval(id);
+  }, [fetchTokens]);
+
+  useEffect(() => {
+    const handler = () => fetchTokens();
+    window.addEventListener('opump:trade', handler);
+    return () => window.removeEventListener('opump:trade', handler);
+  }, [fetchTokens]);
 
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [filter.search, filter.status, filter.sort]);

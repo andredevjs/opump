@@ -1,12 +1,38 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Token } from '@/types/token';
-import type { PendingTransaction } from '@/types/trade';
+import type { PendingTransaction, TradeSimulation } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
-import { VAULT_ADDRESS } from '@/config/constants';
+import { VAULT_ADDRESS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import { computeOptimistic24hChange } from '@/lib/price-utils';
 import toast from 'react-hot-toast';
+
+/** Compute optimistic stats patch from a trade simulation result. */
+function computeOptimisticStats(
+  token: Token,
+  sim: TradeSimulation,
+  btcSats: number,
+): { volume24hSats: number; tradeCount24h: number; marketCapSats: number; graduationProgress: number; realBtcReserve: string } {
+  const newVBtc = Number(sim.newVirtualBtc);
+  const newVToken = Number(sim.newVirtualToken);
+  const initTokenSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
+  const newMarketCap = newVToken > 0 ? (newVBtc / newVToken) * initTokenSupply : 0;
+  // Estimate new realBtcReserve: buy adds, sell subtracts
+  const realBtcDelta = sim.type === 'buy' ? btcSats : -btcSats;
+  const newRealBtc = Math.max(0, Number(token.realBtcReserve) + realBtcDelta);
+  const gradProgress = GRADUATION_THRESHOLD_SATS > 0
+    ? (newRealBtc / GRADUATION_THRESHOLD_SATS) * 100
+    : 0;
+
+  return {
+    volume24hSats: token.volume24hSats + btcSats,
+    tradeCount24h: token.tradeCount24h + 1,
+    marketCapSats: newMarketCap,
+    graduationProgress: Math.min(100, gradProgress),
+    realBtcReserve: String(Math.round(newRealBtc)),
+  };
+}
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
@@ -153,6 +179,14 @@ export function useTradeSimulation(token: Token | null) {
         // Optimistic chart candle update so the trade shows on the chart immediately
         usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(btcSats));
 
+        // Optimistic stats: volume, trade count, market cap, graduation progress
+        if (token) {
+          useTokenStore.getState().updateTokenStats(tokenAddress, computeOptimisticStats(token, sim, btcSatsNum));
+        }
+
+        // Signal dashboard components to re-poll immediately
+        window.dispatchEvent(new CustomEvent('opump:trade'));
+
         toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
 
         await waitForConfirmation(result.txHash);
@@ -269,6 +303,14 @@ export function useTradeSimulation(token: Token | null) {
 
         // Optimistic chart candle update so the trade shows on the chart immediately
         usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(sim.outputAmount));
+
+        // Optimistic stats: volume, trade count, market cap, graduation progress
+        if (token) {
+          useTokenStore.getState().updateTokenStats(tokenAddress, computeOptimisticStats(token, sim, Number(sim.outputAmount)));
+        }
+
+        // Signal dashboard components to re-poll immediately
+        window.dispatchEvent(new CustomEvent('opump:trade'));
 
         toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
 

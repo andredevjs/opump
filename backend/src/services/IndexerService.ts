@@ -615,17 +615,17 @@ export class IndexerService {
       try {
         // Aggregate 24h volume via MongoDB pipeline ($toDouble is acceptable for volume stats)
         const vol24hAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
-          { $match: { tokenAddress, status: 'confirmed', createdAt: { $gte: oneDayAgo } } },
+          { $match: { tokenAddress, createdAt: { $gte: oneDayAgo } } },
           { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
         ]).toArray();
         const volume24h = Math.floor(vol24hAgg[0]?.total ?? 0).toString();
 
         // Total trade count
-        const tradeCount = await tradesCol.countDocuments({ tokenAddress, status: 'confirmed' });
+        const tradeCount = await tradesCol.countDocuments({ tokenAddress });
 
         // Total volume via MongoDB pipeline
         const volTotalAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
-          { $match: { tokenAddress, status: 'confirmed' } },
+          { $match: { tokenAddress } },
           { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
         ]).toArray();
         const volumeTotal = Math.floor(volTotalAgg[0]?.total ?? 0).toString();
@@ -643,7 +643,7 @@ export class IndexerService {
 
         // Unique holders count from confirmed buy trades
         const holderAgg = await tradesCol.aggregate([
-          { $match: { tokenAddress, status: 'confirmed', type: 'buy' } },
+          { $match: { tokenAddress, type: 'buy' } },
           { $group: { _id: '$traderAddress' } },
           { $count: 'count' },
         ]).toArray();
@@ -678,11 +678,11 @@ export class IndexerService {
     const totalTokens = await tokens.countDocuments();
     const totalGraduated = await tokens.countDocuments({ status: 'graduated' });
     const tradesCol = getTradesCollection();
-    const totalTrades = await tradesCol.countDocuments({ status: 'confirmed' });
+    const totalTrades = await tradesCol.countDocuments({});
 
     // Aggregate total volume via MongoDB pipeline ($toDouble is acceptable for platform-level stats)
     const volAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
-      { $match: { status: 'confirmed' } },
+      { $match: {} },
       { $group: { _id: null, total: { $sum: { $toDouble: '$btcAmount' } } } },
     ]).toArray();
     const totalVolumeSats = Math.floor(volAgg[0]?.total ?? 0).toString();

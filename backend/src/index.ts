@@ -78,7 +78,7 @@ async function start(): Promise<void> {
   }
 
   // Register routes
-  registerTokenRoutes(app, optimisticService);
+  registerTokenRoutes(app, optimisticService, mempoolService);
   registerSimulateRoutes(app);
   registerProfileRoutes(app);
   registerStatsRoutes(app);

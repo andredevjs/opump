@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { formatBtc, formatNumber } from '@/lib/format';
 import * as api from '@/services/api';
+
+const POLL_INTERVAL_MS = 5_000;
 
 export function PlatformStats() {
   const [stats, setStats] = useState({
@@ -11,7 +13,7 @@ export function PlatformStats() {
     totalTrades: 0,
   });
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     api.getStats().then((s) => {
       setStats({
         totalTokens: s.totalTokens,
@@ -23,6 +25,18 @@ export function PlatformStats() {
       console.error('[PlatformStats] API error:', err);
     });
   }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  useEffect(() => {
+    const handler = () => refresh();
+    window.addEventListener('opump:trade', handler);
+    return () => window.removeEventListener('opump:trade', handler);
+  }, [refresh]);
 
   const items = [
     { label: 'Tokens Launched', value: formatNumber(stats.totalTokens) },

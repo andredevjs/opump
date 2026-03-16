@@ -5,6 +5,7 @@ import type { WebSocketService } from './WebSocketService.js';
 import type { OptimisticStateService } from './OptimisticStateService.js';
 import { decodeBuyEvent, decodeSellEvent } from './EventDecoder.js';
 import { toDisplayPrice } from '../utils/price.js';
+import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { PendingTransaction } from '../types/contracts.js';
 
 export class MempoolService {
@@ -234,7 +235,28 @@ export class MempoolService {
     });
 
     const trades = getTradesCollection();
+    const droppedTrade = await trades.findOne({ _id: txHash, status: 'pending' });
     await trades.deleteOne({ _id: txHash, status: 'pending' });
+
+    // Reverse the stat increments from registerPendingTrade
+    if (droppedTrade) {
+      try {
+        const btcNum = parseInt(droppedTrade.btcAmount, 10) || 0;
+        const tokens = getTokensCollection();
+        await tokens.updateOne(
+          { _id: tokenAddress },
+          { $inc: { tradeCount: -1 }, $set: { updatedAt: new Date() } },
+        );
+
+        const platformStats = getPlatformStatsCollection();
+        await platformStats.updateOne(
+          { _id: 'current' },
+          { $inc: { totalTrades: -1, totalVolumeSats: -btcNum } as Record<string, number> },
+        );
+      } catch (err) {
+        console.error('[Mempool] Failed to reverse stats for dropped trade:', err instanceof Error ? err.message : err);
+      }
+    }
   }
 
   /**
@@ -301,6 +323,25 @@ export class MempoolService {
       realBtcReserve: optimistic.reserves.realBtcReserve.toString(),
       isOptimistic: optimistic.isOptimistic,
     });
+
+    // Atomically increment token and platform stats so polls reflect the pending trade
+    try {
+      const btcNum = parseInt(btcAmount, 10) || 0;
+      const tokens = getTokensCollection();
+      await tokens.updateOne(
+        { _id: tokenAddress },
+        { $inc: { tradeCount: 1 }, $set: { updatedAt: new Date() } },
+      );
+
+      const platformStats = getPlatformStatsCollection();
+      await platformStats.updateOne(
+        { _id: 'current' },
+        { $inc: { totalTrades: 1, totalVolumeSats: btcNum } as Record<string, number> },
+        { upsert: true },
+      );
+    } catch (err) {
+      console.error('[Mempool] Failed to update stats for pending trade:', err instanceof Error ? err.message : err);
+    }
   }
 
 }

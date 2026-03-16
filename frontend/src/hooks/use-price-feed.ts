@@ -3,7 +3,7 @@ import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { useTradeStore } from '@/stores/trade-store';
-import { PRICE_UPDATE_INTERVAL_MS } from '@/config/constants';
+import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TimeframeKey, OHLCVCandle } from '@/types/api';
 import type { TradeDocument } from '@shared/types/trade';
 import { wsClient } from '@/services/websocket';
@@ -148,6 +148,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
 
     wsClient.connect();
 
+    const updateTokenStats = useTokenStore.getState().updateTokenStats;
     const unsubPrice = wsClient.subscribe('token:price', token.address, (_event, data) => {
       if (!isPriceData(data)) return;
       const d = data;
@@ -161,6 +162,23 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const oldChange = existing?.address === token.address ? existing.priceChange24h : 0;
         const newChange = computeOptimistic24hChange(oldPrice, oldChange, Number(d.currentPriceSats));
         updateTokenPrice(token.address, Number(d.currentPriceSats), newChange);
+      }
+
+      // Update market cap and graduation progress from WS reserve data
+      if (d.virtualBtcReserve != null && d.virtualTokenSupply != null) {
+        const vBtc = Number(d.virtualBtcReserve);
+        const vToken = Number(d.virtualTokenSupply);
+        const initSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
+        const marketCapSats = vToken > 0 ? (vBtc / vToken) * initSupply : 0;
+        const statsUpdate: { marketCapSats: number; realBtcReserve?: string; graduationProgress?: number } = { marketCapSats };
+        if (d.realBtcReserve != null) {
+          statsUpdate.realBtcReserve = d.realBtcReserve;
+          const rBtc = Number(d.realBtcReserve);
+          statsUpdate.graduationProgress = GRADUATION_THRESHOLD_SATS > 0
+            ? Math.min(100, (rBtc / GRADUATION_THRESHOLD_SATS) * 100)
+            : 0;
+        }
+        updateTokenStats(token.address, statsUpdate);
       }
     });
 

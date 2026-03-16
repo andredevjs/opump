@@ -13,6 +13,7 @@ import { toDisplayPrice } from '../utils/price.js';
 import type { Filter } from 'mongodb';
 import type { TokenDocument } from '../../../shared/types/token.js';
 import type { OptimisticStateService } from '../services/OptimisticStateService.js';
+import type { MempoolService } from '../services/MempoolService.js';
 import { verifyTokenOnChain } from '../services/on-chain-verify.js';
 
 /**
@@ -129,7 +130,7 @@ export function stopTokenRoutesCleanup(): void {
   }
 }
 
-export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?: OptimisticStateService): void {
+export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?: OptimisticStateService, mempoolService?: MempoolService): void {
   // Start cleanup interval for wallet rate limit entries (every 10 minutes)
   if (_cleanupInterval) clearInterval(_cleanupInterval);
   _cleanupInterval = setInterval(() => {
@@ -435,22 +436,40 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
       return;
     }
 
-    const now = new Date();
-    const doc = {
-      _id: body.txHash,
-      tokenAddress: body.tokenAddress,
-      type: body.type as 'buy' | 'sell',
-      traderAddress: body.traderAddress,
-      btcAmount: body.btcAmount || '0',
-      tokenAmount: body.tokenAmount || '0',
-      pricePerToken: body.pricePerToken || '0',
-      fees: { platform: '0', creator: '0', minter: '0' },
-      priceImpactBps: 0,
-      status: 'pending' as const,
-      createdAt: now,
-    };
+    const btcAmount = body.btcAmount || '0';
+    const tokenAmount = body.tokenAmount || '0';
+    const pricePerToken = body.pricePerToken || '0';
 
-    await trades.insertOne(doc);
+    // Delegate to MempoolService when available — it handles insert, WS broadcast,
+    // optimistic state, and stat updates atomically (dedup via knownPendingTxs)
+    if (mempoolService) {
+      await mempoolService.registerPendingTrade(
+        body.txHash,
+        body.tokenAddress,
+        body.type as 'buy' | 'sell',
+        body.traderAddress,
+        btcAmount,
+        tokenAmount,
+        pricePerToken,
+      );
+    } else {
+      const now = new Date();
+      await trades.insertOne({
+        _id: body.txHash,
+        tokenAddress: body.tokenAddress,
+        type: body.type as 'buy' | 'sell',
+        traderAddress: body.traderAddress,
+        btcAmount,
+        tokenAmount,
+        pricePerToken,
+        fees: { platform: '0', creator: '0', minter: '0', flywheel: '0' },
+        priceImpactBps: 0,
+        status: 'pending' as const,
+        createdAt: now,
+      });
+    }
+
+    const doc = await trades.findOne({ _id: body.txHash });
     res.status(201).json(doc);
   });
 

@@ -3,6 +3,15 @@ import type { Token, TokenFilter } from '@/types/token';
 import * as api from '@/services/api';
 import { mapApiTokenToToken } from '@/lib/mappers';
 
+interface TokenStats {
+  volume24hSats?: number;
+  marketCapSats?: number;
+  tradeCount24h?: number;
+  holderCount?: number;
+  graduationProgress?: number;
+  realBtcReserve?: string;
+}
+
 interface TokenStore {
   tokens: Token[];
   selectedToken: Token | null;
@@ -13,6 +22,7 @@ interface TokenStore {
   setSelectedToken: (token: Token | null) => void;
   setFilter: (filter: Partial<TokenFilter>) => void;
   updateTokenPrice: (address: string, priceSats: number, change24h: number) => void;
+  updateTokenStats: (address: string, stats: TokenStats) => void;
   getToken: (address: string) => Token | undefined;
   fetchTokens: () => Promise<void>;
   fetchToken: (address: string) => Promise<Token | null>;
@@ -51,6 +61,27 @@ export const useTokenStore = create<TokenStore>((set, get) => {
           ? { ...state.selectedToken, currentPriceSats: priceSats, priceChange24h: change24h }
           : state.selectedToken,
     })),
+
+  updateTokenStats: (address, stats) =>
+    set((state) => {
+      const patch: Partial<Token> = {};
+      if (stats.volume24hSats != null) patch.volume24hSats = stats.volume24hSats;
+      if (stats.marketCapSats != null) patch.marketCapSats = stats.marketCapSats;
+      if (stats.tradeCount24h != null) patch.tradeCount24h = stats.tradeCount24h;
+      if (stats.holderCount != null) patch.holderCount = stats.holderCount;
+      if (stats.graduationProgress != null) patch.graduationProgress = stats.graduationProgress;
+      if (stats.realBtcReserve != null) patch.realBtcReserve = stats.realBtcReserve;
+
+      return {
+        tokens: state.tokens.map((t) =>
+          t.address === address ? { ...t, ...patch } : t,
+        ),
+        selectedToken:
+          state.selectedToken?.address === address
+            ? { ...state.selectedToken, ...patch }
+            : state.selectedToken,
+      };
+    }),
 
   getToken: (address) => get().tokens.find((t) => t.address === address),
 
