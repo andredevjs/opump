@@ -1,5 +1,6 @@
 type MessageHandler = (event: string, data: unknown) => void;
-type ConnectionListener = (connected: boolean) => void;
+type ConnectionListener = (connected: boolean, isReconnect?: boolean) => void;
+type ReconnectListener = () => void;
 
 interface ServerMessage {
   channel: string;
@@ -16,11 +17,13 @@ class WebSocketClient {
   private ws: WebSocket | null = null;
   private subscriptions = new Map<string, Set<MessageHandler>>();
   private connectionListeners = new Set<ConnectionListener>();
+  private reconnectListeners = new Set<ReconnectListener>();
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connected = false;
   private _intentionalDisconnect = false;
   private _hasAttempted = false;
+  private _wasConnectedBefore = false;
 
   connect(): void {
     // No WS URL configured — rely on polling fallback (e.g. Netlify deploys)
@@ -41,13 +44,22 @@ class WebSocketClient {
 
     this.ws.onopen = () => {
       console.log('[WS] Connected');
+      const isReconnect = this._wasConnectedBefore;
       this.connected = true;
       this.reconnectAttempts = 0;
-      this.emitConnectionChange();
+      this._wasConnectedBefore = true;
+      this.emitConnectionChange(isReconnect);
 
       // Re-subscribe to all active channels
       for (const channel of this.subscriptions.keys()) {
         this.sendSubscribe(channel);
+      }
+
+      // Notify reconnect listeners (not on initial connect)
+      if (isReconnect) {
+        for (const listener of this.reconnectListeners) {
+          listener();
+        }
       }
     };
 
@@ -138,9 +150,20 @@ class WebSocketClient {
     };
   }
 
-  private emitConnectionChange(): void {
+  /**
+   * Register a callback that fires only on reconnection (not initial connect).
+   * Returns an unsubscribe function.
+   */
+  onReconnect(listener: ReconnectListener): () => void {
+    this.reconnectListeners.add(listener);
+    return () => {
+      this.reconnectListeners.delete(listener);
+    };
+  }
+
+  private emitConnectionChange(isReconnect = false): void {
     for (const listener of this.connectionListeners) {
-      listener(this.connected);
+      listener(this.connected, isReconnect);
     }
   }
 

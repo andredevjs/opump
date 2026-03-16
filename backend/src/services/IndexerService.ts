@@ -35,6 +35,8 @@ export type {
 
 // toDisplayPrice and scaledToDisplayPrice imported from utils/price.ts
 
+import type { BroadcastDebouncer } from './BroadcastDebouncer.js';
+
 export class IndexerService {
   private lastBlockIndexed = 0n;
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -48,6 +50,7 @@ export class IndexerService {
   constructor(
     private wsService: WebSocketService,
     private optimisticService: OptimisticStateService,
+    private debouncer: BroadcastDebouncer,
   ) {}
 
   setMigrationService(service: MigrationService): void {
@@ -75,6 +78,17 @@ export class IndexerService {
     }
 
     console.log(`[Indexer] Starting from block ${this.lastBlockIndexed}`);
+
+    // One-time backfill: rename graduatedAtBlock → graduatedAt
+    const tokens = getTokensCollection();
+    await tokens.updateMany(
+      { graduatedAtBlock: { $exists: true }, graduatedAt: { $exists: false } } as Record<string, unknown>,
+      [{ $set: { graduatedAt: '$graduatedAtBlock' } }] as unknown as Record<string, unknown>,
+    );
+    await tokens.updateMany(
+      { graduatedAtBlock: { $exists: true } } as Record<string, unknown>,
+      { $unset: { graduatedAtBlock: '' } } as Record<string, unknown>,
+    );
 
     this.interval = setInterval(() => {
       this.poll().catch((err) => {
@@ -138,24 +152,7 @@ export class IndexerService {
     const trades = getTradesCollection();
     const tokens = getTokensCollection();
 
-    // 1) Confirm any pre-registered pending trades at this block height
-    const pendingResult = await trades.updateMany(
-      { status: 'pending', blockNumber },
-      { $set: { status: 'confirmed' } },
-    );
-
-    if (pendingResult.modifiedCount > 0) {
-      const confirmed = await trades.find({ status: 'confirmed', blockNumber }).toArray();
-      for (const trade of confirmed) {
-        this.optimisticService.removePendingTrade(trade.tokenAddress, trade._id);
-        this.wsService.broadcast(`token:trades:${trade.tokenAddress}`, 'trade_confirmed', {
-          txHash: trade._id,
-          blockNumber,
-        });
-      }
-    }
-
-    // 2) Fetch the block with prefetched transactions
+    // 1) Fetch the block with prefetched transactions
     let block;
     try {
       block = await provider.getBlock(blockNumber, true);
@@ -261,16 +258,6 @@ export class IndexerService {
       if (affectedTrades.length > 0) {
         await this.updateTokenStats(affectedTrades);
       }
-      // Also update stats for tokens that had pending trades confirmed in step 1
-      const pendingConfirmedTokens = pendingResult.modifiedCount > 0
-        ? await trades.find({ status: 'confirmed', blockNumber }).toArray()
-        : [];
-      if (pendingConfirmedTokens.length > 0) {
-        await this.updateTokenStats(pendingConfirmedTokens);
-      }
-    } else if (pendingResult.modifiedCount > 0) {
-      const confirmed = await trades.find({ status: 'confirmed', blockNumber }).toArray();
-      await this.updateTokenStats(confirmed);
     }
 
     this.broadcastBlock(blockNumber);
@@ -346,16 +333,26 @@ export class IndexerService {
       blockNumber,
     });
 
-    // Broadcast price update
-    this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: displayPrice,
-      isOptimistic: false,
-    });
-
-    // Sync reserves from chain in background to keep DB reserves accurate
-    this.syncTokenReserves(tokenAddress).catch((err) => {
-      console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
-    });
+    // Sync reserves from chain, then broadcast price_update with full reserve data
+    this.syncTokenReserves(tokenAddress)
+      .then(async () => {
+        const updatedToken = await getTokensCollection().findOne({ _id: tokenAddress });
+        this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
+          currentPriceSats: displayPrice,
+          virtualBtcReserve: updatedToken?.virtualBtcReserve ?? '0',
+          virtualTokenSupply: updatedToken?.virtualTokenSupply ?? '0',
+          realBtcReserve: updatedToken?.realBtcReserve ?? '0',
+          isOptimistic: false,
+        });
+      })
+      .catch((err) => {
+        // Fallback: broadcast without reserves if sync fails
+        console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
+        this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
+          currentPriceSats: displayPrice,
+          isOptimistic: false,
+        });
+      });
   }
 
   /**
@@ -421,15 +418,25 @@ export class IndexerService {
       blockNumber,
     });
 
-    this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
-      currentPriceSats: sellDisplayPrice,
-      isOptimistic: false,
-    });
-
-    // Sync reserves from chain in background to keep DB reserves accurate
-    this.syncTokenReserves(tokenAddress).catch((err) => {
-      console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
-    });
+    // Sync reserves from chain, then broadcast price_update with full reserve data
+    this.syncTokenReserves(tokenAddress)
+      .then(async () => {
+        const updatedToken = await getTokensCollection().findOne({ _id: tokenAddress });
+        this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
+          currentPriceSats: sellDisplayPrice,
+          virtualBtcReserve: updatedToken?.virtualBtcReserve ?? '0',
+          virtualTokenSupply: updatedToken?.virtualTokenSupply ?? '0',
+          realBtcReserve: updatedToken?.realBtcReserve ?? '0',
+          isOptimistic: false,
+        });
+      })
+      .catch((err) => {
+        console.debug('[Indexer] Post-trade reserve sync failed:', err instanceof Error ? err.message : err);
+        this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
+          currentPriceSats: sellDisplayPrice,
+          isOptimistic: false,
+        });
+      });
   }
 
   /**
@@ -504,6 +511,10 @@ export class IndexerService {
       if (result && result.properties) {
         const { virtualBtc, virtualToken, realBtc, k } = result.properties;
         const tokens = getTokensCollection();
+
+        // Read current reserves before updating
+        const oldDoc = await tokens.findOne({ _id: tokenAddress });
+
         await tokens.updateOne(
           { _id: tokenAddress },
           {
@@ -525,6 +536,24 @@ export class IndexerService {
           kConstant: k,
           realBtcReserve: realBtc,
         });
+
+        // If any reserve field changed, broadcast authoritative price_update
+        const oldVBtc = oldDoc?.virtualBtcReserve ?? '0';
+        const oldVToken = oldDoc?.virtualTokenSupply ?? '0';
+        const oldRBtc = oldDoc?.realBtcReserve ?? '0';
+        if (
+          oldVBtc !== virtualBtc.toString() ||
+          oldVToken !== virtualToken.toString() ||
+          oldRBtc !== realBtc.toString()
+        ) {
+          this.wsService.broadcast(`token:price:${tokenAddress}`, 'price_update', {
+            currentPriceSats: toDisplayPrice(virtualBtc, virtualToken),
+            virtualBtcReserve: virtualBtc.toString(),
+            virtualTokenSupply: virtualToken.toString(),
+            realBtcReserve: realBtc.toString(),
+            isOptimistic: false,
+          });
+        }
       }
     } catch (err) {
       console.error(`[Indexer] Failed to sync reserves for ${tokenAddress}:`, err instanceof Error ? err.message : err);
@@ -562,7 +591,7 @@ export class IndexerService {
       {
         $set: {
           status: 'graduated',
-          graduatedAtBlock: blockNumber,
+          graduatedAt: blockNumber,
           updatedAt: new Date(),
         },
       },
@@ -623,6 +652,9 @@ export class IndexerService {
         // Total trade count
         const tradeCount = await tradesCol.countDocuments({ tokenAddress });
 
+        // 24h trade count
+        const tradeCount24h = await tradesCol.countDocuments({ tokenAddress, createdAt: { $gte: oneDayAgo } });
+
         // Total volume via MongoDB pipeline
         const volTotalAgg = await tradesCol.aggregate<{ _id: null; total: number }>([
           { $match: { tokenAddress } },
@@ -641,10 +673,16 @@ export class IndexerService {
           }
         }
 
-        // Unique holders count from confirmed buy trades
+        // Count addresses with net-positive token balance (buys > sells)
+        // $toDouble precision loss is acceptable for positive-vs-zero comparison
         const holderAgg = await tradesCol.aggregate([
-          { $match: { tokenAddress, type: 'buy' } },
-          { $group: { _id: '$traderAddress' } },
+          { $match: { tokenAddress } },
+          { $group: {
+            _id: '$traderAddress',
+            buyTotal: { $sum: { $cond: [{ $eq: ['$type', 'buy'] }, { $toDouble: '$tokenAmount' }, 0] } },
+            sellTotal: { $sum: { $cond: [{ $eq: ['$type', 'sell'] }, { $toDouble: '$tokenAmount' }, 0] } },
+          }},
+          { $match: { $expr: { $gt: ['$buyTotal', '$sellTotal'] } } },
           { $count: 'count' },
         ]).toArray();
         const holderCount = holderAgg.length > 0 ? Number(holderAgg[0].count) : 0;
@@ -656,12 +694,31 @@ export class IndexerService {
               volume24h,
               volumeTotal,
               tradeCount,
+              tradeCount24h,
               holderCount,
               marketCapSats,
               updatedAt: new Date(),
             },
           },
         );
+
+        // Broadcast canonical stats via debouncer (overwrites any mempool approximations)
+        this.debouncer.scheduleTokenStats(tokenAddress, {
+          volume24h,
+          volumeTotal,
+          tradeCount,
+          tradeCount24h,
+          holderCount,
+          marketCapSats,
+        });
+
+        // Broadcast token activity signal for listing pages
+        this.debouncer.tokenActivity(tokenAddress, {
+          tokenAddress,
+          lastPrice: token?.currentPriceSats ?? '0',
+          volume24h,
+          btcAmount: '0',
+        });
       } catch (err) {
         console.error(`[Indexer] Failed to update stats for ${tokenAddress}:`, err instanceof Error ? err.message : err);
       }
@@ -701,5 +758,13 @@ export class IndexerService {
       },
       { upsert: true },
     );
+
+    // Broadcast canonical platform stats via debouncer
+    this.debouncer.schedulePlatformStats({
+      totalTokens,
+      totalTrades,
+      totalVolumeSats,
+      totalGraduated,
+    });
   }
 }

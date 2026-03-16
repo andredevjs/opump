@@ -24,8 +24,11 @@ export class OptimisticStateService {
     state.confirmedReserves = reserves;
   }
 
+  private static readonly MAX_PENDING = 50;
+
   /**
    * Add a pending trade adjustment.
+   * Caps at MAX_PENDING per token — drops oldest when exceeded.
    */
   addPendingTrade(
     tokenAddress: string,
@@ -34,6 +37,9 @@ export class OptimisticStateService {
     amount: bigint,
   ): void {
     const state = this.getOrCreate(tokenAddress);
+    if (state.pendingAdjustments.length >= OptimisticStateService.MAX_PENDING) {
+      state.pendingAdjustments.shift();
+    }
     state.pendingAdjustments.push({
       txHash,
       type,
@@ -91,7 +97,8 @@ export class OptimisticStateService {
           currentReserves = sim.newReserves;
         }
       } catch (err) {
-        console.debug('[Optimistic] Simulation skipped:', err instanceof Error ? err.message : err);
+        console.debug('[Optimistic] Simulation failed, returning last-known-good reserves:', err instanceof Error ? err.message : err);
+        break;
       }
     }
 

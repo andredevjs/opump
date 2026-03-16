@@ -56,6 +56,7 @@ export interface TokenDocument {
   volumeTotal: string;
   marketCapSats: string;
   tradeCount: number;
+  tradeCount24h?: number;
   holderCount: number;
   deployBlock: number;
   deployTxHash: string;

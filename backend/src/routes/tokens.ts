@@ -1,6 +1,7 @@
 import type HyperExpress from '@btc-vision/hyper-express';
 import { getTokensCollection } from '../db/models/Token.js';
 import { getTradesCollection } from '../db/models/Trade.js';
+import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { TokenListQuery, CreateTokenRequest, TimeframeKey, OHLCVCandle } from '../../../shared/types/api.js';
 import type { TokenStatus } from '../../../shared/types/token.js';
 import {
@@ -14,6 +15,8 @@ import type { Filter } from 'mongodb';
 import type { TokenDocument } from '../../../shared/types/token.js';
 import type { OptimisticStateService } from '../services/OptimisticStateService.js';
 import type { MempoolService } from '../services/MempoolService.js';
+import type { WebSocketService } from '../services/WebSocketService.js';
+import type { BroadcastDebouncer } from '../services/BroadcastDebouncer.js';
 import { verifyTokenOnChain } from '../services/on-chain-verify.js';
 
 /**
@@ -130,7 +133,7 @@ export function stopTokenRoutesCleanup(): void {
   }
 }
 
-export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?: OptimisticStateService, mempoolService?: MempoolService): void {
+export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?: OptimisticStateService, mempoolService?: MempoolService, wsService?: WebSocketService, debouncer?: BroadcastDebouncer): void {
   // Start cleanup interval for wallet rate limit entries (every 10 minutes)
   if (_cleanupInterval) clearInterval(_cleanupInterval);
   _cleanupInterval = setInterval(() => {
@@ -467,6 +470,31 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
         status: 'pending' as const,
         createdAt: now,
       });
+
+      // T025: Broadcast trade and price update when mempoolService is unavailable
+      if (wsService) {
+        wsService.broadcast(`token:trades:${body.tokenAddress}`, 'new_trade', {
+          txHash: body.txHash,
+          type: body.type,
+          traderAddress: body.traderAddress,
+          btcAmount,
+          tokenAmount,
+          status: 'pending',
+          pricePerToken,
+        });
+
+        // Read token reserves and broadcast price_update
+        const tokenDoc = await getTokensCollection().findOne({ _id: body.tokenAddress });
+        if (tokenDoc) {
+          wsService.broadcast(`token:price:${body.tokenAddress}`, 'price_update', {
+            currentPriceSats: pricePerToken || tokenDoc.currentPriceSats,
+            virtualBtcReserve: tokenDoc.virtualBtcReserve,
+            virtualTokenSupply: tokenDoc.virtualTokenSupply,
+            realBtcReserve: tokenDoc.realBtcReserve,
+            isOptimistic: false,
+          });
+        }
+      }
     }
 
     const doc = await trades.findOne({ _id: body.txHash });
@@ -592,5 +620,28 @@ export function registerTokenRoutes(app: HyperExpress.Server, optimisticService?
 
     await tokens.insertOne(tokenDoc);
     res.status(201).json(tokenDoc);
+
+    // T016: Broadcast updated platform stats (increment totalTokens in-memory)
+    if (debouncer) {
+      try {
+        const platformStats = getPlatformStatsCollection();
+        const currentPlatform = await platformStats.findOne({ _id: 'current' });
+        if (currentPlatform) {
+          debouncer.schedulePlatformStats({
+            totalTokens: (currentPlatform.totalTokens ?? 0) + 1,
+            totalTrades: currentPlatform.totalTrades ?? 0,
+            totalVolumeSats: currentPlatform.totalVolumeSats || '0',
+            totalGraduated: currentPlatform.totalGraduated ?? 0,
+          });
+        }
+      } catch {
+        // Best-effort — don't fail the response
+      }
+    }
+
+    // T018: Broadcast new_token to platform channel
+    if (wsService) {
+      wsService.broadcast('platform', 'new_token', { ...tokenDoc, priceChange24hBps: 0 });
+    }
   });
 }

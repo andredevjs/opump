@@ -9,6 +9,7 @@ import type { TradeDocument } from '@shared/types/trade';
 import { wsClient } from '@/services/websocket';
 import * as api from '@/services/api';
 import { computeOptimistic24hChange } from '@/lib/price-utils';
+import { useWalletStore } from '@/stores/wallet-store';
 
 // W16-W17: Runtime type guards for WebSocket data
 interface PriceWsData {
@@ -182,8 +183,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }
     });
 
-    wsClient.connect();
-
     const updateTokenStats = useTokenStore.getState().updateTokenStats;
     const unsubPrice = wsClient.subscribe('token:price', token.address, (_event, data) => {
       if (!isPriceData(data)) return;
@@ -223,10 +222,23 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }
     });
 
+    // T024: Subscribe to token:stats for volume/market-cap/holder updates
+    const unsubStats = wsClient.subscribe('token:stats', token.address, (_event, data) => {
+      if (data && typeof data === 'object') {
+        const d = data as Record<string, unknown>;
+        const statsUpdate: { volume24hSats?: number; marketCapSats?: number; tradeCount24h?: number; holderCount?: number } = {};
+        if (d.volume24h != null) statsUpdate.volume24hSats = Number(d.volume24h);
+        if (d.marketCapSats != null) statsUpdate.marketCapSats = Number(d.marketCapSats);
+        if (d.tradeCount24h != null) statsUpdate.tradeCount24h = Number(d.tradeCount24h);
+        if (d.holderCount != null) statsUpdate.holderCount = Number(d.holderCount);
+        updateTokenStats(token.address, statsUpdate);
+      }
+    });
+
     const unsubTrades = wsClient.subscribe('token:trades', token.address, (event, data) => {
       if (event === 'new_trade') {
         if (!isNewTradeData(data)) return;
-        addWsTrade(token.address, data);
+        addWsTrade(token.address, data, useWalletStore.getState().address ?? undefined);
 
         if (isTxCharted(token.address, data.txHash)) return;
         markTxCharted(token.address, data.txHash);
@@ -274,6 +286,8 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       } else if (event === 'trade_dropped') {
         if (!hasTxHash(data)) return;
         dropWsTrade(token.address, data.txHash);
+        // T038: Re-fetch OHLCV candles to remove phantom candle data
+        setTimeout(() => refreshFromServer(), 50);
       }
     });
 
@@ -305,8 +319,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       }).catch(() => {});
     }
 
-    const handleTradeEvent = () => refreshFromServer();
-    window.addEventListener('opump:trade', handleTradeEvent);
+    // T014: On WS reconnect, re-fetch price, candles, and trades
+    const unsubReconnect = wsClient.onReconnect(() => {
+      refreshFromServer();
+    });
 
     let consecutiveFailures = 0;
 
@@ -350,8 +366,9 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       lastSpotPriceRef.current = null;
       setLoading(token.address, false);
       unsubPrice();
+      unsubStats();
       unsubTrades();
-      window.removeEventListener('opump:trade', handleTradeEvent);
+      unsubReconnect();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, [token?.address, timeframe, setLoading, setCandles, updateTokenPrice,

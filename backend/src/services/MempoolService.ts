@@ -7,6 +7,7 @@ import { decodeBuyEvent, decodeSellEvent } from './EventDecoder.js';
 import { toDisplayPrice, scaledToDisplayPrice } from '../utils/price.js';
 import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { PendingTransaction } from '../types/contracts.js';
+import type { BroadcastDebouncer } from './BroadcastDebouncer.js';
 
 export class MempoolService {
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -17,6 +18,7 @@ export class MempoolService {
   constructor(
     private wsService: WebSocketService,
     private optimisticService: OptimisticStateService,
+    private debouncer: BroadcastDebouncer,
   ) {}
 
   private async getProvider(): Promise<import('opnet').JSONRpcProvider> {
@@ -241,18 +243,25 @@ export class MempoolService {
     // Reverse the stat increments from registerPendingTrade
     if (droppedTrade) {
       try {
-        const btcNum = parseInt(droppedTrade.btcAmount, 10) || 0;
-        const tokens = getTokensCollection();
-        await tokens.updateOne(
+        const btcNum = Number(droppedTrade.btcAmount) || 0;
+        const tokensCol = getTokensCollection();
+        await tokensCol.updateOne(
           { _id: tokenAddress },
           { $inc: { tradeCount: -1 }, $set: { updatedAt: new Date() } },
         );
 
-        const platformStats = getPlatformStatsCollection();
-        await platformStats.updateOne(
-          { _id: 'current' },
-          { $inc: { totalTrades: -1, totalVolumeSats: -btcNum } as Record<string, number> },
-        );
+        // Read updated token doc and broadcast corrected stats
+        const tokenDoc = await tokensCol.findOne({ _id: tokenAddress });
+        if (tokenDoc) {
+          this.debouncer.scheduleTokenStats(tokenAddress, {
+            volume24h: String(Math.max(0, Number(tokenDoc.volume24h || '0') - btcNum)),
+            volumeTotal: String(Math.max(0, Number(tokenDoc.volumeTotal || '0') - btcNum)),
+            tradeCount: tokenDoc.tradeCount,
+            tradeCount24h: Math.max(0, (tokenDoc.tradeCount24h ?? 0) - 1),
+            holderCount: tokenDoc.holderCount,
+            marketCapSats: tokenDoc.marketCapSats,
+          });
+        }
       } catch (err) {
         console.error('[Mempool] Failed to reverse stats for dropped trade:', err instanceof Error ? err.message : err);
       }
@@ -338,21 +347,47 @@ export class MempoolService {
       isOptimistic: optimistic.isOptimistic,
     });
 
-    // Atomically increment token and platform stats so polls reflect the pending trade
+    // Atomically increment token stats so polls reflect the pending trade
     try {
-      const btcNum = parseInt(btcAmount, 10) || 0;
-      const tokens = getTokensCollection();
-      await tokens.updateOne(
+      const btcNum = Number(btcAmount) || 0;
+      const tokensCol = getTokensCollection();
+      await tokensCol.updateOne(
         { _id: tokenAddress },
         { $inc: { tradeCount: 1 }, $set: { updatedAt: new Date() } },
       );
 
+      // Read updated token doc and broadcast approximate stats via debouncer
+      const tokenDoc = await tokensCol.findOne({ _id: tokenAddress });
+      if (tokenDoc) {
+        const approxVolume24h = String(Number(tokenDoc.volume24h || '0') + btcNum);
+        const approxVolumeTotal = String(Number(tokenDoc.volumeTotal || '0') + btcNum);
+        this.debouncer.scheduleTokenStats(tokenAddress, {
+          volume24h: approxVolume24h,
+          volumeTotal: approxVolumeTotal,
+          tradeCount: tokenDoc.tradeCount,
+          tradeCount24h: (tokenDoc.tradeCount24h ?? 0) + 1,
+          holderCount: tokenDoc.holderCount,
+          marketCapSats: tokenDoc.marketCapSats,
+        });
+        this.debouncer.tokenActivity(tokenAddress, {
+          tokenAddress,
+          lastPrice: pricePerToken,
+          volume24h: approxVolume24h,
+          btcAmount,
+        });
+      }
+
+      // Platform stats: read, increment in-memory, schedule broadcast (no DB $inc)
       const platformStats = getPlatformStatsCollection();
-      await platformStats.updateOne(
-        { _id: 'current' },
-        { $inc: { totalTrades: 1, totalVolumeSats: btcNum } as Record<string, number> },
-        { upsert: true },
-      );
+      const currentPlatform = await platformStats.findOne({ _id: 'current' });
+      if (currentPlatform) {
+        this.debouncer.schedulePlatformStats({
+          totalTokens: currentPlatform.totalTokens ?? 0,
+          totalTrades: (currentPlatform.totalTrades ?? 0) + 1,
+          totalVolumeSats: String(Number(currentPlatform.totalVolumeSats || '0') + btcNum),
+          totalGraduated: currentPlatform.totalGraduated ?? 0,
+        });
+      }
     } catch (err) {
       console.error('[Mempool] Failed to update stats for pending trade:', err instanceof Error ? err.message : err);
     }

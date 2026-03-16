@@ -26,12 +26,6 @@ export function TopTokens() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  useEffect(() => {
-    const handler = () => refresh();
-    window.addEventListener('opump:trade', handler);
-    return () => window.removeEventListener('opump:trade', handler);
-  }, [refresh]);
-
   return (
     <section className="max-w-7xl mx-auto px-4 py-12">
       <div className="flex items-center justify-between mb-6">
