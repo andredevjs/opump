@@ -13,7 +13,6 @@ const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Graduated', value: 'graduated' },
-  { label: 'On DEX', value: 'migrated' },
   { label: 'New', value: 'new' },
 ];
 
@@ -25,18 +24,14 @@ const SORT_OPTIONS: TokenSortOption[] = [
 ];
 
 export function TrenchesPage() {
-  const { tokens, filter, setFilter, pagination, fetchTokens } = useTokenStore();
+  const { tokens, filter, setFilter, loading, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
   const [page, setPage] = useState(1);
 
-  // Fetch tokens on mount + periodic refresh (fallback for WS gaps)
-  // The global feed (useGlobalFeed in RootLayout) already patches token store
-  // on token_activity and new_token events, so the list re-renders reactively.
+  // Fetch tokens on mount
   useEffect(() => {
     fetchTokens();
-    const id = setInterval(fetchTokens, 5_000);
-    return () => clearInterval(id);
-  }, [fetchTokens]);
+  }, []);
 
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [filter.search, filter.status, filter.sort]);

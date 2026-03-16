@@ -27,9 +27,6 @@ export class OPumpFactory extends OP_NET {
   private readonly tokenCount: StoredU256 = new StoredU256(this.tokenCountPtr, EMPTY_POINTER);
   private readonly tokenRegistry: StoredMapU256 = new StoredMapU256(this.tokenRegistryPtr);
   private readonly creatorTokenCount: AddressMemoryMap = new AddressMemoryMap(this.creatorTokenCountPtr);
-  // NOTE: These counters are not yet updated by any method.
-  // They are reserved for future on-chain stats tracking.
-  // Currently, volume and graduation counts are tracked off-chain by the indexer.
   private readonly totalVolume: StoredU256 = new StoredU256(this.totalVolumePtr, EMPTY_POINTER);
   private readonly graduatedCount: StoredU256 = new StoredU256(this.graduatedCountPtr, EMPTY_POINTER);
 
@@ -41,13 +38,6 @@ export class OPumpFactory extends OP_NET {
     // No additional initialization needed — contractDeployer is tracked by OP_NET
   }
 
-  /**
-   * Registers a new token in the factory.
-   *
-   * registerToken is a permissionless registry. Name/symbol are validated
-   * but not stored — they exist only in the emitted event for indexer discovery.
-   * The actual token parameters live in the LaunchToken contract itself.
-   */
   @method(
     { name: 'name', type: ABIDataTypes.STRING },
     { name: 'symbol', type: ABIDataTypes.STRING },
@@ -66,9 +56,7 @@ export class OPumpFactory extends OP_NET {
     const sellTaxBps: u256 = calldata.readU256();
     const flywheelDestination: u256 = calldata.readU256();
 
-    // Combined cap: creatorAllocation + buyTax <= 25% (prevents excessive take on entry)
-    // sellTax is capped separately at 5% — not included in combined check because
-    // sell tax only applies on exit and has a lower individual cap.
+    // Validate combined allocation
     if (SafeMath.add(creatorAllocationBps, buyTaxBps) > MAX_COMBINED_ALLOCATION_BPS) {
       throw new Revert('Combined allocation exceeds 25%');
     }
@@ -86,7 +74,7 @@ export class OPumpFactory extends OP_NET {
     const index = this.tokenCount.value;
     const sender = Blockchain.tx.sender;
 
-    // Address encoded as u256 via fromUint8ArrayBE — decode back with toUint8Array()
+    // Store token creator at this index
     this.tokenRegistry.set(index, u256.fromUint8ArrayBE(sender));
     this.tokenCount.set(SafeMath.add(index, u256.One));
 

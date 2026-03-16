@@ -23,7 +23,7 @@ import type {
   UploadImageResponse,
 } from '@shared/types/api';
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9850';
 
 class ApiError extends Error {
   constructor(
@@ -149,38 +149,6 @@ export function uploadImage(body: UploadImageRequest): Promise<UploadImageRespon
 
 export function getProfileTokens(address: string): Promise<ProfileTokensResponse> {
   return request<ProfileTokensResponse>(`/v1/profile/${encodeURIComponent(address)}/tokens`);
-}
-
-/**
- * Trigger the on-chain indexer to process new blocks.
- * Fire-and-forget — used after trade confirmations to ensure trades appear quickly.
- */
-export function triggerIndexer(): Promise<unknown> {
-  return request('/v1/indexer/run', { method: 'POST' }).catch(() => {
-    // Indexer trigger is best-effort, don't propagate errors
-  });
-}
-
-/**
- * Submit a trade to Redis immediately after broadcast so all users see it
- * without waiting for the indexer to scan the block.
- * Fire-and-forget — errors are silently ignored.
- */
-export function submitTrade(trade: {
-  txHash: string;
-  tokenAddress: string;
-  type: 'buy' | 'sell';
-  traderAddress: string;
-  btcAmount: string;
-  tokenAmount: string;
-  pricePerToken: string;
-}): Promise<unknown> {
-  return request('/v1/trades', {
-    method: 'POST',
-    body: JSON.stringify(trade),
-  }).catch(() => {
-    // Best-effort — optimistic UI already shows the trade locally
-  });
 }
 
 export { ApiError };

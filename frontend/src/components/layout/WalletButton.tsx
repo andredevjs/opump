@@ -1,36 +1,23 @@
-import { useState } from 'react';
-import { Wallet } from 'lucide-react';
-import * as Popover from '@radix-ui/react-popover';
+import { Wallet, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useWalletStore } from '@/stores/wallet-store';
 import { shortenAddress, formatBtc } from '@/lib/format';
-import { WalletPopoverContent } from './WalletPopover';
 
 export function WalletButton() {
-  const { connected, address, balanceSats, connect } = useWalletStore();
-  const [open, setOpen] = useState(false);
+  const { connected, address, balanceSats, connect, disconnect } = useWalletStore();
 
   if (connected && address) {
     return (
-      <Popover.Root open={open} onOpenChange={setOpen}>
-        <Popover.Trigger asChild>
-          <button className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-elevated border border-border text-sm cursor-pointer hover:border-accent/50 transition-colors">
-            <span className="font-mono text-accent">{formatBtc(balanceSats)}</span>
-            <span className="text-text-muted">|</span>
-            <span className="font-mono text-text-secondary">{shortenAddress(address, 4)}</span>
-          </button>
-        </Popover.Trigger>
-        <Popover.Content
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          collisionPadding={8}
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          className="bg-card border border-border rounded-xl shadow-lg z-50"
-        >
-          <WalletPopoverContent onClose={() => setOpen(false)} />
-        </Popover.Content>
-      </Popover.Root>
+      <div className="flex items-center gap-2">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-elevated border border-border text-sm">
+          <span className="font-mono text-accent">{formatBtc(balanceSats)}</span>
+          <span className="text-text-muted">|</span>
+          <span className="font-mono text-text-secondary">{shortenAddress(address, 4)}</span>
+        </div>
+        <Button variant="ghost" size="sm" onClick={disconnect}>
+          <LogOut size={16} />
+        </Button>
+      </div>
     );
   }
 

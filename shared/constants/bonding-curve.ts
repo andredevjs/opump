@@ -4,8 +4,7 @@
  */
 
 // Virtual reserves (initial state of the bonding curve)
-// virtualBtc is small relative to graduation threshold to create ~100x price curve
-export const INITIAL_VIRTUAL_BTC_SATS = 767_000n; // 0.00767 BTC — gives ~100x at graduation
+export const INITIAL_VIRTUAL_BTC_SATS = 3_000_000_000n; // 30 BTC in sats
 export const INITIAL_VIRTUAL_TOKEN_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8 decimals
 export const K_CONSTANT = INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY;
 
@@ -37,11 +36,3 @@ export const RESERVATION_TTL_BLOCKS = 3n; // ~30 minutes
 // Token defaults
 export const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8 decimals
 export const TOKEN_DECIMALS = 8;
-
-// Price precision factor for on-chain calculations (10^18)
-// Needed because initial price is sub-sat with small virtualBtc
-export const PRICE_PRECISION = 10n ** 18n;
-
-// Divisor to convert PRICE_PRECISION-scaled values to sats per whole token
-// = PRICE_PRECISION / 10^TOKEN_DECIMALS = 10^10
-export const PRICE_DISPLAY_DIVISOR = 1e10;

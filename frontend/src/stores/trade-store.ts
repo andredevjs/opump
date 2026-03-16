@@ -42,8 +42,6 @@ interface TradeStore {
   holdings: Record<string, string>;
   // Recent WS trades per token (for live feed)
   recentTrades: Record<string, WsTrade[]>;
-  // T022: Counter that increments when the connected wallet's own trade arrives via WS
-  selfTradeCounter: number;
   addPending: (tx: PendingTransaction) => void;
   updatePendingStatus: (id: string, status: PendingTransaction['status']) => void;
   removePending: (id: string) => void;
@@ -51,8 +49,7 @@ interface TradeStore {
   addHolding: (tokenAddress: string, units: string) => void;
   removeHolding: (tokenAddress: string, units: string) => void;
   getHolding: (tokenAddress: string) => string;
-  incrementSelfTradeCounter: () => void;
-  addWsTrade: (tokenAddress: string, trade: WsTrade, connectedAddress?: string) => void;
+  addWsTrade: (tokenAddress: string, trade: WsTrade) => void;
   confirmWsTrade: (tokenAddress: string, txHash: string) => void;
   dropWsTrade: (tokenAddress: string, txHash: string) => void;
 }
@@ -61,7 +58,6 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
   pendingTransactions: [],
   holdings: {},
   recentTrades: {},
-  selfTradeCounter: 0,
 
   addPending: (tx) =>
     set((state) => ({
@@ -121,29 +117,14 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
 
   getHolding: (tokenAddress) => get().holdings[tokenAddress] ?? '0',
 
-  incrementSelfTradeCounter: () =>
-    set((state) => ({ selfTradeCounter: state.selfTradeCounter + 1 })),
-
-  addWsTrade: (tokenAddress, trade, connectedAddress?) =>
+  addWsTrade: (tokenAddress, trade) =>
     set((state) => {
       const existing = state.recentTrades[tokenAddress] ?? [];
-      const dupeIndex = existing.findIndex((t) => t.txHash === trade.txHash);
-      // T022: If this trade is from the connected wallet, increment counter
-      const isSelfTrade = connectedAddress && trade.traderAddress === connectedAddress;
-      if (dupeIndex !== -1) {
-        const updated = [...existing];
-        updated[dupeIndex] = { ...updated[dupeIndex], ...trade };
-        return {
-          recentTrades: { ...state.recentTrades, [tokenAddress]: updated },
-          ...(isSelfTrade ? { selfTradeCounter: state.selfTradeCounter + 1 } : {}),
-        };
-      }
       return {
         recentTrades: {
           ...state.recentTrades,
           [tokenAddress]: [trade, ...existing].slice(0, 50),
         },
-        ...(isSelfTrade ? { selfTradeCounter: state.selfTradeCounter + 1 } : {}),
       };
     }),
 

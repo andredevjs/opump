@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { FeeBreakdown } from '@/components/shared/FeeBreakdown';
 import type { Token } from '@/types/token';
+import type { TradeSimulation } from '@/types/trade';
 import { useTradeSimulation } from '@/hooks/use-trade-simulation';
 import { useWalletStore } from '@/stores/wallet-store';
 import { formatBtc, formatTokenAmount, btcToSats } from '@/lib/format';
@@ -16,14 +17,18 @@ interface BuyFormProps {
 
 export function BuyForm({ token }: BuyFormProps) {
   const [amount, setAmount] = useState('');
+  const [simulation, setSimulation] = useState<TradeSimulation | null>(null);
   const { simulateBuy, executeBuy, executing } = useTradeSimulation(token);
   const { connected, balanceSats } = useWalletStore();
 
-  // S21: Derive simulation from amount via useMemo instead of useEffect+setState
-  const simulation = useMemo(() => {
+  useEffect(() => {
     const btc = parseFloat(amount);
-    if (isNaN(btc) || btc <= 0) return null;
-    return simulateBuy(String(btcToSats(btc)));
+    if (!isNaN(btc) && btc > 0) {
+      const sats = btcToSats(btc);
+      setSimulation(simulateBuy(String(sats)));
+    } else {
+      setSimulation(null);
+    }
   }, [amount, simulateBuy]);
 
   const handleBuy = () => {

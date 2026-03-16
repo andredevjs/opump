@@ -2,244 +2,91 @@ import { useEffect, useRef } from 'react';
 import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
-import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
-import type { TimeframeKey, OHLCVCandle } from '@/types/api';
-import type { TradeDocument } from '@shared/types/trade';
+import { useTradeStore } from '@/stores/trade-store';
+import { PRICE_UPDATE_INTERVAL_MS } from '@/config/constants';
+import type { TimeframeKey } from '@/types/api';
+import { wsClient } from '@/services/websocket';
 import * as api from '@/services/api';
-import { computeOptimistic24hChange } from '@/lib/price-utils';
-
-const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '1h': 3600,
-  '4h': 14400,
-  '1d': 86400,
-};
-
-/** Build OHLCV candles from raw trade documents (fallback when OHLCV endpoint returns empty) */
-function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
-  const bucketSeconds = TIMEFRAME_SECONDS[tf];
-  const buckets = new Map<number, OHLCVCandle>();
-
-  // trades are newest-first from API, reverse for chronological order
-  const sorted = [...trades].reverse();
-
-  for (const t of sorted) {
-    const price = Number(t.pricePerToken);
-    const volume = Number(t.btcAmount);
-    if (!price || isNaN(price)) continue;
-
-    const tsSec = Math.floor(new Date(t.createdAt).getTime() / 1000);
-    const bucket = Math.floor(tsSec / bucketSeconds) * bucketSeconds;
-
-    const existing = buckets.get(bucket);
-    if (existing) {
-      existing.high = Math.max(existing.high, price);
-      existing.low = Math.min(existing.low, price);
-      existing.close = price;
-      existing.volume += volume;
-    } else {
-      buckets.set(bucket, { time: bucket, open: price, high: price, low: price, close: price, volume });
-    }
-  }
-
-  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
-}
-
-/**
- * Merge trade-built candles into OHLCV candles.
- * For non-overlapping buckets, trade candles fill gaps not yet covered
- * by the indexer. For overlapping buckets, trade data is merged in
- * (expand high/low, prefer trade close which may include pending trades).
- */
-function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
-  if (trades.length === 0) return ohlcv;
-  const tradeCandles = buildCandlesFromTrades(trades, tf);
-  if (tradeCandles.length === 0) return ohlcv;
-  if (ohlcv.length === 0) return tradeCandles;
-
-  const resultMap = new Map<number, OHLCVCandle>();
-  for (const c of ohlcv) {
-    resultMap.set(c.time, { ...c });
-  }
-
-  for (const tc of tradeCandles) {
-    const existing = resultMap.get(tc.time);
-    if (existing) {
-      existing.high = Math.max(existing.high, tc.high);
-      existing.low = Math.min(existing.low, tc.low);
-      existing.close = tc.close;
-      existing.volume = Math.max(existing.volume, tc.volume);
-    } else {
-      resultMap.set(tc.time, { ...tc });
-    }
-  }
-
-  return Array.from(resultMap.values()).sort((a, b) => a.time - b.time);
-}
 
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
   const updateTokenPrice = useTokenStore((s) => s.updateTokenPrice);
   const setCandles = usePriceStore((s) => s.setCandles);
-  const setLoading = usePriceStore((s) => s.setLoading);
   const setLivePrice = usePriceStore((s) => s.setLivePrice);
-  const setActiveTimeframe = usePriceStore((s) => s.setActiveTimeframe);
+  const addWsTrade = useTradeStore((s) => s.addWsTrade);
+  const confirmWsTrade = useTradeStore((s) => s.confirmWsTrade);
+  const dropWsTrade = useTradeStore((s) => s.dropWsTrade);
   const intervalRef = useRef<number>();
-  const timeframeRef = useRef(timeframe);
-  timeframeRef.current = timeframe;
-  const lastSpotPriceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!token) return;
 
-    // Track active timeframe so optimistic trades can update candles
-    setActiveTimeframe(token.address, timeframe);
-
-    // Only show loading if we have no candles yet (preserves optimistic data)
-    const existing = usePriceStore.getState().candles[token.address];
-    if (!existing || existing.length === 0) {
-      setLoading(token.address, true);
-    }
-
+    // Fetch OHLCV candles from API, then connect WebSocket
     let cancelled = false;
+    api.getOHLCV(token.address, timeframe).then((resp) => {
+      if (!cancelled) setCandles(token.address, resp.candles);
+    }).catch(() => {
+      if (!cancelled) setCandles(token.address, []);
+    });
 
-    function applySpotPriceToLastCandle(address: string) {
-      const spotPrice = lastSpotPriceRef.current;
-      if (spotPrice == null || spotPrice <= 0) return;
-      const candles = usePriceStore.getState().candles[address] ?? [];
-      const last = candles[candles.length - 1];
-      if (!last || last.close === spotPrice) return;
-      usePriceStore.getState().updateLastCandle(address, {
-        ...last,
-        high: Math.max(last.high, spotPrice),
-        low: Math.min(last.low, spotPrice),
-        close: spotPrice,
-      });
-    }
+    wsClient.connect();
 
-    const updateTokenStats = useTokenStore.getState().updateTokenStats;
+    const unsubPrice = wsClient.subscribe('token:price', token.address, (_event, data) => {
+      const d = data as {
+        currentPriceSats: string;
+        virtualBtcReserve: string;
+        virtualTokenSupply: string;
+        realBtcReserve: string;
+        isOptimistic: boolean;
+      };
 
-    function refreshFromServer() {
-      if (!token) return;
-      const addr = token.address;
-      Promise.all([
-        api.getOHLCV(addr, timeframeRef.current),
-        api.getTrades(addr, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
-        api.getTokenPrice(addr).catch(() => null),
-      ]).then(([ohlcvResp, tradesResp, priceResp]) => {
-        if (cancelled) return;
-        const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
-        if (merged.length > 0) {
-          setCandles(addr, merged);
-        }
-        if (priceResp) {
-          lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
-          setLivePrice(addr, {
-            currentPriceSats: priceResp.currentPriceSats,
-            virtualBtcReserve: priceResp.virtualBtcReserve,
-            virtualTokenSupply: priceResp.virtualTokenSupply,
-            realBtcReserve: priceResp.realBtcReserve,
-            isOptimistic: priceResp.isOptimistic,
-          });
-          updateTokenPrice(addr, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
+      setLivePrice(token.address, d);
+      updateTokenPrice(token.address, Number(d.currentPriceSats), 0);
+    });
 
-          // Update market cap and graduation progress from price data
-          if (priceResp.virtualBtcReserve != null && priceResp.virtualTokenSupply != null) {
-            const vBtc = Number(priceResp.virtualBtcReserve);
-            const vToken = Number(priceResp.virtualTokenSupply);
-            const initSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
-            const marketCapSats = vToken > 0 ? (vBtc / vToken) * initSupply : 0;
-            const statsUpdate: { marketCapSats: number; realBtcReserve?: string; graduationProgress?: number } = { marketCapSats };
-            if (priceResp.realBtcReserve != null) {
-              statsUpdate.realBtcReserve = priceResp.realBtcReserve;
-              const rBtc = Number(priceResp.realBtcReserve);
-              statsUpdate.graduationProgress = GRADUATION_THRESHOLD_SATS > 0
-                ? Math.min(100, (rBtc / GRADUATION_THRESHOLD_SATS) * 100)
-                : 0;
-            }
-            updateTokenStats(token.address, statsUpdate);
-          }
-        }
-        applySpotPriceToLastCandle(addr);
-        setLoading(addr, false);
-      }).catch(() => {
-        if (!cancelled) {
-          setLoading(token.address, false);
-        }
-      });
-    }
+    const unsubTrades = wsClient.subscribe('token:trades', token.address, (event, data) => {
+      const d = data as {
+        txHash: string;
+        type: 'buy' | 'sell';
+        traderAddress: string;
+        btcAmount: string;
+        tokenAmount: string;
+        status: string;
+        pricePerToken: string;
+        reason?: string;
+      };
 
-    // Initial fetch
-    refreshFromServer();
+      if (event === 'new_trade') {
+        addWsTrade(token.address, d);
+      } else if (event === 'trade_confirmed') {
+        confirmWsTrade(token.address, d.txHash);
+      } else if (event === 'trade_dropped') {
+        dropWsTrade(token.address, d.txHash);
+      }
+    });
 
-    // Poll for price, candles, and trades at PRICE_UPDATE_INTERVAL_MS
-    let consecutiveFailures = 0;
-
+    // Fallback polling in case WebSocket disconnects
     intervalRef.current = window.setInterval(() => {
-      api.getTokenPrice(token.address).then((price) => {
-        consecutiveFailures = 0;
-        const newPrice = Number(price.currentPriceSats);
-        lastSpotPriceRef.current = newPrice;
-        setLivePrice(token.address, {
-          currentPriceSats: price.currentPriceSats,
-          virtualBtcReserve: price.virtualBtcReserve,
-          virtualTokenSupply: price.virtualTokenSupply,
-          realBtcReserve: price.realBtcReserve,
-          isOptimistic: price.isOptimistic,
+      if (!wsClient.isConnected()) {
+        api.getTokenPrice(token.address).then((price) => {
+          setLivePrice(token.address, {
+            currentPriceSats: price.currentPriceSats,
+            virtualBtcReserve: price.virtualBtcReserve,
+            virtualTokenSupply: price.virtualTokenSupply,
+            realBtcReserve: price.realBtcReserve,
+            isOptimistic: price.isOptimistic,
+          });
+          updateTokenPrice(token.address, Number(price.currentPriceSats), 0);
+        }).catch(() => {
+          // Silently ignore polling errors
         });
-
-        // Recalculate 24h change
-        const existing = useTokenStore.getState().selectedToken;
-        const oldPrice = existing?.address === token.address ? existing.currentPriceSats : 0;
-        const oldChange = existing?.address === token.address ? existing.priceChange24h : 0;
-        const newChange = computeOptimistic24hChange(oldPrice, oldChange, newPrice);
-        updateTokenPrice(token.address, newPrice, newChange);
-
-        applySpotPriceToLastCandle(token.address);
-
-        // Update market cap and graduation progress
-        if (price.virtualBtcReserve != null && price.virtualTokenSupply != null) {
-          const vBtc = Number(price.virtualBtcReserve);
-          const vToken = Number(price.virtualTokenSupply);
-          const initSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
-          const marketCapSats = vToken > 0 ? (vBtc / vToken) * initSupply : 0;
-          const statsUpdate: { marketCapSats: number; realBtcReserve?: string; graduationProgress?: number } = { marketCapSats };
-          if (price.realBtcReserve != null) {
-            statsUpdate.realBtcReserve = price.realBtcReserve;
-            const rBtc = Number(price.realBtcReserve);
-            statsUpdate.graduationProgress = GRADUATION_THRESHOLD_SATS > 0
-              ? Math.min(100, (rBtc / GRADUATION_THRESHOLD_SATS) * 100)
-              : 0;
-          }
-          updateTokenStats(token.address, statsUpdate);
-        }
-      }).catch(() => {
-        consecutiveFailures++;
-        if (consecutiveFailures >= 3) {
-          console.warn(`[usePriceFeed] ${consecutiveFailures} consecutive polling failures for ${token.address}`);
-        }
-      });
-
-      Promise.all([
-        api.getOHLCV(token.address, timeframeRef.current),
-        api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
-      ]).then(([ohlcvResp, tradesResp]) => {
-        if (cancelled) return;
-        const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
-        if (merged.length > 0) {
-          setCandles(token.address, merged);
-          applySpotPriceToLastCandle(token.address);
-        }
-      }).catch(() => { /* best-effort */ });
+      }
     }, PRICE_UPDATE_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      lastSpotPriceRef.current = null;
-      setLoading(token.address, false);
+      unsubPrice();
+      unsubTrades();
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [token?.address, timeframe, setLoading, setCandles, updateTokenPrice,
-      setLivePrice, setActiveTimeframe]);
+  }, [token?.address, timeframe]);
 }

@@ -1,21 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Token } from '@/types/token';
-import type { PendingTransaction } from '@/types/trade';
+import type { PendingTransaction, TradeSimulation } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
-import { VAULT_ADDRESS } from '@/config/constants';
 import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
-  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { connected, address: walletAddress } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
-  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade, confirmWsTrade } = useTradeStore();
+  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding } = useTradeStore();
   const [executing, setExecuting] = useState(false);
-
-  const tokenAddress = token?.address;
-  const tokenSymbol = token?.symbol;
 
   // Track pending timeouts for cleanup on unmount
   const timeoutIds = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
@@ -35,33 +31,36 @@ export function useTradeSimulation(token: Token | null) {
     timeoutIds.current.add(id);
   }
 
-  // S20: simulateBuy / simulateSell are the bonding-curve functions directly
-  const simulateBuy = localSimBuy;
-  const simulateSell = localSimSell;
+  /**
+   * Simulate a buy. Uses local BigNumber math for instant preview.
+   */
+  const simulateBuy = useCallback(
+    (btcSats: string): TradeSimulation | null => {
+      return localSimBuy(btcSats);
+    },
+    [localSimBuy],
+  );
+
+  /**
+   * Simulate a sell using local bonding curve math.
+   */
+  const simulateSell = useCallback(
+    (tokenUnits: string): TradeSimulation | null => {
+      return localSimSell(tokenUnits);
+    },
+    [localSimSell],
+  );
 
   /**
    * Execute a buy transaction via contract call through OPWallet.
    */
   const executeBuy = useCallback(
     async (btcSats: string) => {
-      // F3: Guard against missing vault address
-      if (!VAULT_ADDRESS) {
-        toast.error('Factory address not configured');
-        return;
-      }
-      if (!tokenAddress || !connected || !btcSats || btcSats === '0') return;
+      if (!token || !connected || !btcSats || btcSats === '0') return;
       if (!walletAddress) {
         toast.error('Wallet not connected');
         return;
       }
-
-      // W13: Validate BigInt range before any state mutations
-      const btcSatsBigInt = BigInt(btcSats);
-      if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
-        toast.error('Amount exceeds safe range for extra outputs');
-        return;
-      }
-
       const sim = simulateBuy(btcSats);
       if (!sim) return;
 
@@ -75,8 +74,8 @@ export function useTradeSimulation(token: Token | null) {
         status: 'broadcasted',
         btcAmount: btcSatsNum,
         tokenAmount: sim.outputAmount,
-        tokenSymbol: tokenSymbol ?? '',
-        tokenAddress: tokenAddress,
+        tokenSymbol: token.symbol,
+        tokenAddress: token.address,
         timestamp: Date.now(),
       };
 
@@ -86,66 +85,32 @@ export function useTradeSimulation(token: Token | null) {
 
       try {
         const { getLaunchTokenContract, sendContractCall, setupPayableCall, waitForConfirmation } = await import('@/services/contract');
-        const { Address } = await import('@btc-vision/transaction');
-        const contract = getLaunchTokenContract(tokenAddress);
+        const contract = getLaunchTokenContract(token.address);
+        const btcSatsBigInt = BigInt(btcSats);
 
-        // Set sender so the contract simulation knows who the caller is
-        if (hashedMLDSAKey) {
-          contract.setSender(Address.fromString(hashedMLDSAKey, publicKey ?? undefined));
+        if (btcSatsBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error('Amount exceeds safe range for extra outputs');
         }
 
-        // @payable: declare the BTC output to the vault BEFORE simulate
-        setupPayableCall(contract, VAULT_ADDRESS, btcSatsBigInt);
+        // @payable: declare the BTC output BEFORE simulate
+        setupPayableCall(contract, token.address, btcSatsBigInt);
 
         const simResult = await contract.buy(btcSatsBigInt);
         const result = await sendContractCall(simResult, {
           refundTo: walletAddress,
           maximumAllowedSatToSpend: btcSatsBigInt + 50000n,
-          extraOutputs: [{ address: VAULT_ADDRESS, value: btcSatsBigInt }],
+          extraOutputs: [{ address: token.address, value: Number(btcSatsBigInt) }],
         });
 
         updatePendingStatus(txId, 'mempool');
-
-        addWsTrade(tokenAddress, {
-          txHash: result.txHash,
-          type: 'buy',
-          traderAddress: walletAddress,
-          btcAmount: btcSats,
-          tokenAmount: sim.outputAmount,
-          status: 'pending',
-          pricePerToken: String(sim.newPriceSats),
-        });
-
-        try {
-          const { submitTrade } = await import('@/services/api');
-          await submitTrade({
-            txHash: result.txHash,
-            tokenAddress,
-            type: 'buy',
-            traderAddress: walletAddress,
-            btcAmount: btcSats,
-            tokenAmount: sim.outputAmount,
-            pricePerToken: String(sim.newPriceSats),
-          });
-        } catch {
-          // Best effort — mempool scanner will pick it up
-        }
-
-        toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
+        toast(`Buy detected in mempool`, { icon: '📡' });
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
-        confirmWsTrade(tokenAddress, result.txHash);
-        addHolding(tokenAddress, sim.outputAmount);
+        addHolding(token.address, sim.outputAmount);
         toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
-
-        // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because WebSocket events already updated price, trades, and chart.
-        // Calling fetchToken() here would race with the indexer and overwrite
-        // the optimistic price with stale DB data.
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
         addBalance(btcSatsNum); // Refund on failure
@@ -153,8 +118,7 @@ export function useTradeSimulation(token: Token | null) {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
-     addPending, deductBalance, updatePendingStatus, addWsTrade, confirmWsTrade, addHolding, removePending, addBalance],
+    [token, connected, walletAddress, simulateBuy],
   );
 
   /**
@@ -162,7 +126,7 @@ export function useTradeSimulation(token: Token | null) {
    */
   const executeSell = useCallback(
     async (tokenUnits: string) => {
-      if (!tokenAddress || !connected || !tokenUnits || tokenUnits === '0') return;
+      if (!token || !connected || !tokenUnits || tokenUnits === '0') return;
       if (!walletAddress) {
         toast.error('Wallet not connected');
         return;
@@ -179,79 +143,40 @@ export function useTradeSimulation(token: Token | null) {
         status: 'broadcasted',
         btcAmount: Number(sim.outputAmount),
         tokenAmount: tokenUnits,
-        tokenSymbol: tokenSymbol ?? '',
-        tokenAddress: tokenAddress,
+        tokenSymbol: token.symbol,
+        tokenAddress: token.address,
         timestamp: Date.now(),
       };
 
       addPending(pending);
-      removeHolding(tokenAddress, tokenUnits);
+      removeHolding(token.address, tokenUnits);
       toast.success(`Sell broadcasted`);
 
       try {
         const { getLaunchTokenContract, sendContractCall, waitForConfirmation } = await import('@/services/contract');
-        const { Address } = await import('@btc-vision/transaction');
-        const contract = getLaunchTokenContract(tokenAddress);
-
-        // Set sender so the contract simulation knows who the caller is
-        if (hashedMLDSAKey) {
-          contract.setSender(Address.fromString(hashedMLDSAKey, publicKey ?? undefined));
-        }
-
+        const contract = getLaunchTokenContract(token.address);
         const simResult = await contract.sell(BigInt(tokenUnits));
         const result = await sendContractCall(simResult, {
           refundTo: walletAddress,
         });
 
         updatePendingStatus(txId, 'mempool');
-
-        addWsTrade(tokenAddress, {
-          txHash: result.txHash,
-          type: 'sell',
-          traderAddress: walletAddress,
-          btcAmount: sim.outputAmount,
-          tokenAmount: tokenUnits,
-          status: 'pending',
-          pricePerToken: String(sim.newPriceSats),
-        });
-
-        try {
-          const { submitTrade } = await import('@/services/api');
-          await submitTrade({
-            txHash: result.txHash,
-            tokenAddress,
-            type: 'sell',
-            traderAddress: walletAddress,
-            btcAmount: sim.outputAmount,
-            tokenAmount: tokenUnits,
-            pricePerToken: String(sim.newPriceSats),
-          });
-        } catch {
-          // Best effort — mempool scanner will pick it up
-        }
-
-        toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
+        toast(`Sell detected in mempool`, { icon: '📡' });
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
-        confirmWsTrade(tokenAddress, result.txHash);
         addBalance(Number(sim.outputAmount));
         toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
-
-        // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because WebSocket events already updated price, trades, and chart.
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
-        addHolding(tokenAddress, tokenUnits); // Refund on failure
+        addHolding(token.address, tokenUnits); // Refund on failure
         removePending(txId);
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
-     addPending, removeHolding, updatePendingStatus, addWsTrade, confirmWsTrade, addBalance, addHolding, removePending],
+    [token, connected, walletAddress, simulateSell],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

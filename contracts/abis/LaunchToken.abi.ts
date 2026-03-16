@@ -39,15 +39,6 @@ export const LaunchTokenEvents = [
         ],
         type: BitcoinAbiTypes.Event,
     },
-    {
-        name: 'Migration',
-        values: [
-            { name: 'recipient', type: ABIDataTypes.ADDRESS },
-            { name: 'tokenAmount', type: ABIDataTypes.UINT256 },
-            { name: 'btcReserve', type: ABIDataTypes.UINT256 },
-        ],
-        type: BitcoinAbiTypes.Event,
-    },
 ];
 
 export const LaunchTokenAbi = [
@@ -78,12 +69,6 @@ export const LaunchTokenAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
-        name: 'claimPlatformFees',
-        inputs: [],
-        outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
         name: 'claimCreatorFees',
         inputs: [],
         outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
@@ -93,19 +78,6 @@ export const LaunchTokenAbi = [
         name: 'claimMinterReward',
         inputs: [],
         outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
-        name: 'migrate',
-        inputs: [{ name: 'recipient', type: ABIDataTypes.ADDRESS }],
-        outputs: [{ name: 'tokenAmount', type: ABIDataTypes.UINT256 }],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
-        name: 'isMigrated',
-        constant: true,
-        inputs: [],
-        outputs: [{ name: 'isMigrated', type: ABIDataTypes.BOOL }],
         type: BitcoinAbiTypes.Function,
     },
     {
@@ -155,17 +127,6 @@ export const LaunchTokenAbi = [
             { name: 'shares', type: ABIDataTypes.UINT256 },
             { name: 'buyBlock', type: ABIDataTypes.UINT256 },
             { name: 'eligible', type: ABIDataTypes.BOOL },
-        ],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
-        name: 'getFeePools',
-        constant: true,
-        inputs: [],
-        outputs: [
-            { name: 'platformFees', type: ABIDataTypes.UINT256 },
-            { name: 'creatorFees', type: ABIDataTypes.UINT256 },
-            { name: 'minterFees', type: ABIDataTypes.UINT256 },
         ],
         type: BitcoinAbiTypes.Function,
     },

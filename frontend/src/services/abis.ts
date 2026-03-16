@@ -113,17 +113,6 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     ],
   },
   {
-    name: 'getFeePools',
-    type: BitcoinAbiTypes.Function,
-    constant: true,
-    inputs: [],
-    outputs: [
-      { name: 'platformFees', type: ABIDataTypes.UINT256 },
-      { name: 'creatorFees', type: ABIDataTypes.UINT256 },
-      { name: 'minterFees', type: ABIDataTypes.UINT256 },
-    ],
-  },
-  {
     name: 'getReservation',
     type: BitcoinAbiTypes.Function,
     constant: true,
@@ -215,7 +204,6 @@ export type GetPriceResult = CallResult<{ priceSatsPerToken: bigint }, []>;
 export type GetConfigResult = CallResult<{ creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint }, []>;
 export type IsGraduatedResult = CallResult<{ isGraduated: boolean }, []>;
 export type GetMinterInfoResult = CallResult<{ shares: bigint; buyBlock: bigint; eligible: boolean }, []>;
-export type GetFeePoolsResult = CallResult<{ platformFees: bigint; creatorFees: bigint; minterFees: bigint }, []>;
 export type GetReservationResult = CallResult<{ amount: bigint; expiryBlock: bigint }, []>;
 
 // ============ LaunchToken Interface ============
@@ -232,7 +220,6 @@ export interface ILaunchTokenContract extends IOP20Contract {
   getReserves(): Promise<GetReservesResult>;
   getPrice(): Promise<GetPriceResult>;
   getConfig(): Promise<GetConfigResult>;
-  getFeePools(): Promise<GetFeePoolsResult>;
   isGraduated(): Promise<IsGraduatedResult>;
   getMinterInfo(addr: Address): Promise<GetMinterInfoResult>;
   getReservation(addr: Address): Promise<GetReservationResult>;
@@ -242,7 +229,7 @@ export interface ILaunchTokenContract extends IOP20Contract {
 
 export const OPUMP_FACTORY_ABI: BitcoinInterfaceAbi = [
   {
-    name: 'registerToken',
+    name: 'deployToken',
     type: BitcoinAbiTypes.Function,
     inputs: [
       { name: 'name', type: ABIDataTypes.STRING },
@@ -298,21 +285,21 @@ export const OPUMP_FACTORY_ABI: BitcoinInterfaceAbi = [
 
 // ============ Factory Result Types ============
 
-export type RegisterTokenResult = CallResult<{ tokenIndex: bigint }, []>;
+export type DeployTokenResult = CallResult<{ tokenIndex: bigint }, []>;
 export type GetTokenCountResult = CallResult<{ count: bigint }, []>;
 export type GetStatsResult = CallResult<{ totalTokens: bigint; totalGraduated: bigint; totalVolume: bigint }, []>;
 
 // ============ Factory Interface ============
 
 export interface IOPumpFactoryContract extends BaseContractProperties {
-  registerToken(
+  deployToken(
     name: string,
     symbol: string,
     creatorAllocationBps: bigint,
     buyTaxBps: bigint,
     sellTaxBps: bigint,
     flywheelDestination: bigint,
-  ): Promise<RegisterTokenResult>;
+  ): Promise<DeployTokenResult>;
   getTokenCount(): Promise<GetTokenCountResult>;
   getTokenAtIndex(index: bigint): Promise<CallResult<{ tokenCreator: bigint }, []>>;
   getTokensByCreator(creator: Address): Promise<CallResult<{ count: bigint }, []>>;

@@ -8,8 +8,8 @@ OPump is a pump.fun-style token launchpad built on OPNet (Bitcoin L1 smart contr
 
 ```
 contracts/    — AssemblyScript smart contracts (OPNet/btc-runtime)
+backend/      — Node.js API server (HyperExpress + MongoDB)
 frontend/     — React SPA (Vite + TailwindCSS)
-netlify/      — Netlify Functions API (Upstash Redis)
 shared/       — Shared types and constants
 specs/        — Feature specs, plans, and task lists
 ```
@@ -27,6 +27,19 @@ npm run build:factory  # Compile OPumpFactory.wasm
 
 **Requirements**: Node 20+, `@btc-vision/assemblyscript` (NOT upstream assemblyscript)
 
+### Backend
+
+```bash
+cd backend
+cp .env.example .env
+# Edit .env with MongoDB URL and OPNet RPC
+npm install
+npm run dev
+```
+
+**Stack**: HyperExpress (NOT Express), MongoDB, OPNet SDK
+**Default port**: 9850
+
 ### Frontend
 
 ```bash
@@ -39,16 +52,6 @@ npm run dev
 **Default port**: 5173
 
 Set `VITE_MOTOSWAP_URL` to link graduated tokens to MotoSwap DEX (optional).
-
-### Netlify Functions (API)
-
-```bash
-cd netlify
-npm install
-```
-
-**Stack**: Netlify Functions, Upstash Redis
-**Local dev**: `netlify dev` from `frontend/`
 
 ## Network Configuration
 
@@ -65,33 +68,19 @@ npm install
 - **SafeMath only** for all u256 operations in contracts
 - **No Buffer** in contracts — use `Uint8Array`
 - **signer: null, mldsaSigner: null** in frontend contract calls
+- **HyperExpress required** — Express is forbidden
 - **ECDSA deprecated** — use ML-DSA for signatures
 - **No raw PSBT construction** — use opnet SDK
 
 ## Contract Addresses
 
-Deployed addresses are stored in the frontend `.env` file under `VITE_FACTORY_ADDRESS`.
-
-## Mempool-First Architecture
-
-**CRITICAL — This is the #1 recurring mistake. Read carefully.**
-
-OPump is a **mempool-first** system. Everything reacts to mempool events, NOT confirmed blocks:
-
-- **Trades, token creates, and all user actions appear in the UI as soon as the transaction hits the mempool.** Users must never wait for a block confirmation to see their action reflected.
-- **Charts, balances, trade history, token lists — all update from mempool events.** The frontend polls the API which indexes mempool transactions.
-- **Bitcoin confirmations are just confirmations** — they confirm what already happened. One confirmation is sufficient. Do not gate any UI state or data updates behind confirmation counts.
-- **The indexer indexes mempool transactions** and treats them as the source of truth for current state. Confirmed blocks simply mark those transactions as confirmed.
-- **Never write code that waits for a block/confirmation before updating UI state.** If a user buys a token, the trade shows immediately, the chart updates immediately, the balance updates immediately.
-- **Status flow**: `mempool (pending)` → `1 confirmation (confirmed)` → done. There is no "waiting for N confirmations" logic.
-
-If you find yourself writing code that checks confirmation count > 0 before displaying data, or that delays UI updates until a block is mined — **you are doing it wrong. Stop and fix it.**
+Deployed addresses are stored in the backend `.env` file under `FACTORY_ADDRESS`.
 
 ## Constitution
 
 ### Principles
 
-1. All contract math uses SafeMath — no raw u256 arithmetic
-2. Frontend never holds signing keys — OPWallet handles all signing
-3. All API responses follow shared type definitions in shared/types/
-4. Mempool-first: all UI updates on mempool detection, not block confirmation
+1. Never use Express.js — HyperExpress only
+2. All contract math uses SafeMath — no raw u256 arithmetic
+3. Frontend never holds signing keys — OPWallet handles all signing
+4. All API responses follow shared type definitions in shared/types/

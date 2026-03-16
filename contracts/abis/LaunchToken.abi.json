@@ -68,19 +68,6 @@
             ]
         },
         {
-            "name": "claimPlatformFees",
-            "type": "Function",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "amount",
-                    "type": "UINT256"
-                }
-            ]
-        },
-        {
             "name": "claimCreatorFees",
             "type": "Function",
             "payable": false,
@@ -103,37 +90,6 @@
                 {
                     "name": "amount",
                     "type": "UINT256"
-                }
-            ]
-        },
-        {
-            "name": "migrate",
-            "type": "Function",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [
-                {
-                    "name": "recipient",
-                    "type": "ADDRESS"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "tokenAmount",
-                    "type": "UINT256"
-                }
-            ]
-        },
-        {
-            "name": "isMigrated",
-            "type": "View",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "isMigrated",
-                    "type": "BOOL"
                 }
             ]
         },
@@ -244,27 +200,6 @@
             ]
         },
         {
-            "name": "getFeePools",
-            "type": "View",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "platformFees",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "creatorFees",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "minterFees",
-                    "type": "UINT256"
-                }
-            ]
-        },
-        {
             "name": "getReservation",
             "type": "View",
             "payable": false,
@@ -363,24 +298,6 @@
                 },
                 {
                     "name": "feeType",
-                    "type": "UINT256"
-                }
-            ],
-            "type": "Event"
-        },
-        {
-            "name": "Migration",
-            "values": [
-                {
-                    "name": "recipient",
-                    "type": "ADDRESS"
-                },
-                {
-                    "name": "tokenAmount",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "btcReserve",
                     "type": "UINT256"
                 }
             ],

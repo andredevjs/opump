@@ -5,8 +5,6 @@ node_modules/
 dist/
 build/
 *.wasm
-# Keep pre-compiled contract bytecode for frontend deployment
-!frontend/public/contracts/*.wasm
 
 # Environment
 .env

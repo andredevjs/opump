@@ -1,6 +1,5 @@
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
-import { CHART_THEME } from '@/config/constants';
 
 interface Props {
   children: ReactNode;
@@ -35,35 +34,29 @@ export class ErrorBoundary extends Component<Props, State> {
       return this.props.children;
     }
 
-    // S30: Use shared theme for colors
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: CHART_THEME.errorBg }}>
+      <div className="min-h-screen flex items-center justify-center bg-[#0a0a12] px-4">
         <div className="max-w-md w-full text-center space-y-6">
           <div className="text-6xl">!</div>
           <h1 className="text-2xl font-bold text-white">Something went wrong</h1>
-          <p className="text-sm" style={{ color: CHART_THEME.errorMuted }}>
+          <p className="text-sm text-gray-400">
             An unexpected error occurred. You can try going back or reloading the page.
           </p>
           {this.state.error && (
-            <pre
-              className="text-xs text-red-400 rounded-lg p-4 text-left overflow-auto max-h-40"
-              style={{ background: CHART_THEME.errorCardBg, border: `1px solid ${CHART_THEME.errorBorder}` }}
-            >
+            <pre className="text-xs text-red-400 bg-[#12121a] border border-[#2a2a3d] rounded-lg p-4 text-left overflow-auto max-h-40">
               {this.state.error.message}
             </pre>
           )}
           <div className="flex gap-3 justify-center">
             <button
               onClick={this.handleReset}
-              className="px-4 py-2 text-sm rounded-lg transition-colors"
-              style={{ background: CHART_THEME.errorButton, border: `1px solid ${CHART_THEME.errorBorder}`, color: CHART_THEME.errorMuted }}
+              className="px-4 py-2 text-sm rounded-lg bg-[#1a1a2e] border border-[#2a2a3d] text-gray-300 hover:bg-[#2a2a3d] transition-colors"
             >
               Try again
             </button>
             <button
               onClick={this.handleReload}
-              className="px-4 py-2 text-sm rounded-lg text-white transition-colors"
-              style={{ background: CHART_THEME.errorAccent }}
+              className="px-4 py-2 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700 transition-colors"
             >
               Reload page
             </button>

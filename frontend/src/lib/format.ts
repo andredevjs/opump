@@ -23,10 +23,8 @@ export function tokensToUnits(tokens: number): string {
 }
 
 export function formatBtc(sats: number | string, decimals = 4): string {
-  // S27: Use BigNumber for string inputs to preserve precision for large values
-  const val = new BigNumber(sats);
-  const s = val.toNumber();
-  const btc = val.div(SATS_PER_BTC).toNumber();
+  const s = Number(sats);
+  const btc = satsToBtc(s);
   if (btc >= 1) return `${btc.toFixed(decimals)} BTC`;
   if (s >= 1_000_000) return `${(s / 1_000_000).toFixed(2)}M sats`;
   if (s >= 1_000) return `${(s / 1_000).toFixed(1)}k sats`;
@@ -79,8 +77,6 @@ export function shortenAddress(address: string, chars = 6): string {
 
 export function timeAgo(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  // S26: Handle future timestamps gracefully
-  if (seconds < 0) return 'just now';
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;

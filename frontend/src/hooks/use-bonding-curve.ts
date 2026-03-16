@@ -5,7 +5,6 @@ import type { TradeSimulation } from '@/types/trade';
 import { calculateBuy, calculateSell } from '@/lib/bonding-curve';
 
 export function useBondingCurve(token: Token | null) {
-  const hasToken = token != null;
   const virtualBtc = useMemo(
     () => new BigNumber(token?.virtualBtcReserve ?? '0'),
     [token?.virtualBtcReserve],
@@ -14,25 +13,21 @@ export function useBondingCurve(token: Token | null) {
     () => new BigNumber(token?.virtualTokenSupply ?? '0'),
     [token?.virtualTokenSupply],
   );
-  const realBtc = useMemo(
-    () => new BigNumber(token?.realBtcReserve ?? '0'),
-    [token?.realBtcReserve],
-  );
 
   const simulateBuy = useCallback(
     (btcSats: string): TradeSimulation | null => {
-      if (!hasToken || !btcSats || btcSats === '0') return null;
-      return calculateBuy(virtualBtc, virtualToken, btcSats, realBtc);
+      if (!token || !btcSats || btcSats === '0') return null;
+      return calculateBuy(virtualBtc, virtualToken, btcSats);
     },
-    [hasToken, virtualBtc, virtualToken, realBtc],
+    [token?.address, virtualBtc, virtualToken],
   );
 
   const simulateSell = useCallback(
     (tokenUnits: string): TradeSimulation | null => {
-      if (!hasToken || !tokenUnits || tokenUnits === '0') return null;
+      if (!token || !tokenUnits || tokenUnits === '0') return null;
       return calculateSell(virtualBtc, virtualToken, tokenUnits);
     },
-    [hasToken, virtualBtc, virtualToken],
+    [token?.address, virtualBtc, virtualToken],
   );
 
   return { simulateBuy, simulateSell };

@@ -22,8 +22,8 @@ import {
 
 describe('shared constants', () => {
   describe('bonding curve reserves', () => {
-    it('initial virtual BTC = 0.00767 BTC in sats', () => {
-      expect(INITIAL_VIRTUAL_BTC_SATS).toBe(767_000n);
+    it('initial virtual BTC = 30 BTC in sats', () => {
+      expect(INITIAL_VIRTUAL_BTC_SATS).toBe(3_000_000_000n);
     });
 
     it('initial virtual token supply = 1B tokens * 10^8 decimals', () => {

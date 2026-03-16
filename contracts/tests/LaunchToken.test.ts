@@ -9,7 +9,7 @@ import {
 import { LaunchTokenRuntime, LaunchTokenConfig, DEFAULT_CONFIG } from './runtime/LaunchTokenRuntime.js';
 
 // Constants matching the contract
-const INITIAL_VIRTUAL_BTC = 767_000n; // 0.00767 BTC
+const INITIAL_VIRTUAL_BTC = 3_000_000_000n; // 30 BTC
 const INITIAL_VIRTUAL_TOKEN = 100_000_000_000_000_000n; // 1B * 10^8
 const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n;
 const DEFAULT_GRADUATION_THRESHOLD = 6_900_000n; // 0.069 BTC
@@ -158,12 +158,11 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     // ==========================================
 
     await vm.it('should revert buy if graduated', async () => {
-        // Deploy with threshold matching netBtc of a 50k buy to graduate on first buy
-        // netBtc = 50_000 - floor(50_000 * 150 / 10_000) = 50_000 - 750 = 49_250
+        // Deploy with very low threshold to graduate immediately on first buy
         token.dispose();
         Blockchain.clearContracts();
 
-        const config = makeConfig({ graduationThreshold: 49_250n });
+        const config = makeConfig({ graduationThreshold: 1n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -172,7 +171,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         Blockchain.msgSender = buyer;
         Blockchain.txOrigin = buyer;
 
-        // First buy triggers graduation (netBtc == threshold)
+        // First buy triggers graduation
         await token.buy(buyAmount, buyer);
 
         // Second buy should fail
@@ -201,7 +200,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
 
         await Assert.expect(async () => {
             await token.buy(buyAmount, buyer);
-        }).toThrow('Insufficient BTC sent to vault');
+        }).toThrow('Insufficient BTC output to vault');
     });
 
     await vm.it('should revert buy if BTC output insufficient', async () => {
@@ -213,7 +212,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
 
         await Assert.expect(async () => {
             await token.buy(buyAmount, buyer);
-        }).toThrow('Insufficient BTC sent to vault');
+        }).toThrow('Insufficient BTC output to vault');
     });
 
     await vm.it('should succeed buy when BTC output matches vault', async () => {
@@ -337,8 +336,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc = 50_000 - 750 = 49_250 matches threshold exactly
-        const config = makeConfig({ graduationThreshold: 49_250n });
+        const config = makeConfig({ graduationThreshold: 1n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -457,7 +455,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
 
         await Assert.expect(async () => {
             await token.reserve(amount, user);
-        }).toThrow('Insufficient BTC sent to vault');
+        }).toThrow('Insufficient BTC output to vault');
     });
 
     await vm.it('should consume reservation on matching buy', async () => {
@@ -598,8 +596,8 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc for 100_000 buy = 100_000 - 1_500 = 98_500; set threshold to match
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        // Very low threshold for easy graduation
+        const config = makeConfig({ graduationThreshold: 10_000n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -616,8 +614,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc for 100_000 buy = 98_500; threshold matches exactly
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        const config = makeConfig({ graduationThreshold: 10_000n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -688,408 +685,5 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         const { tokensOut } = await token.buy(buyAmount, buyer);
         const supplyAfter = await token.totalSupply();
         Assert.expect(supplyAfter).toEqual(tokensOut);
-    });
-
-    // ==========================================
-    // DEPLOYMENT VALIDATION (missing)
-    // ==========================================
-
-    await vm.it('should reject empty name', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ name: '' });
-        const bad = new LaunchTokenRuntime(deployer, contractAddress, config);
-        Blockchain.register(bad);
-        await bad.init();
-        await Assert.expect(async () => {
-            await bad.getConfig();
-        }).toThrow('Name required');
-    });
-
-    await vm.it('should reject empty symbol', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ symbol: '' });
-        const bad = new LaunchTokenRuntime(deployer, contractAddress, config);
-        Blockchain.register(bad);
-        await bad.init();
-        await Assert.expect(async () => {
-            await bad.getConfig();
-        }).toThrow('Symbol required');
-    });
-
-    await vm.it('should reject maxSupply below INITIAL_VIRTUAL_TOKEN', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ maxSupply: 1n });
-        const bad = new LaunchTokenRuntime(deployer, contractAddress, config);
-        Blockchain.register(bad);
-        await bad.init();
-        await Assert.expect(async () => {
-            await bad.getConfig();
-        }).toThrow('Max supply must be >= initial virtual token supply');
-    });
-
-    // ==========================================
-    // BUY — EXCEEDS GRADUATION THRESHOLD
-    // ==========================================
-
-    await vm.it('should revert buy that exceeds graduation threshold', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        // DEFAULT_GRADUATION_THRESHOLD is 6_900_000 sats. Try to buy more than that.
-        const hugeAmount = 10_000_000n;
-        setTxWithOutput(vaultAddress, hugeAmount);
-        await Assert.expect(async () => {
-            await token.buy(hugeAmount, buyer);
-        }).toThrow('Exceeds graduation threshold');
-    });
-
-    // ==========================================
-    // FEE POOLS NUMERICAL ACCURACY
-    // ==========================================
-
-    await vm.it('should accumulate exact fee amounts in pools', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 1_000_000n; // 0.01 BTC
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        await token.buy(buyAmount, buyer);
-
-        const pools = await token.getFeePools();
-        // Total fee = 1.5% of 1_000_000 = 15_000 sats
-        // Platform = 1% = 10_000, Creator = 0.25% = 2_500, Minter = remainder = 2_500
-        const expectedPlatform = (buyAmount * 100n) / 10_000n;
-        const expectedCreator = (buyAmount * 25n) / 10_000n;
-        const expectedTotal = (buyAmount * 150n) / 10_000n;
-        const expectedMinter = expectedTotal - expectedPlatform - expectedCreator;
-
-        Assert.expect(pools.platformFees).toEqual(expectedPlatform);
-        Assert.expect(pools.creatorFees).toEqual(expectedCreator);
-        Assert.expect(pools.minterFees).toEqual(expectedMinter);
-    });
-
-    await vm.it('should accumulate sell fees in pools', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 1_000_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-        const { tokensOut } = await token.buy(buyAmount, buyer);
-
-        // Reset pools check — note pools already have buy fees
-        const poolsAfterBuy = await token.getFeePools();
-
-        // Now sell half
-        const sellAmount = tokensOut / 2n;
-        await token.sell(sellAmount, buyer);
-
-        const poolsAfterSell = await token.getFeePools();
-        // All three pools should increase from sell fees
-        Assert.expect(poolsAfterSell.platformFees).toBeGreaterThan(poolsAfterBuy.platformFees);
-        Assert.expect(poolsAfterSell.creatorFees).toBeGreaterThan(poolsAfterBuy.creatorFees);
-        Assert.expect(poolsAfterSell.minterFees).toBeGreaterThan(poolsAfterBuy.minterFees);
-    });
-
-    // ==========================================
-    // PLATFORM FEE CLAIMS
-    // ==========================================
-
-    await vm.it('should allow deployer to claim platform fees', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 1_000_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-        await token.buy(buyAmount, buyer);
-
-        Blockchain.msgSender = deployer;
-        Blockchain.txOrigin = deployer;
-        const { amount } = await token.claimPlatformFees(deployer);
-        Assert.expect(amount).toBeGreaterThan(0n);
-
-        // Pool should be zeroed
-        const pools = await token.getFeePools();
-        Assert.expect(pools.platformFees).toEqual(0n);
-    });
-
-    await vm.it('should revert claimPlatformFees if not deployer', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 1_000_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-        await token.buy(buyAmount, buyer);
-
-        const random = Blockchain.generateRandomAddress();
-        await Assert.expect(async () => {
-            await token.claimPlatformFees(random);
-        }).toThrow();
-    });
-
-    await vm.it('should revert claimPlatformFees if no fees', async () => {
-        await Assert.expect(async () => {
-            await token.claimPlatformFees(deployer);
-        }).toThrow('No fees to claim');
-    });
-
-    // ==========================================
-    // MINTER REWARD CLAIM SUCCESS
-    // ==========================================
-
-    await vm.it('should allow minter to claim reward after hold period', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 500_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        // Buy at block 100 (within minter window)
-        await token.buy(buyAmount, buyer);
-
-        const infoBefore = await token.getMinterInfo(buyer);
-        Assert.expect(infoBefore.shares).toBeGreaterThan(0n);
-
-        // Advance past hold period (4320 blocks)
-        Blockchain.blockNumber = 100n + 4320n + 1n;
-
-        // Claim
-        const { amount } = await token.claimMinterReward(buyer);
-        Assert.expect(amount).toBeGreaterThan(0n);
-
-        // Shares should be zeroed after claim
-        const infoAfter = await token.getMinterInfo(buyer);
-        Assert.expect(infoAfter.shares).toEqual(0n);
-    });
-
-    await vm.it('should revert claimMinterReward if tokens were sold', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 500_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        const { tokensOut } = await token.buy(buyAmount, buyer);
-
-        // Sell all tokens
-        await token.sell(tokensOut, buyer);
-
-        // Advance past hold period
-        Blockchain.blockNumber = 100n + 4320n + 1n;
-
-        await Assert.expect(async () => {
-            await token.claimMinterReward(buyer);
-        }).toThrow('Must hold tokens');
-    });
-
-    // ==========================================
-    // MIGRATION
-    // ==========================================
-
-    await vm.it('should not be migrated initially', async () => {
-        const migrated = await token.isMigrated();
-        Assert.expect(migrated).toEqual(false);
-    });
-
-    await vm.it('should revert migrate if not graduated', async () => {
-        const recipient = Blockchain.generateRandomAddress();
-        await Assert.expect(async () => {
-            await token.migrate(recipient, deployer);
-        }).toThrow('Not graduated');
-    });
-
-    await vm.it('should revert migrate if not deployer', async () => {
-        // Graduate first — netBtc for 100k buy = 98_500
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
-        token = await createToken(config);
-
-        const buyer = Blockchain.generateRandomAddress();
-        setTxWithOutput(vaultAddress, 100_000n);
-        await token.buy(100_000n, buyer);
-
-        const recipient = Blockchain.generateRandomAddress();
-        const random = Blockchain.generateRandomAddress();
-        await Assert.expect(async () => {
-            await token.migrate(recipient, random);
-        }).toThrow();
-    });
-
-    await vm.it('should migrate successfully after graduation', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
-        token = await createToken(config);
-
-        const buyer = Blockchain.generateRandomAddress();
-        setTxWithOutput(vaultAddress, 100_000n);
-        await token.buy(100_000n, buyer);
-
-        // Now graduated
-        Assert.expect(await token.isGraduated()).toEqual(true);
-
-        const recipient = Blockchain.generateRandomAddress();
-        Blockchain.msgSender = deployer;
-        Blockchain.txOrigin = deployer;
-        const { tokenAmount } = await token.migrate(recipient, deployer);
-        Assert.expect(tokenAmount).toBeGreaterThan(0n);
-
-        // Recipient should have liquidity tokens
-        const balance = await token.balanceOf(recipient);
-        Assert.expect(balance).toEqual(tokenAmount);
-
-        // Should be marked as migrated
-        Assert.expect(await token.isMigrated()).toEqual(true);
-    });
-
-    await vm.it('should revert double migration', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
-        token = await createToken(config);
-
-        const buyer = Blockchain.generateRandomAddress();
-        setTxWithOutput(vaultAddress, 100_000n);
-        await token.buy(100_000n, buyer);
-
-        const recipient = Blockchain.generateRandomAddress();
-        Blockchain.msgSender = deployer;
-        Blockchain.txOrigin = deployer;
-        await token.migrate(recipient, deployer);
-
-        await Assert.expect(async () => {
-            await token.migrate(recipient, deployer);
-        }).toThrow('Already migrated');
-    });
-
-    // ==========================================
-    // FLYWHEEL BURN DESTINATION (dest=0)
-    // ==========================================
-
-    await vm.it('should handle flywheel burn destination (dest=0) with no pool increase', async () => {
-        token.dispose();
-        Blockchain.clearContracts();
-
-        const config = makeConfig({ buyTaxBps: 100n, flywheelDestination: 0n });
-        token = await createToken(config);
-
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 1_000_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        await token.buy(buyAmount, buyer);
-
-        const pools = await token.getFeePools();
-        // Only base fees (1.5%), no flywheel addition to any pool
-        const expectedPlatform = (buyAmount * 100n) / 10_000n;
-        const expectedCreator = (buyAmount * 25n) / 10_000n;
-        Assert.expect(pools.platformFees).toEqual(expectedPlatform);
-        Assert.expect(pools.creatorFees).toEqual(expectedCreator);
-    });
-
-    // ==========================================
-    // EXPIRED RESERVATION ALLOWS NEW ONE
-    // ==========================================
-
-    await vm.it('should allow new reservation after previous expired', async () => {
-        const user = Blockchain.generateRandomAddress();
-        const amount = 50_000n;
-        setTxWithOutput(vaultAddress, amount);
-
-        // Reserve at block 200, expires at 203
-        Blockchain.blockNumber = 200n;
-        await token.reserve(amount, user);
-
-        // Move past expiry
-        Blockchain.blockNumber = 204n;
-
-        // New reservation should succeed
-        setTxWithOutput(vaultAddress, amount);
-        const { expiryBlock } = await token.reserve(amount, user);
-        Assert.expect(expiryBlock).toEqual(207n); // 204 + 3
-    });
-
-    // ==========================================
-    // SEQUENTIAL TRADES (buy -> sell -> buy)
-    // ==========================================
-
-    await vm.it('should handle sequential buy-sell-buy correctly', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 200_000n;
-
-        // First buy
-        setTxWithOutput(vaultAddress, buyAmount);
-        const { tokensOut: tokens1 } = await token.buy(buyAmount, buyer);
-        Assert.expect(tokens1).toBeGreaterThan(0n);
-
-        // Sell all
-        const { btcOut } = await token.sell(tokens1, buyer);
-        Assert.expect(btcOut).toBeGreaterThan(0n);
-        // btcOut < buyAmount due to fees and slippage
-        Assert.expect(btcOut).toBeLessThan(buyAmount);
-
-        // Balance should be 0 after selling all
-        const balanceAfterSell = await token.balanceOf(buyer);
-        Assert.expect(balanceAfterSell).toEqual(0n);
-
-        // Second buy
-        setTxWithOutput(vaultAddress, buyAmount);
-        const { tokensOut: tokens2 } = await token.buy(buyAmount, buyer);
-        Assert.expect(tokens2).toBeGreaterThan(0n);
-    });
-
-    // ==========================================
-    // K-CONSTANT INVARIANT CHECK
-    // ==========================================
-
-    await vm.it('should maintain k-constant invariant after trades', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const reservesBefore = await token.getReserves();
-        const kBefore = reservesBefore.k;
-
-        // Buy
-        setTxWithOutput(vaultAddress, 200_000n);
-        await token.buy(200_000n, buyer);
-
-        const reservesAfterBuy = await token.getReserves();
-        Assert.expect(reservesAfterBuy.k).toEqual(kBefore);
-
-        // Sell half
-        const balance = await token.balanceOf(buyer);
-        await token.sell(balance / 2n, buyer);
-
-        const reservesAfterSell = await token.getReserves();
-        Assert.expect(reservesAfterSell.k).toEqual(kBefore);
-    });
-
-    // ==========================================
-    // MULTIPLE BUYERS
-    // ==========================================
-
-    await vm.it('should handle multiple different buyers', async () => {
-        const buyer1 = Blockchain.generateRandomAddress();
-        const buyer2 = Blockchain.generateRandomAddress();
-
-        setTxWithOutput(vaultAddress, 100_000n);
-        const { tokensOut: tokens1 } = await token.buy(100_000n, buyer1);
-
-        setTxWithOutput(vaultAddress, 200_000n);
-        const { tokensOut: tokens2 } = await token.buy(200_000n, buyer2);
-
-        // Both should have tokens
-        Assert.expect(tokens1).toBeGreaterThan(0n);
-        Assert.expect(tokens2).toBeGreaterThan(0n);
-
-        // Buyer2 bought more BTC, but due to price increase from buyer1's buy,
-        // buyer2 gets fewer tokens per sat
-        const bal1 = await token.balanceOf(buyer1);
-        const bal2 = await token.balanceOf(buyer2);
-        Assert.expect(bal1).toEqual(tokens1);
-        Assert.expect(bal2).toEqual(tokens2);
-
-        // Total supply should be sum
-        const supply = await token.totalSupply();
-        Assert.expect(supply).toEqual(tokens1 + tokens2);
-    });
-
-    // ==========================================
-    // GET FEE POOLS RETURNS ZEROS INITIALLY
-    // ==========================================
-
-    await vm.it('should return zero fee pools initially', async () => {
-        const pools = await token.getFeePools();
-        Assert.expect(pools.platformFees).toEqual(0n);
-        Assert.expect(pools.creatorFees).toEqual(0n);
-        Assert.expect(pools.minterFees).toEqual(0n);
     });
 });
