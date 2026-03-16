@@ -8,6 +8,7 @@ import { toDisplayPrice, scaledToDisplayPrice } from '../utils/price.js';
 import { getPlatformStatsCollection } from '../db/models/PlatformStats.js';
 import type { PendingTransaction } from '../types/contracts.js';
 import type { BroadcastDebouncer } from './BroadcastDebouncer.js';
+import { INITIAL_VIRTUAL_TOKEN_SUPPLY } from '../../../shared/constants/bonding-curve.js';
 
 export class MempoolService {
   private interval: ReturnType<typeof setInterval> | null = null;
@@ -347,27 +348,46 @@ export class MempoolService {
       isOptimistic: optimistic.isOptimistic,
     });
 
-    // Atomically increment token stats so polls reflect the pending trade
+    // Persist optimistic price + approximate stats to DB so API reads are mempool-fresh
     try {
       const btcNum = Number(btcAmount) || 0;
       const tokensCol = getTokensCollection();
+
+      // Compute market cap from optimistic reserves
+      const vBtc = optimistic.reserves.virtualBtcReserve;
+      const vToken = optimistic.reserves.virtualTokenSupply;
+      const marketCapSats = vToken > 0n
+        ? String(vBtc * INITIAL_VIRTUAL_TOKEN_SUPPLY / vToken)
+        : '0';
+
+      // Read current doc to compute approximate volume
+      const tokenDoc = await tokensCol.findOne({ _id: tokenAddress });
+      const approxVolume24h = String(Number(tokenDoc?.volume24h || '0') + btcNum);
+      const approxVolumeTotal = String(Number(tokenDoc?.volumeTotal || '0') + btcNum);
+
       await tokensCol.updateOne(
         { _id: tokenAddress },
-        { $inc: { tradeCount: 1 }, $set: { updatedAt: new Date() } },
+        {
+          $inc: { tradeCount: 1 },
+          $set: {
+            currentPriceSats: displayPrice,
+            volume24h: approxVolume24h,
+            volumeTotal: approxVolumeTotal,
+            marketCapSats,
+            updatedAt: new Date(),
+          },
+        },
       );
 
-      // Read updated token doc and broadcast approximate stats via debouncer
-      const tokenDoc = await tokensCol.findOne({ _id: tokenAddress });
+      // Broadcast approximate stats via debouncer
       if (tokenDoc) {
-        const approxVolume24h = String(Number(tokenDoc.volume24h || '0') + btcNum);
-        const approxVolumeTotal = String(Number(tokenDoc.volumeTotal || '0') + btcNum);
         this.debouncer.scheduleTokenStats(tokenAddress, {
           volume24h: approxVolume24h,
           volumeTotal: approxVolumeTotal,
-          tradeCount: tokenDoc.tradeCount,
+          tradeCount: tokenDoc.tradeCount + 1,
           tradeCount24h: (tokenDoc.tradeCount24h ?? 0) + 1,
           holderCount: tokenDoc.holderCount,
-          marketCapSats: tokenDoc.marketCapSats,
+          marketCapSats,
         });
         this.debouncer.tokenActivity(tokenAddress, {
           tokenAddress,
