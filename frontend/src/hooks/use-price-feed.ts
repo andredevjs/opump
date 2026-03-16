@@ -238,9 +238,13 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const execPrice = Number(data.pricePerToken);
         const volume = Number(data.btcAmount);
 
-        const lp = usePriceStore.getState().livePrices[token.address];
-        const storeSpot = lp ? Number(lp.currentPriceSats) : 0;
-        const closePrice = storeSpot > 0 ? storeSpot : (lastSpotPriceRef.current ?? execPrice);
+        // pricePerToken from the backend is the post-trade spot price
+        // (scaledToDisplayPrice of the contract's newPrice). Use it directly
+        // as the close — the price_update WS hasn't arrived yet at this point,
+        // so reading storeSpot here would give the stale pre-trade price and
+        // move the chart in the wrong direction.
+        const closePrice = execPrice;
+        lastSpotPriceRef.current = execPrice;
 
         const candles = usePriceStore.getState().candles[token.address] ?? [];
         const last = candles[candles.length - 1];
