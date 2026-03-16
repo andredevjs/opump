@@ -5,6 +5,7 @@ import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useTradeStore } from '@/stores/trade-store';
 import { VAULT_ADDRESS } from '@/config/constants';
+import { computeOptimistic24hChange } from '@/lib/price-utils';
 import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
@@ -143,7 +144,11 @@ export function useTradeSimulation(token: Token | null) {
           realBtcReserve: realBtcReserve ?? '0',
           isOptimistic: true,
         });
-        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
+        const currentToken = useTokenStore.getState().selectedToken;
+        const oldPrice = currentToken?.address === tokenAddress ? currentToken.currentPriceSats : 0;
+        const oldChange = currentToken?.address === tokenAddress ? currentToken.priceChange24h : 0;
+        const newChange = computeOptimistic24hChange(oldPrice, oldChange, sim.newPriceSats);
+        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, newChange);
 
         // Optimistic chart candle update so the trade shows on the chart immediately
         usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(btcSats));
@@ -256,7 +261,11 @@ export function useTradeSimulation(token: Token | null) {
           realBtcReserve: realBtcReserve ?? '0',
           isOptimistic: true,
         });
-        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, 0);
+        const currentTokenSell = useTokenStore.getState().selectedToken;
+        const oldPriceSell = currentTokenSell?.address === tokenAddress ? currentTokenSell.currentPriceSats : 0;
+        const oldChangeSell = currentTokenSell?.address === tokenAddress ? currentTokenSell.priceChange24h : 0;
+        const newChangeSell = computeOptimistic24hChange(oldPriceSell, oldChangeSell, sim.newPriceSats);
+        useTokenStore.getState().updateTokenPrice(tokenAddress, sim.newPriceSats, newChangeSell);
 
         // Optimistic chart candle update so the trade shows on the chart immediately
         usePriceStore.getState().addTradeCandle(tokenAddress, sim.newPriceSats, Number(sim.outputAmount));

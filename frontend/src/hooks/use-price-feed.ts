@@ -8,6 +8,7 @@ import type { TimeframeKey, OHLCVCandle } from '@/types/api';
 import type { TradeDocument } from '@shared/types/trade';
 import { wsClient } from '@/services/websocket';
 import * as api from '@/services/api';
+import { computeOptimistic24hChange } from '@/lib/price-utils';
 
 // W16-W17: Runtime type guards for WebSocket data
 interface PriceWsData {
@@ -154,10 +155,12 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       // Merge with existing — don't overwrite reserves with undefined
       setLivePrice(token.address, d);
       if (d.currentPriceSats != null) {
-        // Preserve existing 24h change — WS events don't carry it
+        // Recalculate 24h change from reference price — WS events don't carry it
         const existing = useTokenStore.getState().selectedToken;
-        const currentChange = existing?.address === token.address ? existing.priceChange24h : 0;
-        updateTokenPrice(token.address, Number(d.currentPriceSats), currentChange);
+        const oldPrice = existing?.address === token.address ? existing.currentPriceSats : 0;
+        const oldChange = existing?.address === token.address ? existing.priceChange24h : 0;
+        const newChange = computeOptimistic24hChange(oldPrice, oldChange, Number(d.currentPriceSats));
+        updateTokenPrice(token.address, Number(d.currentPriceSats), newChange);
       }
     });
 
