@@ -212,6 +212,13 @@ export class MigrationService {
       },
     );
 
+    this.wsService.broadcast('platform', 'migration_progress', {
+      tokenAddress,
+      step: 1,
+      stepName: 'tokens_minted',
+      status: 'complete',
+    });
+
     console.log(`[Migration] Step 1 complete for ${tokenAddress}: tx ${txHash}, minted ${mintedTokens}`);
   }
 
@@ -305,6 +312,13 @@ export class MigrationService {
       },
     );
 
+    this.wsService.broadcast('platform', 'migration_progress', {
+      tokenAddress,
+      step: 2,
+      stepName: 'pool_created',
+      status: 'complete',
+    });
+
     console.log(`[Migration] Step 2 complete for ${tokenAddress}: pool tx ${poolTxHash}`);
     await this.waitForConfirmation(provider);
   }
@@ -385,6 +399,13 @@ export class MigrationService {
       },
     );
 
+    this.wsService.broadcast('platform', 'migration_progress', {
+      tokenAddress,
+      step: 3,
+      stepName: 'liquidity_listed',
+      status: 'complete',
+    });
+
     console.log(`[Migration] Step 3 complete for ${tokenAddress}: list tx ${listTxHash}`);
     await this.waitForConfirmation(provider);
   }
@@ -409,6 +430,13 @@ export class MigrationService {
       tokenAddress,
     });
     this.wsService.broadcast('platform', 'token_migrated', { tokenAddress });
+
+    this.wsService.broadcast('platform', 'migration_progress', {
+      tokenAddress,
+      step: 4,
+      stepName: 'complete',
+      status: 'complete',
+    });
 
     console.log(`[Migration] Migration complete for ${tokenAddress}`);
   }

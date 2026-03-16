@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { CreatedTokens } from '@/components/profile/CreatedTokens';
@@ -12,10 +12,22 @@ import type { CreatorProfile } from '@/types/api';
 import { mapApiTokenToToken } from '@/lib/mappers';
 import { shortenAddress } from '@/lib/format';
 
+const PROFILE_POLL_INTERVAL_MS = 20_000;
+
 export function ProfilePage() {
   const { address } = useParams<{ address: string }>();
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  const fetchProfile = useCallback(() => {
+    if (!address) return;
+    api.getProfileTokens(address).then((res) => {
+      setCreatedTokens(res.tokens.map(mapApiTokenToToken));
+    }).catch(() => {
+      // Keep existing on error
+    });
+  }, [address]);
 
   useEffect(() => {
     if (!address) return;
@@ -28,7 +40,13 @@ export function ProfilePage() {
     }).finally(() => {
       setLoading(false);
     });
-  }, [address]);
+
+    // T029: Poll every 20s to keep profile data fresh
+    intervalRef.current = setInterval(fetchProfile, PROFILE_POLL_INTERVAL_MS);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [address, fetchProfile]);
 
   if (!address) {
     return (

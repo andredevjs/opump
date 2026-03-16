@@ -131,8 +131,6 @@ export function useTradeSimulation(token: Token | null) {
           // Best effort — mempool scanner will pick it up
         }
 
-        window.dispatchEvent(new CustomEvent('opump:trade'));
-
         toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
 
         await waitForConfirmation(result.txHash);
@@ -231,8 +229,6 @@ export function useTradeSimulation(token: Token | null) {
         } catch {
           // Best effort — mempool scanner will pick it up
         }
-
-        window.dispatchEvent(new CustomEvent('opump:trade'));
 
         toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
 

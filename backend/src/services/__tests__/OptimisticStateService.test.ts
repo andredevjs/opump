@@ -98,16 +98,17 @@ describe('OptimisticStateService', () => {
 
     it('applies buys and sells sequentially', () => {
       const sim = new BondingCurveSimulator();
-      const largeCapReserves = { ...BondingCurveSimulator.getInitialReserves(), graduationThreshold: 100_000_000_000n };
-      const buyResult = sim.simulateBuy(largeCapReserves, 10_000_000n);
+      // Use initial reserves directly (graduation threshold is high enough for small trades)
+      const initialReserves = BondingCurveSimulator.getInitialReserves();
+      const buyResult = sim.simulateBuy(initialReserves, 500_000n);
 
       service.setConfirmedReserves(TOKEN_A, buyResult.newReserves);
-      service.addPendingTrade(TOKEN_A, 'tx-buy', 'buy', 500_000n);
+      service.addPendingTrade(TOKEN_A, 'tx-buy', 'buy', 100_000n);
       service.addPendingTrade(TOKEN_A, 'tx-sell', 'sell', buyResult.tokensOut / 4n);
 
       const result = service.getOptimisticPrice(TOKEN_A);
 
-      expect(result.pendingBuySats).toBe(500_000n);
+      expect(result.pendingBuySats).toBe(100_000n);
       expect(result.pendingSellTokens).toBe(buyResult.tokensOut / 4n);
     });
   });
@@ -222,16 +223,19 @@ describe('OptimisticStateService', () => {
   });
 
   describe('error handling', () => {
-    it('skips invalid pending simulations gracefully', () => {
+    it('returns last-known-good reserves on simulation failure and stops processing', () => {
       service.setConfirmedReserves(TOKEN_A, BondingCurveSimulator.getInitialReserves());
       // Add a sell that would fail (selling from initial state with no real BTC)
       service.addPendingTrade(TOKEN_A, 'bad-tx', 'sell', 1n);
-      // Add a valid buy after
+      // Add a valid buy after — should NOT be processed (break on error)
       service.addPendingTrade(TOKEN_A, 'good-tx', 'buy', 1_000_000n);
 
-      // Should not throw — bad simulation is skipped
+      // Should not throw — returns last-known-good reserves
       const result = service.getOptimisticPrice(TOKEN_A);
-      expect(result.pendingBuySats).toBe(1_000_000n);
+      // pendingBuySats is 0 because loop broke before reaching the buy
+      expect(result.pendingBuySats).toBe(0n);
+      // Reserves should be the confirmed (initial) reserves, not corrupted
+      expect(result.reserves.virtualBtcReserve).toBe(BondingCurveSimulator.getInitialReserves().virtualBtcReserve);
     });
   });
 });

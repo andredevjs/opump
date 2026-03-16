@@ -25,21 +25,17 @@ const SORT_OPTIONS: TokenSortOption[] = [
 ];
 
 export function TrenchesPage() {
-  const { tokens, filter, setFilter, loading: _loading, pagination, fetchTokens } = useTokenStore();
+  const { tokens, filter, setFilter, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
   const [page, setPage] = useState(1);
 
-  // Fetch tokens on mount + periodic refresh
+  // Fetch tokens on mount + periodic refresh (fallback for WS gaps)
+  // The global feed (useGlobalFeed in RootLayout) already patches token store
+  // on token_activity and new_token events, so the list re-renders reactively.
   useEffect(() => {
     fetchTokens();
     const id = setInterval(fetchTokens, 5_000);
     return () => clearInterval(id);
-  }, [fetchTokens]);
-
-  useEffect(() => {
-    const handler = () => fetchTokens();
-    window.addEventListener('opump:trade', handler);
-    return () => window.removeEventListener('opump:trade', handler);
   }, [fetchTokens]);
 
   // Reset page on filter change

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Token, TokenFilter } from '@/types/token';
+import type { Token, TokenFilter, TokenStatus } from '@/types/token';
 import * as api from '@/services/api';
 import { mapApiTokenToToken } from '@/lib/mappers';
 
@@ -23,6 +23,7 @@ interface TokenStore {
   setFilter: (filter: Partial<TokenFilter>) => void;
   updateTokenPrice: (address: string, priceSats: number, change24h: number) => void;
   updateTokenStats: (address: string, stats: TokenStats) => void;
+  updateTokenStatus: (address: string, status: TokenStatus) => void;
   getToken: (address: string) => Token | undefined;
   fetchTokens: () => Promise<void>;
   fetchToken: (address: string) => Promise<Token | null>;
@@ -82,6 +83,17 @@ export const useTokenStore = create<TokenStore>((set, get) => {
             : state.selectedToken,
       };
     }),
+
+  updateTokenStatus: (address, status) =>
+    set((state) => ({
+      tokens: state.tokens.map((t) =>
+        t.address === address ? { ...t, status } : t,
+      ),
+      selectedToken:
+        state.selectedToken?.address === address
+          ? { ...state.selectedToken, status }
+          : state.selectedToken,
+    })),
 
   getToken: (address) => get().tokens.find((t) => t.address === address),
 

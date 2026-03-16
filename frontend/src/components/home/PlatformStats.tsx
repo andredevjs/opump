@@ -1,21 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { formatBtc, formatNumber } from '@/lib/format';
+import { usePlatformStatsStore } from '@/stores/platform-stats-store';
 import * as api from '@/services/api';
 
 const POLL_INTERVAL_MS = 5_000;
 
 export function PlatformStats() {
-  const [stats, setStats] = useState({
+  const [polledStats, setPolledStats] = useState({
     totalTokens: 0,
     totalGraduated: 0,
     totalVolumeSats: 0,
     totalTrades: 0,
   });
 
+  // T017: Prefer WS-delivered stats from the global feed
+  const wsStats = usePlatformStatsStore((s) => s.stats);
+
+  const stats = wsStats ?? polledStats;
+
   const refresh = useCallback(() => {
     api.getStats().then((s) => {
-      setStats({
+      setPolledStats({
         totalTokens: s.totalTokens,
         totalGraduated: s.totalGraduated,
         totalVolumeSats: Number(s.totalVolumeSats),
@@ -30,12 +36,6 @@ export function PlatformStats() {
     refresh();
     const id = setInterval(refresh, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [refresh]);
-
-  useEffect(() => {
-    const handler = () => refresh();
-    window.addEventListener('opump:trade', handler);
-    return () => window.removeEventListener('opump:trade', handler);
   }, [refresh]);
 
   const items = [

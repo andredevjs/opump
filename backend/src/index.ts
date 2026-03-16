@@ -10,6 +10,7 @@ import { registerUploadRoutes } from './routes/upload.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { WebSocketService } from './services/WebSocketService.js';
 import { OptimisticStateService } from './services/OptimisticStateService.js';
+import { BroadcastDebouncer } from './services/BroadcastDebouncer.js';
 import { IndexerService } from './services/IndexerService.js';
 import { MempoolService } from './services/MempoolService.js';
 import { MigrationService } from './services/MigrationService.js';
@@ -19,8 +20,9 @@ const app = new HyperExpress.Server();
 // Services
 const optimisticService = new OptimisticStateService();
 const wsService = new WebSocketService(app);
-const indexerService = new IndexerService(wsService, optimisticService);
-const mempoolService = new MempoolService(wsService, optimisticService);
+const debouncer = new BroadcastDebouncer(wsService);
+const indexerService = new IndexerService(wsService, optimisticService, debouncer);
+const mempoolService = new MempoolService(wsService, optimisticService, debouncer);
 const migrationService = new MigrationService(wsService);
 indexerService.setMigrationService(migrationService);
 
@@ -78,8 +80,8 @@ async function start(): Promise<void> {
   }
 
   // Register routes
-  registerTokenRoutes(app, optimisticService, mempoolService);
-  registerSimulateRoutes(app);
+  registerTokenRoutes(app, optimisticService, mempoolService, wsService, debouncer);
+  registerSimulateRoutes(app, optimisticService);
   registerProfileRoutes(app);
   registerStatsRoutes(app);
   registerUploadRoutes(app);
@@ -111,6 +113,8 @@ function shutdown(): void {
   mempoolService.stop();
   migrationService.stop();
   stopTokenRoutesCleanup();
+  debouncer.flush();
+  debouncer.stop();
   wsService.stop();
   closeDb()
     .then(() => {

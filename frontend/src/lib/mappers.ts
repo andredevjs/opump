@@ -25,7 +25,7 @@ export function mapApiTokenToToken(t: TokenDetailResponse & { priceChange24hBps?
     volume24hSats: parseFloat(t.volume24h),
     marketCapSats: parseFloat(t.marketCapSats),
     holderCount: t.holderCount,
-    tradeCount24h: t.tradeCount,
+    tradeCount24h: t.tradeCount24h ?? t.tradeCount,
     creatorAllocationPercent: (t.config.creatorAllocationBps || 0) / 100,
     buyTaxPercent: (t.config.buyTaxBps || 0) / 100,
     sellTaxPercent: (t.config.sellTaxBps || 0) / 100,

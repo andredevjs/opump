@@ -1,12 +1,13 @@
 import type HyperExpress from '@btc-vision/hyper-express';
 import { getTokensCollection } from '../db/models/Token.js';
 import { BondingCurveSimulator } from '../services/BondingCurveSimulator.js';
+import type { OptimisticStateService } from '../services/OptimisticStateService.js';
 import type { SimulateBuyRequest, SimulateSellRequest } from '../../../shared/types/api.js';
 import { MIN_TRADE_SATS } from '../../../shared/constants/bonding-curve.js';
 
 const simulator = new BondingCurveSimulator();
 
-export function registerSimulateRoutes(app: HyperExpress.Server): void {
+export function registerSimulateRoutes(app: HyperExpress.Server, optimisticService: OptimisticStateService): void {
   // POST /v1/simulate/buy
   app.post('/v1/simulate/buy', async (req, res) => {
     let body: SimulateBuyRequest;
@@ -79,12 +80,16 @@ export function registerSimulateRoutes(app: HyperExpress.Server): void {
       return;
     }
 
-    const reserves = {
-      virtualBtcReserve: BigInt(token.virtualBtcReserve),
-      virtualTokenSupply: BigInt(token.virtualTokenSupply),
-      kConstant: BigInt(token.kConstant),
-      realBtcReserve: BigInt(token.realBtcReserve),
-    };
+    // Use optimistic reserves when pending trades exist, otherwise DB reserves
+    const optimistic = optimisticService.getOptimisticPrice(body.tokenAddress);
+    const reserves = optimistic.isOptimistic
+      ? optimistic.reserves
+      : {
+          virtualBtcReserve: BigInt(token.virtualBtcReserve),
+          virtualTokenSupply: BigInt(token.virtualTokenSupply),
+          kConstant: BigInt(token.kConstant),
+          realBtcReserve: BigInt(token.realBtcReserve),
+        };
 
     try {
       const result = simulator.simulateBuy(reserves, btcAmount, BigInt(token.config.buyTaxBps));
@@ -155,12 +160,16 @@ export function registerSimulateRoutes(app: HyperExpress.Server): void {
       return;
     }
 
-    const reserves = {
-      virtualBtcReserve: BigInt(token.virtualBtcReserve),
-      virtualTokenSupply: BigInt(token.virtualTokenSupply),
-      kConstant: BigInt(token.kConstant),
-      realBtcReserve: BigInt(token.realBtcReserve),
-    };
+    // Use optimistic reserves when pending trades exist, otherwise DB reserves
+    const optimistic = optimisticService.getOptimisticPrice(body.tokenAddress);
+    const reserves = optimistic.isOptimistic
+      ? optimistic.reserves
+      : {
+          virtualBtcReserve: BigInt(token.virtualBtcReserve),
+          virtualTokenSupply: BigInt(token.virtualTokenSupply),
+          kConstant: BigInt(token.kConstant),
+          realBtcReserve: BigInt(token.realBtcReserve),
+        };
 
     try {
       let tokenAmount: bigint;
