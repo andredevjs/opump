@@ -1,6 +1,5 @@
 /**
  * Token types shared across backend and frontend.
- * Matches data-model.md MongoDB schema.
  */
 
 export interface TokenSocials {
