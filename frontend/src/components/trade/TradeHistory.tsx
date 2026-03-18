@@ -1,14 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
 import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/cn';
-import { useTradeStore } from '@/stores/trade-store';
+import { useUIStore } from '@/stores/ui-store';
 import * as api from '@/services/api';
 
-const EMPTY_LOCAL_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
 const POLL_INTERVAL_MS = 15_000;
-const FAST_POLL_INTERVAL_MS = 5_000;
 /** Trades older than this are treated as confirmed for display (Bitcoin block time ~10min) */
 const PENDING_AGE_THRESHOLD_MS = 15 * 60 * 1000;
 
@@ -18,14 +16,7 @@ interface TradeHistoryProps {
 
 export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const localTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_LOCAL_TRADES);
-
-  // S29: Deduplicate — filter out API trades whose txHash already appears in local trades
-  const localTradeHashes = useMemo(() => new Set(localTrades.map((t) => t.txHash)), [localTrades]);
-  const deduplicatedTrades = useMemo(
-    () => trades.filter((t) => !localTradeHashes.has(t.txHash)),
-    [trades, localTradeHashes],
-  );
+  const tradeVersion = useUIStore((s) => s.tradeVersion);
 
   const fetchTrades = useCallback(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
@@ -51,49 +42,16 @@ export function TradeHistory({ token }: TradeHistoryProps) {
         };
       });
       setTrades(mapped);
-
-      // Reconcile: if API shows a trade as confirmed but the local entry is still
-      // pending, update it.
-      const store = useTradeStore.getState();
-      const localTradesForToken = store.recentTrades[token.address] ?? [];
-      for (const apiTrade of res.trades) {
-        if (apiTrade.status === 'confirmed') {
-          const localTrade = localTradesForToken.find((t) => t.txHash === apiTrade._id);
-          if (localTrade && localTrade.status !== 'confirmed') {
-            store.confirmLocalTrade(token.address, apiTrade._id);
-          }
-        }
-      }
     }).catch((err) => {
       console.error('[TradeHistory] API error:', err);
     });
   }, [token.address]);
 
-  // Poll faster when there are pending trades (API or local) so status updates quickly
-  const hasPending = useMemo(
-    () => trades.some((t) => t.status !== 'confirmed') || localTrades.some((t) => t.status !== 'confirmed'),
-    [trades, localTrades],
-  );
-  const pollMs = hasPending ? FAST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
-
-  // When pending trades exist, trigger the indexer so it processes any new blocks
-  // (scheduled function may not run on deploy previews)
-  const indexerTriggered = useRef(false);
-  useEffect(() => {
-    if (hasPending && !indexerTriggered.current) {
-      indexerTriggered.current = true;
-      api.triggerIndexer().finally(() => {
-        // Allow re-triggering after 30s if still pending
-        setTimeout(() => { indexerTriggered.current = false; }, 30_000);
-      });
-    }
-  }, [hasPending]);
-
   useEffect(() => {
     fetchTrades();
-    const id = setInterval(fetchTrades, pollMs);
+    const id = setInterval(fetchTrades, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [fetchTrades, pollMs]);
+  }, [fetchTrades, tradeVersion]);
 
   return (
     <div className="overflow-x-auto">
@@ -108,42 +66,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
           </tr>
         </thead>
         <tbody>
-          {/* Local optimistic trades (pending) at the top */}
-          {localTrades.map((trade) => (
-            <tr key={trade.txHash} className={cn(
-              'border-b border-border/30 transition-colors',
-              trade.status === 'pending' ? 'bg-accent/5 animate-pulse' : 'hover:bg-elevated/50',
-            )}>
-              <td className="py-2 px-2">
-                <span className="flex items-center gap-1">
-                  {trade.status === 'pending' && (
-                    <span className="inline-block w-2 h-2 rounded-full bg-accent animate-spin" />
-                  )}
-                  {trade.status === 'confirmed' && (
-                    <span className="inline-block w-2 h-2 rounded-full bg-bull" />
-                  )}
-                  <span className={cn('font-medium uppercase', trade.type === 'buy' ? 'text-bull' : 'text-bear')}>
-                    {trade.type}
-                  </span>
-                </span>
-              </td>
-              <td className="text-right py-2 px-2 font-mono text-text-secondary">
-                {formatTokenAmount(trade.tokenAmount)}
-              </td>
-              <td className="text-right py-2 px-2 font-mono text-text-primary">
-                {formatBtc(Number(trade.btcAmount))}
-              </td>
-              <td className="text-right py-2 px-2 font-mono text-text-muted hidden sm:table-cell">
-                {shortenAddress(trade.traderAddress, 4)}
-              </td>
-              <td className="text-right py-2 px-2 text-text-muted">
-                {trade.status === 'pending' ? 'now' : 'just now'}
-              </td>
-            </tr>
-          ))}
-
-          {/* Historical trades (deduplicated against local trades) */}
-          {deduplicatedTrades.map((trade) => (
+          {trades.map((trade) => (
             <tr key={trade.id} className={cn(
               'border-b border-border/30 transition-colors',
               trade.status !== 'confirmed' ? 'bg-accent/5 animate-pulse' : 'hover:bg-elevated/50',

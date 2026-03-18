@@ -12,7 +12,7 @@ export interface Trade {
   txHash: string;
 }
 
-export type TransactionStatus = 'broadcasted' | 'mempool' | 'confirmed';
+export type TransactionStatus = 'mempool' | 'confirmed';
 
 export interface TradeSimulation {
   type: 'buy' | 'sell';
@@ -24,15 +24,4 @@ export interface TradeSimulation {
   newPriceSats: number;
   newVirtualBtc: string;
   newVirtualToken: string;
-}
-
-export interface PendingTransaction {
-  id: string;
-  type: 'buy' | 'sell';
-  status: TransactionStatus;
-  btcAmount: number; // sats (always within Number.MAX_SAFE_INTEGER)
-  tokenAmount: string; // token-units as string (can exceed Number.MAX_SAFE_INTEGER)
-  tokenSymbol: string;
-  tokenAddress: string;
-  timestamp: number;
 }

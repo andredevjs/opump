@@ -1,39 +1,20 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { Token } from '@/types/token';
-import type { PendingTransaction } from '@/types/trade';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
-import { useTradeStore } from '@/stores/trade-store';
+import { useUIStore } from '@/stores/ui-store';
+import { saveKnownAddress } from '@/lib/known-tokens';
 import { VAULT_ADDRESS } from '@/config/constants';
+import { submitTrade, triggerIndexer } from '@/services/api';
 import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
-  const { deductBalance, addBalance } = useWalletStore();
-  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addLocalTrade, confirmLocalTrade } = useTradeStore();
+  const bumpTradeVersion = useUIStore((s) => s.bumpTradeVersion);
   const [executing, setExecuting] = useState(false);
 
   const tokenAddress = token?.address;
-  const tokenSymbol = token?.symbol;
-
-  // Track pending timeouts for cleanup on unmount
-  const timeoutIds = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-
-  useEffect(() => {
-    return () => {
-      for (const id of timeoutIds.current) clearTimeout(id);
-      timeoutIds.current.clear();
-    };
-  }, []);
-
-  function scheduleTimeout(fn: () => void, ms: number): void {
-    const id = setTimeout(() => {
-      timeoutIds.current.delete(id);
-      fn();
-    }, ms);
-    timeoutIds.current.add(id);
-  }
 
   // S20: simulateBuy / simulateSell are the bonding-curve functions directly
   const simulateBuy = localSimBuy;
@@ -66,26 +47,9 @@ export function useTradeSimulation(token: Token | null) {
       if (!sim) return;
 
       setExecuting(true);
-      const txId = `tx-${Date.now()}-${crypto.randomUUID()}`;
-      const btcSatsNum = Number(btcSats);
-
-      const pending: PendingTransaction = {
-        id: txId,
-        type: 'buy',
-        status: 'broadcasted',
-        btcAmount: btcSatsNum,
-        tokenAmount: sim.outputAmount,
-        tokenSymbol: tokenSymbol ?? '',
-        tokenAddress: tokenAddress,
-        timestamp: Date.now(),
-      };
-
-      addPending(pending);
-      deductBalance(btcSatsNum);
-      toast.success(`Buy broadcasted: ${(btcSatsNum / 100_000_000).toFixed(6)} BTC`);
 
       try {
-        const { getLaunchTokenContract, sendContractCall, setupPayableCall, waitForConfirmation } = await import('@/services/contract');
+        const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
         const { Address } = await import('@btc-vision/transaction');
         const contract = getLaunchTokenContract(tokenAddress);
 
@@ -95,6 +59,7 @@ export function useTradeSimulation(token: Token | null) {
         }
 
         // @payable: declare the BTC output to the vault BEFORE simulate
+        const { setupPayableCall } = await import('@/services/contract');
         setupPayableCall(contract, VAULT_ADDRESS, btcSatsBigInt);
 
         const simResult = await contract.buy(btcSatsBigInt);
@@ -104,57 +69,30 @@ export function useTradeSimulation(token: Token | null) {
           extraOutputs: [{ address: VAULT_ADDRESS, value: btcSatsBigInt }],
         });
 
-        updatePendingStatus(txId, 'mempool');
-
-        addLocalTrade(tokenAddress, {
+        await submitTrade({
           txHash: result.txHash,
+          tokenAddress,
           type: 'buy',
           traderAddress: walletAddress,
           btcAmount: btcSats,
           tokenAmount: sim.outputAmount,
-          status: 'pending',
           pricePerToken: String(sim.newPriceSats),
         });
 
-        try {
-          const { submitTrade } = await import('@/services/api');
-          await submitTrade({
-            txHash: result.txHash,
-            tokenAddress,
-            type: 'buy',
-            traderAddress: walletAddress,
-            btcAmount: btcSats,
-            tokenAmount: sim.outputAmount,
-            pricePerToken: String(sim.newPriceSats),
-          });
-        } catch {
-          // Best effort — mempool scanner will pick it up
-        }
+        saveKnownAddress(tokenAddress);
+        bumpTradeVersion();
 
-        toast(`Buy detected in mempool`, { icon: '\u{1F4E1}' });
+        // Nudge the indexer — fire-and-forget
+        triggerIndexer();
 
-        await waitForConfirmation(result.txHash);
-        updatePendingStatus(txId, 'confirmed');
-        confirmLocalTrade(tokenAddress, result.txHash);
-        addHolding(tokenAddress, sim.outputAmount);
-        toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
-        setExecuting(false);
-        scheduleTimeout(() => removePending(txId), 5000);
-
-        // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because optimistic updates already updated price, trades, and chart.
-        // Calling fetchToken() here would race with the indexer and overwrite
-        // the optimistic price with stale DB data.
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
+        toast.success(`Buy submitted! TX: ${result.txHash.slice(0, 12)}...`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
-        addBalance(btcSatsNum); // Refund on failure
-        removePending(txId);
+      } finally {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
-     addPending, deductBalance, updatePendingStatus, addLocalTrade, confirmLocalTrade, addHolding, removePending, addBalance],
+    [tokenAddress, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy, bumpTradeVersion],
   );
 
   /**
@@ -171,25 +109,9 @@ export function useTradeSimulation(token: Token | null) {
       if (!sim) return;
 
       setExecuting(true);
-      const txId = `tx-${Date.now()}-${crypto.randomUUID()}`;
-
-      const pending: PendingTransaction = {
-        id: txId,
-        type: 'sell',
-        status: 'broadcasted',
-        btcAmount: Number(sim.outputAmount),
-        tokenAmount: tokenUnits,
-        tokenSymbol: tokenSymbol ?? '',
-        tokenAddress: tokenAddress,
-        timestamp: Date.now(),
-      };
-
-      addPending(pending);
-      removeHolding(tokenAddress, tokenUnits);
-      toast.success(`Sell broadcasted`);
 
       try {
-        const { getLaunchTokenContract, sendContractCall, waitForConfirmation } = await import('@/services/contract');
+        const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
         const { Address } = await import('@btc-vision/transaction');
         const contract = getLaunchTokenContract(tokenAddress);
 
@@ -203,55 +125,30 @@ export function useTradeSimulation(token: Token | null) {
           refundTo: walletAddress,
         });
 
-        updatePendingStatus(txId, 'mempool');
-
-        addLocalTrade(tokenAddress, {
+        await submitTrade({
           txHash: result.txHash,
+          tokenAddress,
           type: 'sell',
           traderAddress: walletAddress,
           btcAmount: sim.outputAmount,
           tokenAmount: tokenUnits,
-          status: 'pending',
           pricePerToken: String(sim.newPriceSats),
         });
 
-        try {
-          const { submitTrade } = await import('@/services/api');
-          await submitTrade({
-            txHash: result.txHash,
-            tokenAddress,
-            type: 'sell',
-            traderAddress: walletAddress,
-            btcAmount: sim.outputAmount,
-            tokenAmount: tokenUnits,
-            pricePerToken: String(sim.newPriceSats),
-          });
-        } catch {
-          // Best effort — mempool scanner will pick it up
-        }
+        saveKnownAddress(tokenAddress);
+        bumpTradeVersion();
 
-        toast(`Sell detected in mempool`, { icon: '\u{1F4E1}' });
+        // Nudge the indexer — fire-and-forget
+        triggerIndexer();
 
-        await waitForConfirmation(result.txHash);
-        updatePendingStatus(txId, 'confirmed');
-        confirmLocalTrade(tokenAddress, result.txHash);
-        addBalance(Number(sim.outputAmount));
-        toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
-        setExecuting(false);
-        scheduleTimeout(() => removePending(txId), 5000);
-
-        // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because optimistic updates already updated price, trades, and chart.
-        import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
+        toast.success(`Sell submitted! TX: ${result.txHash.slice(0, 12)}...`);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
-        addHolding(tokenAddress, tokenUnits); // Refund on failure
-        removePending(txId);
+      } finally {
         setExecuting(false);
       }
     },
-    [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
-     addPending, removeHolding, updatePendingStatus, addLocalTrade, confirmLocalTrade, addBalance, addHolding, removePending],
+    [tokenAddress, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell, bumpTradeVersion],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

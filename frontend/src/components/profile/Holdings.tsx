@@ -1,21 +1,22 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BigNumber from 'bignumber.js';
-import { useTradeStore, getKnownTokenAddresses } from '@/stores/trade-store';
+import { getKnownTokenAddresses } from '@/lib/known-tokens';
 import { useTokenStore } from '@/stores/token-store';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useUIStore } from '@/stores/ui-store';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 import { formatTokenAmount, formatBtc } from '@/lib/format';
 import { Card } from '@/components/ui/Card';
 
 export function Holdings() {
   const navigate = useNavigate();
-  const holdings = useTradeStore((s) => s.holdings);
-  const setHolding = useTradeStore((s) => s.setHolding);
+  const [holdings, setHoldings] = useState<Record<string, string>>({});
   const getToken = useTokenStore((s) => s.getToken);
   const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
+  const tradeVersion = useUIStore((s) => s.tradeVersion);
 
-  // Refresh all known holdings from on-chain in real mode
+  // Refresh all known holdings from on-chain
   useEffect(() => {
     if (!connected || !hashedMLDSAKey || !publicKey) return;
     let cancelled = false;
@@ -25,12 +26,16 @@ export function Holdings() {
     import('@/services/contract').then(({ fetchBalanceOf }) => {
       for (const addr of addresses) {
         fetchBalanceOf(addr, hashedMLDSAKey, publicKey)
-          .then((balance) => { if (!cancelled) setHolding(addr, balance); })
+          .then((balance) => {
+            if (!cancelled) {
+              setHoldings((prev) => ({ ...prev, [addr]: balance }));
+            }
+          })
           .catch(() => {});
       }
     });
     return () => { cancelled = true; };
-  }, [connected, hashedMLDSAKey, publicKey, setHolding]);
+  }, [connected, hashedMLDSAKey, publicKey, tradeVersion]);
 
   const entries = Object.entries(holdings).filter(([, v]) => v !== '0' && v !== undefined);
 

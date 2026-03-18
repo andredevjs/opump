@@ -5,7 +5,8 @@ import { FeeBreakdown } from '@/components/shared/FeeBreakdown';
 import type { Token } from '@/types/token';
 import { useTradeSimulation } from '@/hooks/use-trade-simulation';
 import { useWalletStore } from '@/stores/wallet-store';
-import { useTradeStore } from '@/stores/trade-store';
+import { useUIStore } from '@/stores/ui-store';
+import { saveKnownAddress } from '@/lib/known-tokens';
 import BigNumber from 'bignumber.js';
 import { formatBtc, formatTokenAmount, tokensToUnits } from '@/lib/format';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
@@ -19,25 +20,24 @@ interface SellFormProps {
 export function SellForm({ token }: SellFormProps) {
   const [amount, setAmount] = useState('');
   const [balanceError, setBalanceError] = useState<string | null>(null);
+  const [holding, setHolding] = useState('0');
   const { simulateSell, executeSell, executing } = useTradeSimulation(token);
   const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
-  const holding = useTradeStore((s) => s.getHolding(token.address));
-  const setHolding = useTradeStore((s) => s.setHolding);
-  // T023: Re-fetch on-chain balance when a self-trade is detected
-  const selfTradeCounter = useTradeStore((s) => s.selfTradeCounter);
+  const tradeVersion = useUIStore((s) => s.tradeVersion);
 
   // Fetch on-chain balance in real mode
   useEffect(() => {
     if (!connected || !hashedMLDSAKey || !publicKey) return;
     let cancelled = false;
     setBalanceError(null);
+    saveKnownAddress(token.address);
     import('@/services/contract').then(({ fetchBalanceOf }) =>
       fetchBalanceOf(token.address, hashedMLDSAKey, publicKey)
-        .then((balance) => { if (!cancelled) setHolding(token.address, balance); })
+        .then((balance) => { if (!cancelled) setHolding(balance); })
         .catch((err) => { if (!cancelled) setBalanceError(err instanceof Error ? err.message : 'Failed to fetch balance'); }),
     );
     return () => { cancelled = true; };
-  }, [token.address, connected, hashedMLDSAKey, publicKey, setHolding, selfTradeCounter]);
+  }, [token.address, connected, hashedMLDSAKey, publicKey, tradeVersion]);
 
   const holdingBn = new BigNumber(holding);
   const hasHolding = holdingBn.isGreaterThan(0);

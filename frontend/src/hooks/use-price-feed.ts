@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
+import { useUIStore } from '@/stores/ui-store';
 import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TimeframeKey, OHLCVCandle } from '@/types/api';
 import type { TradeDocument } from '@shared/types/trade';
@@ -80,6 +81,7 @@ function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: Ti
 }
 
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
+  const tradeVersion = useUIStore((s) => s.tradeVersion);
   const updateTokenPrice = useTokenStore((s) => s.updateTokenPrice);
   const setCandles = usePriceStore((s) => s.setCandles);
   const setLoading = usePriceStore((s) => s.setLoading);
@@ -240,6 +242,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       setLoading(token.address, false);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [token?.address, timeframe, setLoading, setCandles, updateTokenPrice,
+  }, [token?.address, timeframe, tradeVersion, setLoading, setCandles, updateTokenPrice,
       setLivePrice, setActiveTimeframe]);
 }

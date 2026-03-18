@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import BigNumber from 'bignumber.js';
 import { Copy, Check, ExternalLink, LogOut, Coins } from 'lucide-react';
 import { useWalletStore } from '@/stores/wallet-store';
-import { getKnownTokenAddresses } from '@/stores/trade-store';
+import { getKnownTokenAddresses } from '@/lib/known-tokens';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 import { formatBtc, formatTokenAmount, shortenAddress } from '@/lib/format';
 import { mapApiTokenToToken } from '@/lib/mappers';

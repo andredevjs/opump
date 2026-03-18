@@ -14,35 +14,6 @@ function resetStore() {
 describe('wallet-store', () => {
   beforeEach(resetStore);
 
-  describe('balance management', () => {
-    it('deducts balance', () => {
-      useWalletStore.setState({ balanceSats: 1_000_000 });
-      useWalletStore.getState().deductBalance(250_000);
-
-      expect(useWalletStore.getState().balanceSats).toBe(750_000);
-    });
-
-    it('clamps balance at zero on over-deduction', () => {
-      useWalletStore.setState({ balanceSats: 100 });
-      useWalletStore.getState().deductBalance(500);
-
-      expect(useWalletStore.getState().balanceSats).toBe(0);
-    });
-
-    it('adds balance', () => {
-      useWalletStore.setState({ balanceSats: 1_000_000 });
-      useWalletStore.getState().addBalance(500_000);
-
-      expect(useWalletStore.getState().balanceSats).toBe(1_500_000);
-    });
-
-    it('handles adding to zero balance', () => {
-      useWalletStore.getState().addBalance(100_000);
-
-      expect(useWalletStore.getState().balanceSats).toBe(100_000);
-    });
-  });
-
   describe('setAddress', () => {
     it('updates the address', () => {
       useWalletStore.getState().setAddress('bc1qnew');

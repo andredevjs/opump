@@ -1,10 +1,7 @@
-import { useMemo } from 'react';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { BuyForm } from './BuyForm';
 import { SellForm } from './SellForm';
-import { TransactionStatus } from './TransactionStatus';
 import type { Token } from '@/types/token';
-import { useTradeStore } from '@/stores/trade-store';
 import { Card } from '@/components/ui/Card';
 
 interface TradePanelProps {
@@ -12,12 +9,6 @@ interface TradePanelProps {
 }
 
 export function TradePanel({ token }: TradePanelProps) {
-  const allPending = useTradeStore((s) => s.pendingTransactions);
-  const pendingTransactions = useMemo(
-    () => allPending.filter((tx) => tx.tokenAddress === token.address),
-    [allPending, token.address],
-  );
-
   return (
     <Card className="p-0 overflow-hidden">
       <TabsRoot defaultValue="buy">
@@ -34,15 +25,6 @@ export function TradePanel({ token }: TradePanelProps) {
           <SellForm token={token} />
         </TabsContent>
       </TabsRoot>
-
-      {pendingTransactions.length > 0 && (
-        <div className="border-t border-border p-4 space-y-2">
-          <p className="text-xs text-text-muted font-medium uppercase">Pending Transactions</p>
-          {pendingTransactions.map((tx) => (
-            <TransactionStatus key={tx.id} transaction={tx} />
-          ))}
-        </div>
-      )}
     </Card>
   );
 }
