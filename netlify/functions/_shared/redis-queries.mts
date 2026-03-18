@@ -98,7 +98,7 @@ export async function listTokens(opts: {
 
   // Search mode
   if (opts.search) {
-    return searchTokens(opts.search, page, limit);
+    return searchTokens(opts.search, page, limit, status);
   }
 
   // Validate sort field against allowed values, default to "newest"
@@ -127,7 +127,7 @@ export async function listTokens(opts: {
 /**
  * Search tokens by prefix (name or symbol).
  */
-async function searchTokens(query: string, page: number, limit: number): Promise<{ tokens: TokenDocument[]; total: number }> {
+async function searchTokens(query: string, page: number, limit: number, status: string): Promise<{ tokens: TokenDocument[]; total: number }> {
   const redis = getRedis();
   const queryLower = query.toLowerCase();
 
@@ -148,7 +148,19 @@ async function searchTokens(query: string, page: number, limit: number): Promise
     }
   }
 
-  const allAddresses = [...addressSet];
+  let allAddresses = [...addressSet];
+
+  // Filter by status if not "all" — check membership in the status-specific sorted set
+  if (status !== "all" && allAddresses.length > 0) {
+    const statusKey = TOKEN_INDEX(status, "newest");
+    const pipe = redis.pipeline();
+    for (const addr of allAddresses) {
+      pipe.zscore(statusKey, addr);
+    }
+    const scores = await pipe.exec();
+    allAddresses = allAddresses.filter((_, i) => scores[i] !== null);
+  }
+
   const total = allAddresses.length;
   const start = (page - 1) * limit;
   const sliced = allAddresses.slice(start, start + limit);

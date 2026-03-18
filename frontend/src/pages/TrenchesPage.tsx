@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Search, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -25,9 +25,8 @@ const SORT_OPTIONS: TokenSortOption[] = [
 ];
 
 export function TrenchesPage() {
-  const { tokens, filter, setFilter, pagination, fetchTokens } = useTokenStore();
+  const { tokens, filter, setFilter, setPage, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
-  const [page, setPage] = useState(1);
 
   // Fetch tokens on mount + periodic refresh (fallback for WS gaps)
   // The global feed (useGlobalFeed in RootLayout) already patches token store
@@ -38,15 +37,7 @@ export function TrenchesPage() {
     return () => clearInterval(id);
   }, [fetchTokens]);
 
-  // Reset page on filter change (render-time adjustment, avoids synchronous setState in effect)
-  const filterKey = `${filter.search}|${filter.status}|${filter.sort}`;
-  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
-  if (filterKey !== prevFilterKey) {
-    setPrevFilterKey(filterKey);
-    setPage(1);
-  }
-
-  const totalPages = pagination.totalPages;
+  const { page, totalPages } = pagination;
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -130,7 +121,7 @@ export function TrenchesPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             disabled={page === 1}
           >
             <ChevronLeft size={16} />
@@ -141,7 +132,7 @@ export function TrenchesPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
             disabled={page === totalPages}
           >
             <ChevronRight size={16} />

@@ -21,6 +21,7 @@ interface TokenStore {
   pagination: { page: number; totalPages: number; total: number };
   setSelectedToken: (token: Token | null) => void;
   setFilter: (filter: Partial<TokenFilter>) => void;
+  setPage: (page: number) => void;
   updateTokenPrice: (address: string, priceSats: number, change24h: number) => void;
   updateTokenStats: (address: string, stats: TokenStats) => void;
   updateTokenStatus: (address: string, status: TokenStatus) => void;
@@ -46,6 +47,14 @@ export const useTokenStore = create<TokenStore>((set, get) => {
   setFilter: (partial) => {
     set((state) => ({
       filter: { ...state.filter, ...partial },
+      pagination: { ...state.pagination, page: 1 },
+    }));
+    get().fetchTokens();
+  },
+
+  setPage: (page) => {
+    set((state) => ({
+      pagination: { ...state.pagination, page },
     }));
     get().fetchTokens();
   },
@@ -101,7 +110,7 @@ export const useTokenStore = create<TokenStore>((set, get) => {
     const gen = ++_fetchGeneration;
     set({ loading: true, error: null });
     try {
-      const { filter } = get();
+      const { filter, pagination } = get();
       const sortMap: Record<string, 'volume24h' | 'marketCap' | 'price' | 'newest'> = {
         volume: 'volume24h',
         marketCap: 'marketCap',
@@ -114,6 +123,8 @@ export const useTokenStore = create<TokenStore>((set, get) => {
         status: filter.status === 'all' ? undefined : filter.status,
         sort: sortMap[filter.sort] || 'volume24h',
         order: 'desc',
+        page: pagination.page,
+        limit: 20,
       });
 
       // Discard stale response from a superseded fetch
