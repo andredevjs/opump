@@ -290,16 +290,17 @@ async function processBuyEvent(
     createdAt: new Date(),
   };
 
-  await saveTrade(trade);
+  const { isNew } = await saveTrade(trade);
 
-  // Use the contract's post-trade spot price (newPrice) for OHLCV candles.
-  // This is the canonical price from the on-chain reserves after the trade,
-  // consistent across all trades and avoiding gross/net BTC mismatches.
-  const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-  const priceSats = Number(spotPrice);
-  const volumeSats = Number(data.btcIn);
-  const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-  await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+  // Only write OHLCV if this trade wasn't already submitted optimistically
+  // via trades-submit. Prevents double-counting volume (HINCRBY).
+  if (isNew) {
+    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const priceSats = Number(spotPrice);
+    const volumeSats = Number(data.btcIn);
+    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+  }
 }
 
 async function processSellEvent(
@@ -337,14 +338,17 @@ async function processSellEvent(
     createdAt: new Date(),
   };
 
-  await saveTrade(trade);
+  const { isNew } = await saveTrade(trade);
 
-  // Use the contract's post-trade spot price (newPrice) for OHLCV candles.
-  const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-  const priceSats = Number(spotPrice);
-  const volumeSats = Number(data.btcOut);
-  const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-  await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+  // Only write OHLCV if this trade wasn't already submitted optimistically
+  // via trades-submit. Prevents double-counting volume (HINCRBY).
+  if (isNew) {
+    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const priceSats = Number(spotPrice);
+    const volumeSats = Number(data.btcOut);
+    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+  }
 }
 
 /**

@@ -10,7 +10,7 @@
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { saveTrade } from "./_shared/redis-queries.mts";
+import { saveTrade, updateOHLCV } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
 
 interface TradeSubmitBody {
@@ -74,10 +74,13 @@ export default async (req: Request, _context: Context) => {
 
     await saveTrade(trade);
 
-    // OHLCV candles are written exclusively by the indexer (from on-chain
-    // data) to avoid duplicate writes with mismatched prices that corrupt
-    // candle open/close.  The frontend's addTradeCandle provides instant
-    // visual feedback until the indexer processes the block.
+    // Write OHLCV candle optimistically so the chart updates immediately
+    // (mempool-first). The indexer guards its own updateOHLCV with isNew
+    // to avoid double-counting volume for the same trade.
+    const priceSats = Number(body.pricePerToken);
+    const volumeSats = Number(body.btcAmount);
+    const timestampSec = Math.floor(Date.now() / 1000);
+    await updateOHLCV(trade.tokenAddress, priceSats, volumeSats, timestampSec);
 
     return json({ ok: true, txHash: body.txHash });
   } catch (err) {
