@@ -32,7 +32,7 @@ import {
 } from "./constants.mts";
 import type { TradeDocument } from "./constants.mts";
 import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
-import { decodeBuyEvent, decodeSellEvent, getEventData, readAddressFromEventData } from "./event-decoders.mts";
+import { decodeBuyEvent, decodeSellEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
 import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 
 /** Convert a PRICE_PRECISION-scaled bigint to "sats per whole token" string */
@@ -165,14 +165,14 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
             if (eventType === "Buy" && isKnownToken) {
               const buyData = decodeBuyEvent(evt);
               if (buyData) {
-                await processBuyEvent(contractAddr, tx.hash, Number(blockNum), block.time, buyData);
+                await processBuyEvent(contractAddr, tx.hash, Number(blockNum), block.time, buyData, network);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
             } else if (eventType === "Sell" && isKnownToken) {
               const sellData = decodeSellEvent(evt);
               if (sellData) {
-                await processSellEvent(contractAddr, tx.hash, Number(blockNum), block.time, sellData);
+                await processSellEvent(contractAddr, tx.hash, Number(blockNum), block.time, sellData, network);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
@@ -260,6 +260,7 @@ async function processBuyEvent(
   blockNumber: number,
   blockTime: number,
   data: BuyEventData,
+  network: import("@btc-vision/bitcoin").Network,
 ): Promise<void> {
   const fees = calculateFeeBreakdown(data.btcIn);
 
@@ -272,7 +273,7 @@ async function processBuyEvent(
     _id: txHash,
     tokenAddress,
     type: "buy",
-    traderAddress: data.buyer,
+    traderAddress: hexAddressToBech32m(data.buyer, network),
     btcAmount: data.btcIn.toString(),
     tokenAmount: data.tokensOut.toString(),
     pricePerToken,
@@ -307,6 +308,7 @@ async function processSellEvent(
   blockNumber: number,
   blockTime: number,
   data: SellEventData,
+  network: import("@btc-vision/bitcoin").Network,
 ): Promise<void> {
   const fees = calculateFeeBreakdown(data.btcOut);
 
@@ -318,7 +320,7 @@ async function processSellEvent(
     _id: txHash,
     tokenAddress,
     type: "sell",
-    traderAddress: data.seller,
+    traderAddress: hexAddressToBech32m(data.seller, network),
     btcAmount: data.btcOut.toString(),
     tokenAmount: data.tokensIn.toString(),
     pricePerToken,

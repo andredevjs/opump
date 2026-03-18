@@ -3,6 +3,8 @@
  * Extracted from indexer-core.mts for reuse and maintainability.
  */
 
+import { toBech32 } from '@btc-vision/bitcoin';
+import type { Network } from '@btc-vision/bitcoin';
 import type { OPNetEvent } from "./contracts.mts";
 
 export interface BuyEventData {
@@ -86,4 +88,18 @@ export function readAddressFromEventData(data: Uint8Array, offset: number): stri
     hex += b.toString(16).padStart(2, "0");
   }
   return hex;
+}
+
+/**
+ * Convert a 0x-prefixed hex address (from event data) to bech32m format.
+ * This ensures confirmed trades use the same address encoding as pending trades
+ * submitted by the frontend (which uses the wallet's bech32m address).
+ */
+export function hexAddressToBech32m(hexAddress: string, network: Network): string {
+  const hex = hexAddress.startsWith('0x') ? hexAddress.slice(2) : hexAddress;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+  }
+  return toBech32(bytes, 16, network.bech32, network.bech32Opnet);
 }
