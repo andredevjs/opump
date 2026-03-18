@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { Token } from '@/types/token';
 import { useBondingCurve } from './use-bonding-curve';
 import { useWalletStore } from '@/stores/wallet-store';
@@ -13,6 +13,7 @@ export function useTradeSimulation(token: Token | null) {
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const bumpTradeVersion = useUIStore((s) => s.bumpTradeVersion);
   const [executing, setExecuting] = useState(false);
+  const executingRef = useRef(false);
 
   const tokenAddress = token?.address;
 
@@ -25,6 +26,7 @@ export function useTradeSimulation(token: Token | null) {
    */
   const executeBuy = useCallback(
     async (btcSats: string) => {
+      if (executingRef.current) return;
       // F3: Guard against missing vault address
       if (!VAULT_ADDRESS) {
         toast.error('Factory address not configured');
@@ -46,6 +48,7 @@ export function useTradeSimulation(token: Token | null) {
       const sim = simulateBuy(btcSats);
       if (!sim) return;
 
+      executingRef.current = true;
       setExecuting(true);
 
       try {
@@ -89,6 +92,7 @@ export function useTradeSimulation(token: Token | null) {
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Buy failed');
       } finally {
+        executingRef.current = false;
         setExecuting(false);
       }
     },
@@ -100,6 +104,7 @@ export function useTradeSimulation(token: Token | null) {
    */
   const executeSell = useCallback(
     async (tokenUnits: string) => {
+      if (executingRef.current) return;
       if (!tokenAddress || !connected || !tokenUnits || tokenUnits === '0') return;
       if (!walletAddress) {
         toast.error('Wallet not connected');
@@ -108,6 +113,7 @@ export function useTradeSimulation(token: Token | null) {
       const sim = simulateSell(tokenUnits);
       if (!sim) return;
 
+      executingRef.current = true;
       setExecuting(true);
 
       try {
@@ -145,6 +151,7 @@ export function useTradeSimulation(token: Token | null) {
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
       } finally {
+        executingRef.current = false;
         setExecuting(false);
       }
     },
