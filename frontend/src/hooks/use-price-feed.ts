@@ -243,6 +243,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       setLoading(token.address, false);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when token.address changes, not the full object
   }, [token?.address, timeframe, tradeVersion, setLoading, setCandles, updateTokenPrice,
       setLivePrice, setActiveTimeframe]);
 }

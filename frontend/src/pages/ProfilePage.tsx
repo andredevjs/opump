@@ -20,6 +20,13 @@ export function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
+  // Reset loading when address changes (render-time adjustment, avoids synchronous setState in effect)
+  const [prevAddress, setPrevAddress] = useState(address);
+  if (address !== prevAddress) {
+    setPrevAddress(address);
+    setLoading(true);
+  }
+
   const fetchProfile = useCallback(() => {
     if (!address) return;
     api.getProfileTokens(address).then((res) => {
@@ -32,7 +39,6 @@ export function ProfilePage() {
   useEffect(() => {
     if (!address) return;
 
-    setLoading(true);
     api.getProfileTokens(address).then((res) => {
       setCreatedTokens(res.tokens.map(mapApiTokenToToken));
     }).catch(() => {

@@ -163,7 +163,7 @@ export function StepDeploy() {
       toast.error(err instanceof Error ? err.message : 'Deployment failed');
       abortDeploy();
     }
-  }, [connected, walletAddress, formData]);
+  }, [connected, walletAddress, formData, abortDeploy, advanceDeployPhase, setDeployedAddress, startDeploy]);
 
   return (
     <div className="space-y-6 max-w-md mx-auto">

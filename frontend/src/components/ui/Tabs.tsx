@@ -1,7 +1,9 @@
 import * as RadixTabs from '@radix-ui/react-tabs';
 import { cn } from '@/lib/cn';
 
-export const TabsRoot = RadixTabs.Root;
+export function TabsRoot(props: React.ComponentProps<typeof RadixTabs.Root>) {
+  return <RadixTabs.Root {...props} />;
+}
 
 export function TabsList({ children, className }: { children: React.ReactNode; className?: string }) {
   return (

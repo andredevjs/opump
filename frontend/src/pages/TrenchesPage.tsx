@@ -38,8 +38,13 @@ export function TrenchesPage() {
     return () => clearInterval(id);
   }, [fetchTokens]);
 
-  // Reset page on filter change
-  useEffect(() => { setPage(1); }, [filter.search, filter.status, filter.sort]);
+  // Reset page on filter change (render-time adjustment, avoids synchronous setState in effect)
+  const filterKey = `${filter.search}|${filter.status}|${filter.sort}`;
+  const [prevFilterKey, setPrevFilterKey] = useState(filterKey);
+  if (filterKey !== prevFilterKey) {
+    setPrevFilterKey(filterKey);
+    setPage(1);
+  }
 
   const totalPages = pagination.totalPages;
 

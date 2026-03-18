@@ -8,7 +8,7 @@ export function StepAirdrop() {
 
   useEffect(() => {
     updateForm({ airdropEnabled: false });
-  }, []);
+  }, [updateForm]);
 
   return (
     <div className="space-y-6 max-w-md mx-auto">
