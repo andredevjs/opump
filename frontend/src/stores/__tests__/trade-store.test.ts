@@ -109,8 +109,8 @@ describe('trade-store', () => {
     });
   });
 
-  describe('recentTrades (WebSocket)', () => {
-    const wsTrade = {
+  describe('recentTrades (local/optimistic)', () => {
+    const localTrade = {
       txHash: 'hash-1',
       type: 'buy' as const,
       traderAddress: 'bc1qtrader',
@@ -120,8 +120,8 @@ describe('trade-store', () => {
       pricePerToken: '3',
     };
 
-    it('adds a WebSocket trade', () => {
-      useTradeStore.getState().addWsTrade('bc1qtoken1', wsTrade);
+    it('adds a local trade', () => {
+      useTradeStore.getState().addLocalTrade('bc1qtoken1', localTrade);
 
       const trades = useTradeStore.getState().recentTrades['bc1qtoken1'];
       expect(trades).toHaveLength(1);
@@ -129,8 +129,8 @@ describe('trade-store', () => {
     });
 
     it('prepends new trades', () => {
-      useTradeStore.getState().addWsTrade('bc1qtoken1', wsTrade);
-      useTradeStore.getState().addWsTrade('bc1qtoken1', { ...wsTrade, txHash: 'hash-2' });
+      useTradeStore.getState().addLocalTrade('bc1qtoken1', localTrade);
+      useTradeStore.getState().addLocalTrade('bc1qtoken1', { ...localTrade, txHash: 'hash-2' });
 
       const trades = useTradeStore.getState().recentTrades['bc1qtoken1'];
       expect(trades[0].txHash).toBe('hash-2');
@@ -138,7 +138,7 @@ describe('trade-store', () => {
 
     it('caps at 50 trades', () => {
       for (let i = 0; i < 60; i++) {
-        useTradeStore.getState().addWsTrade('bc1qtoken1', { ...wsTrade, txHash: `hash-${i}` });
+        useTradeStore.getState().addLocalTrade('bc1qtoken1', { ...localTrade, txHash: `hash-${i}` });
       }
 
       const trades = useTradeStore.getState().recentTrades['bc1qtoken1'];
@@ -146,16 +146,16 @@ describe('trade-store', () => {
     });
 
     it('confirms a trade', () => {
-      useTradeStore.getState().addWsTrade('bc1qtoken1', wsTrade);
-      useTradeStore.getState().confirmWsTrade('bc1qtoken1', 'hash-1');
+      useTradeStore.getState().addLocalTrade('bc1qtoken1', localTrade);
+      useTradeStore.getState().confirmLocalTrade('bc1qtoken1', 'hash-1');
 
       const trades = useTradeStore.getState().recentTrades['bc1qtoken1'];
       expect(trades[0].status).toBe('confirmed');
     });
 
     it('drops a trade', () => {
-      useTradeStore.getState().addWsTrade('bc1qtoken1', wsTrade);
-      useTradeStore.getState().dropWsTrade('bc1qtoken1', 'hash-1');
+      useTradeStore.getState().addLocalTrade('bc1qtoken1', localTrade);
+      useTradeStore.getState().dropLocalTrade('bc1qtoken1', 'hash-1');
 
       const trades = useTradeStore.getState().recentTrades['bc1qtoken1'];
       expect(trades).toHaveLength(0);

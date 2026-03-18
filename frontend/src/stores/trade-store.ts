@@ -26,7 +26,7 @@ export function getKnownTokenAddresses(): string[] {
   return loadKnownAddresses();
 }
 
-interface WsTrade {
+interface LocalTrade {
   txHash: string;
   type: 'buy' | 'sell';
   traderAddress: string;
@@ -40,9 +40,9 @@ interface TradeStore {
   pendingTransactions: PendingTransaction[];
   // Token holdings: address -> token-units (string to avoid precision loss)
   holdings: Record<string, string>;
-  // Recent WS trades per token (for live feed)
-  recentTrades: Record<string, WsTrade[]>;
-  // T022: Counter that increments when the connected wallet's own trade arrives via WS
+  // Optimistic local trades per token (user's own pending trades)
+  recentTrades: Record<string, LocalTrade[]>;
+  // T022: Counter that increments when the connected wallet's own trade is submitted
   selfTradeCounter: number;
   addPending: (tx: PendingTransaction) => void;
   updatePendingStatus: (id: string, status: PendingTransaction['status']) => void;
@@ -52,9 +52,9 @@ interface TradeStore {
   removeHolding: (tokenAddress: string, units: string) => void;
   getHolding: (tokenAddress: string) => string;
   incrementSelfTradeCounter: () => void;
-  addWsTrade: (tokenAddress: string, trade: WsTrade, connectedAddress?: string) => void;
-  confirmWsTrade: (tokenAddress: string, txHash: string) => void;
-  dropWsTrade: (tokenAddress: string, txHash: string) => void;
+  addLocalTrade: (tokenAddress: string, trade: LocalTrade, connectedAddress?: string) => void;
+  confirmLocalTrade: (tokenAddress: string, txHash: string) => void;
+  dropLocalTrade: (tokenAddress: string, txHash: string) => void;
 }
 
 export const useTradeStore = create<TradeStore>((set, get) => ({
@@ -124,7 +124,7 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
   incrementSelfTradeCounter: () =>
     set((state) => ({ selfTradeCounter: state.selfTradeCounter + 1 })),
 
-  addWsTrade: (tokenAddress, trade, connectedAddress?) =>
+  addLocalTrade: (tokenAddress, trade, connectedAddress?) =>
     set((state) => {
       const existing = state.recentTrades[tokenAddress] ?? [];
       const dupeIndex = existing.findIndex((t) => t.txHash === trade.txHash);
@@ -147,7 +147,7 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
       };
     }),
 
-  confirmWsTrade: (tokenAddress, txHash) =>
+  confirmLocalTrade: (tokenAddress, txHash) =>
     set((state) => {
       const existing = state.recentTrades[tokenAddress] ?? [];
       return {
@@ -160,7 +160,7 @@ export const useTradeStore = create<TradeStore>((set, get) => ({
       };
     }),
 
-  dropWsTrade: (tokenAddress, txHash) =>
+  dropLocalTrade: (tokenAddress, txHash) =>
     set((state) => {
       const existing = state.recentTrades[tokenAddress] ?? [];
       return {

@@ -14,10 +14,10 @@ export function PlatformStats() {
     totalTrades: 0,
   });
 
-  // T017: Prefer WS-delivered stats from the global feed
-  const wsStats = usePlatformStatsStore((s) => s.stats);
+  // Prefer globally-polled stats from the global feed
+  const globalStats = usePlatformStatsStore((s) => s.stats);
 
-  const stats = wsStats ?? polledStats;
+  const stats = globalStats ?? polledStats;
 
   const refresh = useCallback(() => {
     api.getStats().then((s) => {

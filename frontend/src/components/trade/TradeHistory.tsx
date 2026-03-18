@@ -6,7 +6,7 @@ import { cn } from '@/lib/cn';
 import { useTradeStore } from '@/stores/trade-store';
 import * as api from '@/services/api';
 
-const EMPTY_WS_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
+const EMPTY_LOCAL_TRADES: { txHash: string; type: 'buy' | 'sell'; traderAddress: string; btcAmount: string; tokenAmount: string; status: string; pricePerToken: string }[] = [];
 const POLL_INTERVAL_MS = 15_000;
 const FAST_POLL_INTERVAL_MS = 5_000;
 /** Trades older than this are treated as confirmed for display (Bitcoin block time ~10min) */
@@ -18,13 +18,13 @@ interface TradeHistoryProps {
 
 export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
-  const wsTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_WS_TRADES);
+  const localTrades = useTradeStore((s) => s.recentTrades[token.address] ?? EMPTY_LOCAL_TRADES);
 
-  // S29: Deduplicate — filter out API trades whose txHash already appears in WS trades
-  const wsTradeHashes = useMemo(() => new Set(wsTrades.map((t) => t.txHash)), [wsTrades]);
+  // S29: Deduplicate — filter out API trades whose txHash already appears in local trades
+  const localTradeHashes = useMemo(() => new Set(localTrades.map((t) => t.txHash)), [localTrades]);
   const deduplicatedTrades = useMemo(
-    () => trades.filter((t) => !wsTradeHashes.has(t.txHash)),
-    [trades, wsTradeHashes],
+    () => trades.filter((t) => !localTradeHashes.has(t.txHash)),
+    [trades, localTradeHashes],
   );
 
   const fetchTrades = useCallback(() => {
@@ -52,15 +52,15 @@ export function TradeHistory({ token }: TradeHistoryProps) {
       });
       setTrades(mapped);
 
-      // Reconcile: if API shows a trade as confirmed but the WS entry is still
-      // pending (no WebSocket server in Netlify to push trade_confirmed), update it.
+      // Reconcile: if API shows a trade as confirmed but the local entry is still
+      // pending, update it.
       const store = useTradeStore.getState();
-      const wsTradesForToken = store.recentTrades[token.address] ?? [];
+      const localTradesForToken = store.recentTrades[token.address] ?? [];
       for (const apiTrade of res.trades) {
         if (apiTrade.status === 'confirmed') {
-          const wsTrade = wsTradesForToken.find((t) => t.txHash === apiTrade._id);
-          if (wsTrade && wsTrade.status !== 'confirmed') {
-            store.confirmWsTrade(token.address, apiTrade._id);
+          const localTrade = localTradesForToken.find((t) => t.txHash === apiTrade._id);
+          if (localTrade && localTrade.status !== 'confirmed') {
+            store.confirmLocalTrade(token.address, apiTrade._id);
           }
         }
       }
@@ -69,10 +69,10 @@ export function TradeHistory({ token }: TradeHistoryProps) {
     });
   }, [token.address]);
 
-  // Poll faster when there are pending trades (API or WS) so status updates quickly
+  // Poll faster when there are pending trades (API or local) so status updates quickly
   const hasPending = useMemo(
-    () => trades.some((t) => t.status !== 'confirmed') || wsTrades.some((t) => t.status !== 'confirmed'),
-    [trades, wsTrades],
+    () => trades.some((t) => t.status !== 'confirmed') || localTrades.some((t) => t.status !== 'confirmed'),
+    [trades, localTrades],
   );
   const pollMs = hasPending ? FAST_POLL_INTERVAL_MS : POLL_INTERVAL_MS;
 
@@ -108,8 +108,8 @@ export function TradeHistory({ token }: TradeHistoryProps) {
           </tr>
         </thead>
         <tbody>
-          {/* WebSocket live trades (pending) at the top */}
-          {wsTrades.map((trade) => (
+          {/* Local optimistic trades (pending) at the top */}
+          {localTrades.map((trade) => (
             <tr key={trade.txHash} className={cn(
               'border-b border-border/30 transition-colors',
               trade.status === 'pending' ? 'bg-accent/5 animate-pulse' : 'hover:bg-elevated/50',
@@ -142,7 +142,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
             </tr>
           ))}
 
-          {/* Historical trades (deduplicated against WS trades) */}
+          {/* Historical trades (deduplicated against local trades) */}
           {deduplicatedTrades.map((trade) => (
             <tr key={trade.id} className={cn(
               'border-b border-border/30 transition-colors',

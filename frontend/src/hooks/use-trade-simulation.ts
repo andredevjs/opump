@@ -11,7 +11,7 @@ export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const { deductBalance, addBalance } = useWalletStore();
-  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addWsTrade, confirmWsTrade } = useTradeStore();
+  const { addPending, updatePendingStatus, removePending, addHolding, removeHolding, addLocalTrade, confirmLocalTrade } = useTradeStore();
   const [executing, setExecuting] = useState(false);
 
   const tokenAddress = token?.address;
@@ -106,7 +106,7 @@ export function useTradeSimulation(token: Token | null) {
 
         updatePendingStatus(txId, 'mempool');
 
-        addWsTrade(tokenAddress, {
+        addLocalTrade(tokenAddress, {
           txHash: result.txHash,
           type: 'buy',
           traderAddress: walletAddress,
@@ -135,14 +135,14 @@ export function useTradeSimulation(token: Token | null) {
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
-        confirmWsTrade(tokenAddress, result.txHash);
+        confirmLocalTrade(tokenAddress, result.txHash);
         addHolding(tokenAddress, sim.outputAmount);
         toast.success(`Buy confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
         // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because WebSocket events already updated price, trades, and chart.
+        // data because optimistic updates already updated price, trades, and chart.
         // Calling fetchToken() here would race with the indexer and overwrite
         // the optimistic price with stale DB data.
         import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
@@ -154,7 +154,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateBuy,
-     addPending, deductBalance, updatePendingStatus, addWsTrade, confirmWsTrade, addHolding, removePending, addBalance],
+     addPending, deductBalance, updatePendingStatus, addLocalTrade, confirmLocalTrade, addHolding, removePending, addBalance],
   );
 
   /**
@@ -205,7 +205,7 @@ export function useTradeSimulation(token: Token | null) {
 
         updatePendingStatus(txId, 'mempool');
 
-        addWsTrade(tokenAddress, {
+        addLocalTrade(tokenAddress, {
           txHash: result.txHash,
           type: 'sell',
           traderAddress: walletAddress,
@@ -234,14 +234,14 @@ export function useTradeSimulation(token: Token | null) {
 
         await waitForConfirmation(result.txHash);
         updatePendingStatus(txId, 'confirmed');
-        confirmWsTrade(tokenAddress, result.txHash);
+        confirmLocalTrade(tokenAddress, result.txHash);
         addBalance(Number(sim.outputAmount));
         toast.success(`Sell confirmed! TX: ${result.txHash.slice(0, 12)}...`);
         setExecuting(false);
         scheduleTimeout(() => removePending(txId), 5000);
 
         // Nudge the indexer to pick up the confirmed block — don't refetch token
-        // data because WebSocket events already updated price, trades, and chart.
+        // data because optimistic updates already updated price, trades, and chart.
         import('@/services/api').then(({ triggerIndexer }) => triggerIndexer());
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Sell failed');
@@ -251,7 +251,7 @@ export function useTradeSimulation(token: Token | null) {
       }
     },
     [tokenAddress, tokenSymbol, connected, walletAddress, hashedMLDSAKey, publicKey, simulateSell,
-     addPending, removeHolding, updatePendingStatus, addWsTrade, confirmWsTrade, addBalance, addHolding, removePending],
+     addPending, removeHolding, updatePendingStatus, addLocalTrade, confirmLocalTrade, addBalance, addHolding, removePending],
   );
 
   return { simulateBuy, simulateSell, executeBuy, executeSell, executing };

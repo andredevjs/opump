@@ -14,7 +14,7 @@ interface PriceStore {
   candles: Record<string, OHLCVCandle[]>;
   // token address -> loading state
   loading: Record<string, boolean>;
-  // token address -> live price from WebSocket
+  // token address -> live price from polling
   livePrices: Record<string, LivePrice>;
   // token address -> active chart timeframe
   activeTimeframes: Record<string, TimeframeKey>;
