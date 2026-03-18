@@ -28,16 +28,20 @@ export function useGlobalFeed(): void {
 
       // Fetch newest tokens to detect new_token and status changes
       api.getTokens({ sort: 'newest', limit: 5 }).then((resp) => {
-        const { tokens: storeTokens, updateTokenStatus } = useTokenStore.getState();
+        const { tokens: storeTokens, filter, updateTokenStatus } = useTokenStore.getState();
+        const hasActiveFilter = !!(filter.search || filter.status !== 'all');
         for (const apiToken of resp.tokens) {
           try {
             const mapped = mapApiTokenToToken(apiToken);
             const existing = storeTokens.find((t) => t.address === mapped.address);
             if (!existing) {
-              // New token — prepend to list
-              useTokenStore.setState((state) => ({
-                tokens: [mapped, ...state.tokens],
-              }));
+              // New token — prepend only when no search/status filter is active;
+              // TrenchesPage's own poll already handles filtered refreshes.
+              if (!hasActiveFilter) {
+                useTokenStore.setState((state) => ({
+                  tokens: [mapped, ...state.tokens],
+                }));
+              }
             } else if (existing.status !== mapped.status) {
               // Status changed (graduated, migrating, migrated)
               updateTokenStatus(mapped.address, mapped.status);
