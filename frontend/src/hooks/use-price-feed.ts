@@ -180,6 +180,7 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
 
     intervalRef.current = window.setInterval(() => {
       api.getTokenPrice(token.address).then((price) => {
+        if (cancelled) return;
         consecutiveFailures = 0;
         const newPrice = Number(price.currentPriceSats);
         lastSpotPriceRef.current = newPrice;

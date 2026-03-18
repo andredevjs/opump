@@ -1,6 +1,6 @@
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { getToken } from "./_shared/redis-queries.mts";
+import { getToken, getOHLCV } from "./_shared/redis-queries.mts";
 
 export default async (req: Request, context: Context) => {
   if (req.method === "OPTIONS") {
@@ -19,13 +19,25 @@ export default async (req: Request, context: Context) => {
       return error("Token not found", 404, "NotFound");
     }
 
+    let change24hBps = 0;
+    const currentPrice = Number(token.currentPriceSats);
+    if (currentPrice > 0) {
+      const candles = await getOHLCV(address, "1h", 25);
+      if (candles.length > 0) {
+        const oldPrice = candles[0].open;
+        if (oldPrice > 0) {
+          change24hBps = Math.round(((currentPrice - oldPrice) / oldPrice) * 10000);
+        }
+      }
+    }
+
     return json({
       currentPriceSats: token.currentPriceSats,
       virtualBtcReserve: token.virtualBtcReserve,
       virtualTokenSupply: token.virtualTokenSupply,
       realBtcReserve: token.realBtcReserve,
       isOptimistic: false,
-      change24hBps: 0,
+      change24hBps,
     });
   } catch (err) {
     return error(err instanceof Error ? err.message : "Internal error", 500, "InternalError");

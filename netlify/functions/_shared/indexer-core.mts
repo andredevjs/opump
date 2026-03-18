@@ -426,11 +426,13 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
       // Calculate 24h and total volume from trades
       const volume24h = await calculateVolume24h(redis, tokenAddress);
       const volumeTotal = await calculateVolumeTotal(redis, tokenAddress);
+      const tradeCount24h = await calculateTradeCount24h(redis, tokenAddress);
 
       const token = await getToken(tokenAddress);
       if (token) {
         await updateToken(tokenAddress, {
           tradeCount,
+          tradeCount24h,
           holderCount,
           volume24h,
           volumeTotal,
@@ -466,6 +468,17 @@ async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAd
   }
   console.log(`[Indexer] volume24h for ${tokenAddress}: ${totalSats} sats from ${txHashes.length} trades`);
   return totalSats.toString();
+}
+
+async function calculateTradeCount24h(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<number> {
+  const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
+  const txHashes: string[] = await redis.zrange(
+    `op:idx:trade:token:${tokenAddress}`,
+    oneDayAgoMs,
+    "+inf",
+    { byScore: true },
+  );
+  return txHashes.length;
 }
 
 async function calculateVolumeTotal(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<string> {

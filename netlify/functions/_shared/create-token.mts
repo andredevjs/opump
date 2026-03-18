@@ -97,12 +97,6 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     return error("deployTxHash is required and must be a valid transaction hash (64+ hex chars)", 400);
   }
 
-  // Rate-limit token creation per wallet (3 per hour)
-  const allowed = await checkCreateRateLimit(body.creatorAddress);
-  if (!allowed) {
-    return error("Token creation rate limit exceeded for this wallet. Max 3 per hour.", 429, "TooManyRequests");
-  }
-
   // On-chain verification
   let verifiedDeployBlock = 0;
   try {
@@ -125,6 +119,13 @@ export async function handleCreateToken(req: Request): Promise<Response> {
   } catch (verifyErr) {
     console.warn("[Tokens] On-chain verification failed:", verifyErr instanceof Error ? verifyErr.message : verifyErr);
     return error("On-chain verification unavailable. Try again later.", 503, "ServiceUnavailable");
+  }
+
+  // Rate-limit token creation per wallet (3 per hour)
+  // Placed after on-chain verification so invalid requests don't consume rate limit
+  const allowed = await checkCreateRateLimit(body.creatorAddress);
+  if (!allowed) {
+    return error("Token creation rate limit exceeded for this wallet. Max 3 per hour.", 429, "TooManyRequests");
   }
 
   // Check for duplicate

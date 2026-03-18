@@ -191,6 +191,7 @@ export async function waitForConfirmation(
   txHash: string,
   pollIntervalMs = 10_000,
   timeoutMs = 900_000,
+  signal?: AbortSignal,
 ): Promise<void> {
   const provider = getProvider();
   const start = Date.now();
@@ -199,6 +200,7 @@ export async function waitForConfirmation(
   await new Promise((r) => setTimeout(r, pollIntervalMs));
 
   while (Date.now() - start < timeoutMs) {
+    if (signal?.aborted) return;
     try {
       const receipt = await provider.getTransactionReceipt(txHash);
       if (receipt) return;

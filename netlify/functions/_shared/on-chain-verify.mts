@@ -53,6 +53,8 @@ export async function verifyTokenOnChain(
           error: `Creator address mismatch: deployer is ${deployerAddress}, but ${creatorAddress} was submitted`,
         };
       }
+    } else {
+      return { valid: false, error: "Cannot verify deployer: deployment transaction has no deployer or from field." };
     }
   } catch (err) {
     console.warn("[Verify] Deployer verification failed:", err instanceof Error ? err.message : err);

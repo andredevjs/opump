@@ -56,6 +56,9 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
     set({ isConnecting: true });
     if (_walletBridge) {
       _walletBridge();
+      setTimeout(() => {
+        if (get().isConnecting) set({ isConnecting: false });
+      }, 30_000);
     } else {
       console.error('[Wallet] No wallet bridge registered. Wrap app in WalletConnectProvider.');
       set({ isConnecting: false });
