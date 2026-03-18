@@ -14,8 +14,16 @@ const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
   { label: 'Active', value: 'active' },
   { label: 'Graduated', value: 'graduated' },
   { label: 'On DEX', value: 'migrated' },
-  { label: 'New', value: 'new' },
 ];
+
+const EMPTY_HINTS: Record<TokenStatus | 'all', string> = {
+  all: 'No tokens found. Try adjusting your search.',
+  active: 'No active tokens on the bonding curve right now.',
+  graduated: 'No tokens have graduated yet.',
+  migrated: 'No tokens have migrated to the DEX yet.',
+  migrating: 'No tokens are currently migrating.',
+  new: 'No new tokens awaiting their first trade.',
+};
 
 const SORT_OPTIONS: TokenSortOption[] = [
   { label: 'Volume', value: 'volume' },
@@ -115,8 +123,7 @@ export function TrenchesPage() {
       {/* Token display */}
       {tokens.length === 0 ? (
         <div className="text-center py-16 text-text-muted">
-          <p className="text-lg">No tokens found</p>
-          <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+          <p className="text-lg">{EMPTY_HINTS[filter.status]}</p>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
