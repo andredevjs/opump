@@ -1,6 +1,6 @@
 import type { Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { listTokens } from "./_shared/redis-queries.mts";
+import { listTokens, getOHLCV } from "./_shared/redis-queries.mts";
 import { handleCreateToken } from "./_shared/create-token.mts";
 
 export default async (req: Request, _context: Context) => {
@@ -29,8 +29,25 @@ async function handleList(req: Request): Promise<Response> {
   try {
     const result = await listTokens({ status, sort, order, page, limit, search });
 
+    const tokensWithChange = await Promise.all(
+      result.tokens.map(async (token) => {
+        let priceChange24hBps = 0;
+        const currentPrice = Number(token.currentPriceSats);
+        if (currentPrice > 0) {
+          const candles = await getOHLCV(token.contractAddress, "1h", 25);
+          if (candles.length > 0) {
+            const oldPrice = candles[0].open;
+            if (oldPrice > 0) {
+              priceChange24hBps = Math.round(((currentPrice - oldPrice) / oldPrice) * 10000);
+            }
+          }
+        }
+        return { ...token, priceChange24hBps };
+      })
+    );
+
     return json({
-      tokens: result.tokens,
+      tokens: tokensWithChange,
       pagination: {
         page,
         limit,
