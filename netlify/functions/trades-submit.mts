@@ -10,8 +10,9 @@
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { saveTrade, updateOHLCV, updateToken } from "./_shared/redis-queries.mts";
+import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
+import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR } from "./_shared/constants.mts";
 
 interface TradeSubmitBody {
   txHash: string;
@@ -82,10 +83,33 @@ export default async (req: Request, _context: Context) => {
     const timestampSec = Math.floor(Date.now() / 1000);
     await updateOHLCV(trade.tokenAddress, priceSats, volumeSats, timestampSec);
 
-    // Update token's currentPriceSats optimistically so the price and detail
-    // endpoints reflect the trade immediately (mempool-first). The indexer's
-    // syncTokenReserves will later overwrite with the exact on-chain price.
-    await updateToken(trade.tokenAddress, { currentPriceSats: body.pricePerToken });
+    // --- Optimistic token stats (mempool-first) ---
+    // Update price, volume, trade counts, holder count, and marketCap so the
+    // token list and detail pages reflect the trade immediately. The indexer
+    // recomputes all of these from source data on every run (~1 min), so any
+    // drift from approximation is short-lived.
+    const token = await getToken(trade.tokenAddress);
+    if (token) {
+      const btcAmountBig = BigInt(body.btcAmount);
+
+      // Approximate marketCap from optimistic price
+      const scaledPrice = BigInt(Math.round(Number(body.pricePerToken) * PRICE_DISPLAY_DIVISOR));
+      const marketCapSats = (scaledPrice * INITIAL_VIRTUAL_TOKEN_SUPPLY / PRICE_PRECISION).toString();
+
+      await updateToken(trade.tokenAddress, {
+        currentPriceSats: body.pricePerToken,
+        tradeCount: (token.tradeCount || 0) + 1,
+        tradeCount24h: (token.tradeCount24h || 0) + 1,
+        volume24h: (BigInt(token.volume24h || "0") + btcAmountBig).toString(),
+        volumeTotal: (BigInt(token.volumeTotal || "0") + btcAmountBig).toString(),
+        holderCount: await getHolderCount(trade.tokenAddress),
+        marketCapSats,
+        status: token.status,
+      });
+    } else {
+      // Fallback: at minimum update the price
+      await updateToken(trade.tokenAddress, { currentPriceSats: body.pricePerToken });
+    }
 
     return json({ ok: true, txHash: body.txHash });
   } catch (err) {
