@@ -10,7 +10,7 @@
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { saveTrade, updateOHLCV } from "./_shared/redis-queries.mts";
+import { saveTrade, updateOHLCV, updateToken } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
 
 interface TradeSubmitBody {
@@ -81,6 +81,11 @@ export default async (req: Request, _context: Context) => {
     const volumeSats = Number(body.btcAmount);
     const timestampSec = Math.floor(Date.now() / 1000);
     await updateOHLCV(trade.tokenAddress, priceSats, volumeSats, timestampSec);
+
+    // Update token's currentPriceSats optimistically so the price and detail
+    // endpoints reflect the trade immediately (mempool-first). The indexer's
+    // syncTokenReserves will later overwrite with the exact on-chain price.
+    await updateToken(trade.tokenAddress, { currentPriceSats: body.pricePerToken });
 
     return json({ ok: true, txHash: body.txHash });
   } catch (err) {
