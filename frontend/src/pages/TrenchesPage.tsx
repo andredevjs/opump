@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Search, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -28,12 +28,25 @@ export function TrenchesPage() {
   const { tokens, filter, setFilter, setPage, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
 
-  // Fetch tokens on mount + periodic refresh (fallback for WS gaps)
-  // The global feed (useGlobalFeed in RootLayout) already patches token store
-  // on token_activity and new_token events, so the list re-renders reactively.
+  // Local search input state — debounced before hitting the store/API
+  const [searchInput, setSearchInput] = useState(filter.search);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setFilter({ search: value });
+    }, 300);
+  }, [setFilter]);
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  // Fetch tokens on mount + silent periodic refresh
   useEffect(() => {
     fetchTokens();
-    const id = setInterval(fetchTokens, 5_000);
+    const id = setInterval(() => fetchTokens(true), 5_000);
     return () => clearInterval(id);
   }, [fetchTokens]);
 
@@ -49,8 +62,8 @@ export function TrenchesPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <Input
             placeholder="Search tokens..."
-            value={filter.search}
-            onChange={(e) => setFilter({ search: e.target.value })}
+            value={searchInput}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>

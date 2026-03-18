@@ -26,7 +26,7 @@ interface TokenStore {
   updateTokenStats: (address: string, stats: TokenStats) => void;
   updateTokenStatus: (address: string, status: TokenStatus) => void;
   getToken: (address: string) => Token | undefined;
-  fetchTokens: () => Promise<void>;
+  fetchTokens: (silent?: boolean) => Promise<void>;
   fetchToken: (address: string) => Promise<Token | null>;
 }
 
@@ -106,9 +106,9 @@ export const useTokenStore = create<TokenStore>((set, get) => {
 
   getToken: (address) => get().tokens.find((t) => t.address === address),
 
-  fetchTokens: async () => {
+  fetchTokens: async (silent = false) => {
     const gen = ++_fetchGeneration;
-    set({ loading: true, error: null });
+    if (!silent) set({ loading: true, error: null });
     try {
       const { filter, pagination } = get();
       const sortMap: Record<string, 'volume24h' | 'marketCap' | 'price' | 'newest'> = {
