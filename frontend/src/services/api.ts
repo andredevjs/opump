@@ -8,10 +8,6 @@ import type {
   TokenListResponse,
   TokenDetailResponse,
   TradeListResponse,
-  SimulateBuyRequest,
-  SimulateBuyResponse,
-  SimulateSellRequest,
-  SimulateSellResponse,
   PriceResponse,
   StatsResponse,
   CreateTokenRequest,
@@ -109,21 +105,6 @@ export function getOHLCV(
   return request<OHLCVResponse>(
     `/v1/tokens/${encodeURIComponent(address)}/ohlcv?timeframe=${timeframe}&limit=${limit}`,
   );
-}
-
-
-export function simulateBuy(body: SimulateBuyRequest): Promise<SimulateBuyResponse> {
-  return request<SimulateBuyResponse>('/v1/simulate/buy', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
-
-export function simulateSell(body: SimulateSellRequest): Promise<SimulateSellResponse> {
-  return request<SimulateSellResponse>('/v1/simulate/sell', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
 }
 
 

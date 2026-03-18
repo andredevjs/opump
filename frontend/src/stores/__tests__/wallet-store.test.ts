@@ -14,22 +14,6 @@ function resetStore() {
 describe('wallet-store', () => {
   beforeEach(resetStore);
 
-  describe('setAddress', () => {
-    it('updates the address', () => {
-      useWalletStore.getState().setAddress('bc1qnew');
-
-      expect(useWalletStore.getState().address).toBe('bc1qnew');
-    });
-  });
-
-  describe('setBalance', () => {
-    it('sets absolute balance', () => {
-      useWalletStore.getState().setBalance(999_999);
-
-      expect(useWalletStore.getState().balanceSats).toBe(999_999);
-    });
-  });
-
   describe('disconnect', () => {
     it('resets all wallet state', () => {
       useWalletStore.setState({

@@ -7,7 +7,6 @@ interface LaunchStore {
   deployPhases: DeployPhase[];
   isDeploying: boolean;
   deployedAddress: string | null;
-  setStep: (step: LaunchStep) => void;
   nextStep: () => void;
   prevStep: () => void;
   updateForm: (data: Partial<LaunchFormData>) => void;
@@ -55,7 +54,6 @@ export const useLaunchStore = create<LaunchStore>((set) => ({
   isDeploying: false,
   deployedAddress: null,
 
-  setStep: (step) => set({ currentStep: step }),
   nextStep: () => set((s) => {
     const idx = STEPS.indexOf(s.currentStep);
     return { currentStep: STEPS[Math.min(STEPS.length - 1, idx + 1)] };

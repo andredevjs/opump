@@ -19,9 +19,7 @@ interface PriceStore {
   // token address -> active chart timeframe
   activeTimeframes: Record<string, TimeframeKey>;
   setCandles: (address: string, candles: OHLCVCandle[]) => void;
-  clearCandles: (address: string) => void;
   setLoading: (address: string, loading: boolean) => void;
-  appendCandle: (address: string, candle: OHLCVCandle) => void;
   updateLastCandle: (address: string, candle: OHLCVCandle) => void;
   setLivePrice: (address: string, price: Partial<LivePrice>) => void;
   setActiveTimeframe: (address: string, timeframe: TimeframeKey) => void;
@@ -40,26 +38,10 @@ export const usePriceStore = create<PriceStore>((set) => ({
       candles: { ...state.candles, [address]: candles.slice(-MAX_CANDLES) },
     })),
 
-  clearCandles: (address) =>
-    set((state) => ({
-      candles: { ...state.candles, [address]: [] },
-    })),
-
   setLoading: (address, loading) =>
     set((state) => ({
       loading: { ...state.loading, [address]: loading },
     })),
-
-  appendCandle: (address, candle) =>
-    set((state) => {
-      const updated = [...(state.candles[address] ?? []), candle];
-      return {
-        candles: {
-          ...state.candles,
-          [address]: updated.length > MAX_CANDLES ? updated.slice(-MAX_CANDLES) : updated,
-        },
-      };
-    }),
 
   updateLastCandle: (address, candle) =>
     set((state) => {

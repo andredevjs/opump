@@ -35,8 +35,6 @@ interface WalletStore {
   isConnecting: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
-  setAddress: (address: string) => void;
-  setBalance: (sats: number) => void;
   /** Sync wallet state from WalletConnectProvider context */
   syncWallet: (data: WalletSyncData) => void;
 }
@@ -89,6 +87,4 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
     });
   },
 
-  setAddress: (address) => set({ address }),
-  setBalance: (sats) => set({ balanceSats: sats }),
 }));

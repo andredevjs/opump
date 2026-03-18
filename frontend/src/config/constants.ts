@@ -3,14 +3,7 @@ import BigNumber from 'bignumber.js';
 BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_DOWN });
 
 export const SATS_PER_BTC = 100_000_000;
-export const TOKEN_DECIMALS = 8;
-export const TOKEN_UNITS_PER_TOKEN = 10 ** TOKEN_DECIMALS; // 100_000_000
-
-// Price precision: 10^18 for sub-sat accuracy (matches contract PRICE_PRECISION)
-export const PRICE_PRECISION = new BigNumber('1000000000000000000'); // 10^18
-
-// Divisor to convert PRICE_PRECISION-scaled values to sats per whole token
-export const PRICE_DISPLAY_DIVISOR = 1e10; // PRICE_PRECISION / TOKEN_UNITS_PER_TOKEN
+export const TOKEN_UNITS_PER_TOKEN = 10 ** 8; // 100_000_000
 
 // Bonding curve initial virtual reserves
 // virtualBtc is small relative to graduation threshold for ~100x price curve
@@ -29,13 +22,8 @@ export const MINTER_FEE_PERCENT = 0.25;     //  25 bps
 
 // Launch limits
 export const MAX_CREATOR_ALLOCATION_PERCENT = 10;
-export const MIN_AIRDROP_PERCENT = 0.1;
-export const MAX_AIRDROP_PERCENT = 20;
 export const MAX_BUY_TAX_PERCENT = 3;
 export const MAX_SELL_TAX_PERCENT = 5;
-
-// Minter reward
-export const MINTER_HOLD_BLOCKS = 4320; // ~30 days
 
 // Factory / vault address — single source of truth
 export const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';
@@ -65,6 +53,4 @@ export const CHART_THEME = {
 } as const;
 
 // UI
-export const TOKENS_PER_PAGE = 12;
-export const TRADES_PER_PAGE = 20;
 export const PRICE_UPDATE_INTERVAL_MS = 2500;
