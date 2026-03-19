@@ -29,7 +29,7 @@ export function TopTokens() {
   return (
     <section className="max-w-7xl mx-auto px-4 py-12">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-text-primary">Trending Tokens</h2>
+        <h2 className="text-2xl font-bold text-text-primary">Trending OP20 Tokens</h2>
         <Link to="/trenches">
           <Button variant="ghost" size="sm">
             View All <ArrowRight size={14} className="ml-1" />

@@ -41,7 +41,7 @@ export function PlatformStats() {
   }, [refresh]);
 
   const items = [
-    { label: 'Tokens Launched', value: formatNumber(stats.totalTokens) },
+    { label: 'OP20 Tokens Launched', value: formatNumber(stats.totalTokens) },
     { label: 'Graduated to DEX', value: formatNumber(stats.totalGraduated) },
     { label: 'Total Volume', value: formatUsd(stats.totalVolumeSats, btcPrice) },
     { label: 'Total Trades', value: formatNumber(stats.totalTrades) },

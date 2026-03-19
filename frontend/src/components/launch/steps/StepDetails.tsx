@@ -55,8 +55,8 @@ export function StepDetails() {
   return (
     <div className="space-y-6 max-w-md mx-auto">
       <div>
-        <h3 className="text-lg font-semibold text-text-primary mb-1">Token Details</h3>
-        <p className="text-sm text-text-secondary">Name, symbol, and description for your token.</p>
+        <h3 className="text-lg font-semibold text-text-primary mb-1">OP20 Token Details</h3>
+        <p className="text-sm text-text-secondary">Name, symbol, and description for your OP20 token.</p>
       </div>
 
       <div className="space-y-4">

@@ -28,7 +28,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
         <div className="flex items-center gap-2 p-3 rounded-lg bg-elevated">
           <Coins size={18} className="text-accent" />
           <div>
-            <p className="text-xs text-text-muted">Tokens Launched</p>
+            <p className="text-xs text-text-muted">OP20 Tokens Launched</p>
             <p className="font-mono font-semibold text-text-primary">{formatNumber(profile.tokensLaunched)}</p>
           </div>
         </div>

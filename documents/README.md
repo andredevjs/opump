@@ -1,12 +1,12 @@
 # OPLaunch
 
-A Bitcoin-native token launchpad built on [OPNet](https://opnet.org), inspired by platforms like [radFi](https://app.radfi.co/). OPLaunch enables zero-friction token creation with bonding curve mechanics, community airdrops, creator monetization, and automatic graduation to DEX liquidity.
+A Bitcoin-native OP20 token launchpad built on [OPNet](https://opnet.org), inspired by platforms like [radFi](https://app.radfi.co/). OPLaunch enables zero-friction OP20 token creation with bonding curve mechanics, community airdrops, creator monetization, and automatic graduation to DEX liquidity.
 
 ## How It Works
 
-1. **Launch** — Creators deploy a token through a guided wizard. Configure name, symbol, socials, creator allocation (0–10%), community airdrops, and flywheel tax settings.
-2. **Trade** — Tokens are instantly tradeable on an automated bonding curve (constant-product AMM, `x * y = k`). No initial liquidity needed.
-3. **Graduate** — When a token's real BTC reserve hits **6.9M sats (~$69k)**, it graduates and migrates liquidity to MotoSwap DEX.
+1. **Launch** — Creators deploy an OP20 token through a guided wizard. Configure name, symbol, socials, creator allocation (0–10%), community airdrops, and flywheel tax settings.
+2. **Trade** — OP20 tokens are instantly tradeable on an automated bonding curve (constant-product AMM, `x * y = k`). No initial liquidity needed.
+3. **Graduate** — When an OP20 token's real BTC reserve hits **6.9M sats (~$69k)**, it graduates and migrates liquidity to MotoSwap DEX.
 
 ## Architecture
 
@@ -23,11 +23,11 @@ React 18 + TypeScript + Vite + Tailwind CSS.
 
 | Page | Route | Description |
 |------|-------|-------------|
-| Home | `/` | Landing page with platform stats and recent tokens |
-| Launch | `/launch` | 6-step token creation wizard |
-| Trenches | `/trenches` | Token discovery with search, filters, sorting |
-| Token | `/token/:addr` | Token detail — chart, trades, buy/sell panel |
-| Profile | `/profile/:addr` | Creator profile — launched tokens, holdings |
+| Home | `/` | Landing page with platform stats and recent OP20 tokens |
+| Launch | `/launch` | 6-step OP20 token creation wizard |
+| Trenches | `/trenches` | OP20 token discovery with search, filters, sorting |
+| Token | `/token/:addr` | OP20 token detail — chart, trades, buy/sell panel |
+| Profile | `/profile/:addr` | Creator profile — launched OP20 tokens, holdings |
 
 **Key features:**
 - OP_WALLET integration for Bitcoin signing
@@ -109,9 +109,9 @@ Sell: btcOut    = virtualBtcReserve  - (k / (virtualTokenSupply + tokensIn))
 
 ## Launch Features
 
-- **Community Airdrops** — Distribute tokens to predefined communities ($MOTO holders, MotoCAT ordinal holders) or custom address lists (0.1–20% allocation)
+- **Community Airdrops** — Distribute OP20 tokens to predefined communities ($MOTO holders, MotoCAT ordinal holders) or custom address lists (0.1–20% allocation)
 - **Flywheel Tax** — Configurable buy (0–3%) and sell (0–5%) fees routed to burn, community pool, or creator wallet
-- **Creator Allocation** — Reserve 0–10% of token supply for the creator
+- **Creator Allocation** — Reserve 0–10% of OP20 token supply for the creator
 - **Minter Rewards** — Early buyers accumulate shares in a fee pool, claimable after 30-day hold
 
 ## Getting Started
