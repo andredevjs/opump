@@ -3,7 +3,8 @@
  */
 
 import { json, error } from "./response.mts";
-import { getToken, saveToken } from "./redis-queries.mts";
+import { getToken, saveToken, TOKEN_HOLDERS_SET, TOKEN_HOLDER_BALANCES } from "./redis-queries.mts";
+import { getRedis } from "./redis.mts";
 import { checkCreateRateLimit } from "./rate-limit.mts";
 import { verifyTokenOnChain } from "./on-chain-verify.mts";
 import type { CreateTokenRequest, TokenDocument } from "./constants.mts";
@@ -172,5 +173,21 @@ export async function handleCreateToken(req: Request): Promise<Response> {
   };
 
   await saveToken(tokenDoc);
+
+  // Seed creator allocation balance if configured
+  const allocationBps = tokenDoc.config.creatorAllocationBps;
+  if (allocationBps > 0) {
+    const creatorTokens = (INITIAL_VIRTUAL_TOKEN_SUPPLY * BigInt(allocationBps)) / 10000n;
+    const redis = getRedis();
+    const pipe = redis.pipeline();
+    pipe.zadd(TOKEN_HOLDER_BALANCES(tokenDoc.contractAddress), {
+      score: Number(creatorTokens),
+      member: tokenDoc.creatorAddress,
+    });
+    pipe.sadd(TOKEN_HOLDERS_SET(tokenDoc.contractAddress), tokenDoc.creatorAddress);
+    pipe.hset(`op:token:${tokenDoc.contractAddress}`, { holderCount: "1" });
+    await pipe.exec();
+  }
+
   return json(tokenDoc, 201);
 }

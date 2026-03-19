@@ -153,6 +153,19 @@ export interface UploadImageResponse {
   url: string;
 }
 
+// Holder endpoints
+export interface HolderEntry {
+  address: string;
+  balance: string;
+  percent: number;
+}
+
+export interface HolderListResponse {
+  holders: HolderEntry[];
+  holderCount: number;
+  circulatingSupply: string;
+}
+
 // Error response
 export interface ApiErrorResponse {
   error: string;

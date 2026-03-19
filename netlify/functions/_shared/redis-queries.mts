@@ -20,6 +20,7 @@ const TOKEN_SEARCH_INDEX = "op:idx:token:search";
 const TRADE_TOKEN_INDEX = (tokenAddr: string) => `op:idx:trade:token:${tokenAddr}`;
 const TRADE_TRADER_INDEX = (traderAddr: string) => `op:idx:trade:trader:${traderAddr}`;
 const TOKEN_HOLDERS_SET = (tokenAddr: string) => `op:holders:${tokenAddr}`;
+const TOKEN_HOLDER_BALANCES = (tokenAddr: string) => `op:holders:bal:${tokenAddr}`;
 
 const STATS_KEY = "op:stats";
 const INDEXER_LAST_BLOCK = "op:indexer:lastBlock";
@@ -305,11 +306,13 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
   pipe.hset(key, flat);
   pipe.zadd(TRADE_TOKEN_INDEX(trade.tokenAddress), { score: createdAtMs, member: trade._id });
   pipe.zadd(TRADE_TRADER_INDEX(trade.traderAddress), { score: createdAtMs, member: trade._id });
-  // Track unique holders (buyers) per token
-  if (trade.type === "buy") {
-    pipe.sadd(TOKEN_HOLDERS_SET(trade.tokenAddress), trade.traderAddress);
-  }
   await pipe.exec();
+
+  // Update per-holder balance tracking (handles both buy and sell)
+  if (isNew) {
+    await updateHolderBalance(trade.tokenAddress, trade.traderAddress, trade.tokenAmount, trade.type);
+  }
+
   return { isNew };
 }
 
@@ -383,6 +386,56 @@ export async function findAndRemoveOrphanedPendingTrade(
 export async function getHolderCount(tokenAddress: string): Promise<number> {
   const redis = getRedis();
   return redis.scard(TOKEN_HOLDERS_SET(tokenAddress));
+}
+
+/**
+ * Update a holder's token balance in the sorted set.
+ * On buy: increment balance. On sell: decrement and remove if zero.
+ */
+export async function updateHolderBalance(
+  tokenAddress: string,
+  traderAddress: string,
+  tokenAmount: string,
+  type: "buy" | "sell",
+): Promise<void> {
+  const redis = getRedis();
+  const balKey = TOKEN_HOLDER_BALANCES(tokenAddress);
+  const amount = Number(tokenAmount);
+
+  if (type === "buy") {
+    await redis.zincrby(balKey, amount, traderAddress);
+    await redis.sadd(TOKEN_HOLDERS_SET(tokenAddress), traderAddress);
+  } else {
+    const newScore = await redis.zincrby(balKey, -amount, traderAddress);
+    if (newScore <= 0) {
+      await redis.zrem(balKey, traderAddress);
+      await redis.srem(TOKEN_HOLDERS_SET(tokenAddress), traderAddress);
+    }
+  }
+}
+
+/**
+ * Get the top holders for a token, ordered by balance descending.
+ */
+export async function getTopHolders(
+  tokenAddress: string,
+  limit = 10,
+): Promise<{ address: string; balance: string }[]> {
+  const redis = getRedis();
+  const balKey = TOKEN_HOLDER_BALANCES(tokenAddress);
+
+  const results: string[] = await redis.zrange(balKey, 0, limit - 1, { rev: true, withScores: true });
+
+  // Results come as [member, score, member, score, ...]
+  const holders: { address: string; balance: string }[] = [];
+  for (let i = 0; i < results.length; i += 2) {
+    const address = results[i];
+    const balance = results[i + 1];
+    if (Number(balance) > 0) {
+      holders.push({ address, balance: String(Math.round(Number(balance))) });
+    }
+  }
+  return holders;
 }
 
 /**
@@ -589,6 +642,8 @@ export {
   TOKEN_KEY,
   TRADE_KEY,
   TOKEN_INDEX,
+  TOKEN_HOLDERS_SET,
+  TOKEN_HOLDER_BALANCES,
   STATS_KEY,
   INDEXER_LAST_BLOCK,
 };

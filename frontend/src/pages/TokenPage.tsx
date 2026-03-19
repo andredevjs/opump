@@ -11,6 +11,7 @@ import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { BondingCurveVisual } from '@/components/shared/BondingCurveVisual';
 import { AddressDisplay } from '@/components/shared/AddressDisplay';
+import { TopHolders } from '@/components/token/TopHolders';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -182,6 +183,9 @@ export function TokenPage() {
                         </div>
                       </>
                     )}
+                  </div>
+                  <div className="border-t border-border pt-3">
+                    <TopHolders tokenAddress={token.address} />
                   </div>
                 </div>
               </TabsContent>
