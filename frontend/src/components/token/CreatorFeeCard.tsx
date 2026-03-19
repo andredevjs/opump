@@ -3,7 +3,8 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Coins } from 'lucide-react';
-import { formatBtc } from '@/lib/format';
+import { formatUsd } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 
 interface CreatorFeeCardProps {
   tokenAddress: string;
@@ -18,6 +19,7 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
   // W10: error state for data loading failures
   const [error, setError] = useState<string | null>(null);
 
+  const { btcPrice } = useBtcPrice();
   const isCreator = connected && walletAddress === creatorAddress;
 
   // Fetch on-chain creator fee pool instead of iterating trades
@@ -85,7 +87,7 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
         <p className="text-sm font-mono text-text-primary mb-3">
           {claimableSats === null
             ? 'Loading...'
-            : `${formatBtc(claimableSats)} available`}
+            : `${formatUsd(claimableSats, btcPrice)} available`}
         </p>
       )}
       {nothingToClaim && (

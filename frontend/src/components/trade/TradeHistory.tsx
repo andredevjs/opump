@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Token } from '@/types/token';
 import type { Trade } from '@/types/trade';
-import { formatBtc, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
+import { formatUsd, formatTokenAmount, shortenAddress, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import * as api from '@/services/api';
 
 const POLL_INTERVAL_MS = 15_000;
@@ -17,6 +18,7 @@ interface TradeHistoryProps {
 export function TradeHistory({ token }: TradeHistoryProps) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const tradeVersion = useUIStore((s) => s.tradeVersion);
+  const { btcPrice } = useBtcPrice();
 
   const fetchTrades = useCallback(() => {
     api.getTrades(token.address, 1, 50).then((res) => {
@@ -60,7 +62,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
           <tr className="text-text-muted border-b border-border">
             <th scope="col" className="text-left py-2 px-2">Type</th>
             <th scope="col" className="text-right py-2 px-2">Amount</th>
-            <th scope="col" className="text-right py-2 px-2">BTC</th>
+            <th scope="col" className="text-right py-2 px-2">Value</th>
             <th scope="col" className="text-right py-2 px-2 hidden sm:table-cell">Trader</th>
             <th scope="col" className="text-right py-2 px-2">Time</th>
           </tr>
@@ -85,7 +87,7 @@ export function TradeHistory({ token }: TradeHistoryProps) {
                 {formatTokenAmount(trade.tokenAmount)}
               </td>
               <td className="text-right py-2 px-2 font-mono text-text-primary">
-                {formatBtc(trade.btcAmount)}
+                {formatUsd(trade.btcAmount, btcPrice)}
               </td>
               <td className="text-right py-2 px-2 font-mono text-text-muted hidden sm:table-cell">
                 {shortenAddress(trade.traderAddress, 4)}

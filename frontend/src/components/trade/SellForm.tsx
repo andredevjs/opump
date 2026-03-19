@@ -8,7 +8,8 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { useUIStore } from '@/stores/ui-store';
 import { saveKnownAddress } from '@/lib/known-tokens';
 import BigNumber from 'bignumber.js';
-import { formatBtc, formatTokenAmount, tokensToUnits } from '@/lib/format';
+import { formatUsd, formatTokenAmount, tokensToUnits } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
 
 const QUICK_PERCENTS = [25, 50, 75, 100];
@@ -23,6 +24,7 @@ export function SellForm({ token }: SellFormProps) {
   const [holding, setHolding] = useState('0');
   const { simulateSell, executeSell, executing } = useTradeSimulation(token);
   const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { btcPrice } = useBtcPrice();
   const tradeVersion = useUIStore((s) => s.tradeVersion);
 
   // Fetch on-chain balance in real mode
@@ -89,13 +91,13 @@ export function SellForm({ token }: SellFormProps) {
         <div className="space-y-3 p-3 rounded-lg bg-background">
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">You receive</span>
-            <span className="font-mono text-accent">{formatBtc(simulation.outputAmount)}</span>
+            <span className="font-mono text-accent">{formatUsd(simulation.outputAmount, btcPrice)}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-text-secondary">Price impact</span>
             <span className="font-mono text-text-primary">{Math.abs(simulation.priceImpactPercent).toFixed(2)}%</span>
           </div>
-          <FeeBreakdown totalFeeSats={simulation.fee} />
+          <FeeBreakdown totalFeeSats={simulation.fee} btcPrice={btcPrice} />
         </div>
       )}
 

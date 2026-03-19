@@ -3,7 +3,8 @@ import { useWalletStore } from '@/stores/wallet-store';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Gift } from 'lucide-react';
-import { formatBtc, formatTokenAmount } from '@/lib/format';
+import { formatUsd, formatTokenAmount } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 
 interface MinterRewardCardProps {
   tokenAddress: string;
@@ -11,6 +12,7 @@ interface MinterRewardCardProps {
 
 export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
   const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { btcPrice } = useBtcPrice();
   const [claiming, setClaiming] = useState(false);
   const [minterInfo, setMinterInfo] = useState<{ shares: string; eligible: boolean } | null>(null);
   const [minterPoolSats, setMinterPoolSats] = useState<number | null>(null);
@@ -95,7 +97,7 @@ export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
       {error && <p className="text-xs text-red-400 mb-2">{error}</p>}
       {minterPoolSats !== null && (
         <p className="text-sm font-mono text-text-primary mb-2">
-          Pool: {formatBtc(minterPoolSats)}
+          Pool: {formatUsd(minterPoolSats, btcPrice)}
         </p>
       )}
       {/* W14: Use formatTokenAmount instead of parseInt for potentially large u256 shares */}

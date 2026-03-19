@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
-import { formatBtc, formatNumber } from '@/lib/format';
+import { formatUsd, formatNumber } from '@/lib/format';
 import { usePlatformStatsStore } from '@/stores/platform-stats-store';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import * as api from '@/services/api';
 
 const POLL_INTERVAL_MS = 5_000;
@@ -18,6 +19,7 @@ export function PlatformStats() {
   const globalStats = usePlatformStatsStore((s) => s.stats);
 
   const stats = globalStats ?? polledStats;
+  const { btcPrice } = useBtcPrice();
 
   const refresh = useCallback(() => {
     api.getStats().then((s) => {
@@ -41,7 +43,7 @@ export function PlatformStats() {
   const items = [
     { label: 'Tokens Launched', value: formatNumber(stats.totalTokens) },
     { label: 'Graduated to DEX', value: formatNumber(stats.totalGraduated) },
-    { label: 'Total Volume', value: formatBtc(stats.totalVolumeSats) },
+    { label: 'Total Volume', value: formatUsd(stats.totalVolumeSats, btcPrice) },
     { label: 'Total Trades', value: formatNumber(stats.totalTrades) },
   ];
 

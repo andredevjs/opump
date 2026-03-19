@@ -4,7 +4,8 @@ import { TokenPrice } from './TokenPrice';
 import { TokenBadge } from './TokenBadge';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import type { Token } from '@/types/token';
-import { formatBtc, formatNumber } from '@/lib/format';
+import { formatUsd, formatNumber } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { cn } from '@/lib/cn';
 
 interface TokenCardProps {
@@ -14,6 +15,7 @@ interface TokenCardProps {
 
 export function TokenCard({ token, compact }: TokenCardProps) {
   const navigate = useNavigate();
+  const { btcPrice } = useBtcPrice();
 
   return (
     <Card
@@ -43,7 +45,7 @@ export function TokenCard({ token, compact }: TokenCardProps) {
             <span className="text-xs text-text-muted font-mono">${token.symbol}</span>
             <TokenBadge status={token.status} />
           </div>
-          <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} size="sm" />
+          <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} btcPrice={btcPrice} size="sm" />
         </div>
       </div>
 
@@ -52,11 +54,11 @@ export function TokenCard({ token, compact }: TokenCardProps) {
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
             <div>
               <span className="text-text-muted">Vol 24h</span>
-              <p className="font-mono text-text-secondary">{formatBtc(token.volume24hSats)}</p>
+              <p className="font-mono text-text-secondary">{formatUsd(token.volume24hSats, btcPrice)}</p>
             </div>
             <div>
               <span className="text-text-muted">MCap</span>
-              <p className="font-mono text-text-secondary">{formatBtc(token.marketCapSats)}</p>
+              <p className="font-mono text-text-secondary">{formatUsd(token.marketCapSats, btcPrice)}</p>
             </div>
             <div>
               <span className="text-text-muted">Holders</span>

@@ -1,15 +1,16 @@
 import { cn } from '@/lib/cn';
-import { formatBtc } from '@/lib/format';
+import { formatUsd } from '@/lib/format';
 import { PLATFORM_FEE_PERCENT, CREATOR_FEE_PERCENT, MINTER_FEE_PERCENT, TOTAL_FEE_PERCENT } from '@/config/constants';
 
 interface FeeBreakdownProps {
   totalFeeSats: number;
+  btcPrice: number;
   flywheelTaxSats?: number;
   flywheelDestination?: string;
   className?: string;
 }
 
-export function FeeBreakdown({ totalFeeSats, flywheelTaxSats, flywheelDestination, className }: FeeBreakdownProps) {
+export function FeeBreakdown({ totalFeeSats, btcPrice, flywheelTaxSats, flywheelDestination, className }: FeeBreakdownProps) {
   const platformFee = Math.floor(totalFeeSats * (PLATFORM_FEE_PERCENT / TOTAL_FEE_PERCENT));
   const creatorFee = Math.floor(totalFeeSats * (CREATOR_FEE_PERCENT / TOTAL_FEE_PERCENT));
   // Derive minter fee as remainder to ensure sub-fees sum to total
@@ -19,25 +20,25 @@ export function FeeBreakdown({ totalFeeSats, flywheelTaxSats, flywheelDestinatio
     <div className={cn('space-y-1 text-xs', className)}>
       <div className="flex justify-between text-text-secondary">
         <span>Platform ({PLATFORM_FEE_PERCENT}%)</span>
-        <span className="font-mono">{formatBtc(platformFee)}</span>
+        <span className="font-mono">{formatUsd(platformFee, btcPrice)}</span>
       </div>
       <div className="flex justify-between text-text-secondary">
         <span>Creator ({CREATOR_FEE_PERCENT}%)</span>
-        <span className="font-mono">{formatBtc(creatorFee)}</span>
+        <span className="font-mono">{formatUsd(creatorFee, btcPrice)}</span>
       </div>
       <div className="flex justify-between text-text-secondary">
         <span>Minter Pool ({MINTER_FEE_PERCENT}%)</span>
-        <span className="font-mono">{formatBtc(minterFee)}</span>
+        <span className="font-mono">{formatUsd(minterFee, btcPrice)}</span>
       </div>
       {flywheelTaxSats != null && flywheelTaxSats > 0 && (
         <div className="flex justify-between text-text-secondary">
           <span>Flywheel ({flywheelDestination || 'burn'})</span>
-          <span className="font-mono">{formatBtc(flywheelTaxSats)}</span>
+          <span className="font-mono">{formatUsd(flywheelTaxSats, btcPrice)}</span>
         </div>
       )}
       <div className="flex justify-between text-text-primary font-medium border-t border-border pt-1">
         <span>Total Fee</span>
-        <span className="font-mono">{formatBtc(totalFeeSats + (flywheelTaxSats ?? 0))}</span>
+        <span className="font-mono">{formatUsd(totalFeeSats + (flywheelTaxSats ?? 0), btcPrice)}</span>
       </div>
     </div>
   );

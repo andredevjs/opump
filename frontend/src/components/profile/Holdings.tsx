@@ -6,7 +6,8 @@ import { useTokenStore } from '@/stores/token-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useUIStore } from '@/stores/ui-store';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
-import { formatTokenAmount, formatBtc } from '@/lib/format';
+import { formatTokenAmount, formatUsd } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { Card } from '@/components/ui/Card';
 
 export function Holdings() {
@@ -14,6 +15,7 @@ export function Holdings() {
   const [holdings, setHoldings] = useState<Record<string, string>>({});
   const getToken = useTokenStore((s) => s.getToken);
   const { connected, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { btcPrice } = useBtcPrice();
   const tradeVersion = useUIStore((s) => s.tradeVersion);
 
   // Refresh all known holdings from on-chain
@@ -70,7 +72,7 @@ export function Holdings() {
             </div>
             <div className="text-right">
               <p className="font-mono text-text-primary">{formatTokenAmount(units)}</p>
-              <p className="text-xs font-mono text-text-secondary">{formatBtc(valueSats)}</p>
+              <p className="text-xs font-mono text-text-secondary">{formatUsd(valueSats, btcPrice)}</p>
             </div>
           </Card>
         );
