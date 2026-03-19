@@ -22,34 +22,39 @@ export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
     if (!connected || !walletAddress || !hashedMLDSAKey) return;
     setError(null);
     (async () => {
-      const { getLaunchTokenContract } = await import('@/services/contract');
-      const { Address } = await import('@btc-vision/transaction');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
-
-      // Fetch minter info and fee pool independently so one failure doesn't block the other
       try {
-        const result = await contract.getMinterInfo(addr);
-        if (result.revert) {
-          setError(`Contract reverted: ${result.revert}`);
-        } else {
-          setMinterInfo({
-            shares: String(result.properties.shares ?? '0'),
-            eligible: Boolean(result.properties.eligible),
-          });
+        const { getLaunchTokenContract } = await import('@/services/contract');
+        const { Address } = await import('@btc-vision/transaction');
+        const contract = getLaunchTokenContract(tokenAddress);
+        const addr = Address.fromString(hashedMLDSAKey, publicKey ?? undefined);
+
+        // Fetch minter info and fee pool independently so one failure doesn't block the other
+        try {
+          const result = await contract.getMinterInfo(addr);
+          if (result.revert) {
+            setError(`Contract reverted: ${result.revert}`);
+          } else {
+            setMinterInfo({
+              shares: String(result.properties.shares ?? '0'),
+              eligible: Boolean(result.properties.eligible),
+            });
+          }
+        } catch (err) {
+          console.warn('[MinterRewardCard] getMinterInfo failed:', err);
+          setError(err instanceof Error ? err.message : 'Failed to load minter data');
+        }
+
+        try {
+          const poolResult = await contract.getFeePools();
+          if (!poolResult.revert) {
+            setMinterPoolSats(Number(poolResult.properties.minterFees));
+          }
+        } catch (err) {
+          console.warn('[MinterRewardCard] getFeePools failed:', err);
         }
       } catch (err) {
-        console.warn('[MinterRewardCard] getMinterInfo failed:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load minter data');
-      }
-
-      try {
-        const poolResult = await contract.getFeePools();
-        if (!poolResult.revert) {
-          setMinterPoolSats(Number(poolResult.properties.minterFees));
-        }
-      } catch (err) {
-        console.warn('[MinterRewardCard] getFeePools failed:', err);
+        console.warn('[MinterRewardCard] setup failed:', err);
+        setError(err instanceof Error ? err.message : 'Failed to initialize minter data');
       }
     })();
   }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
