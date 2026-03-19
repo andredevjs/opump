@@ -17,6 +17,7 @@ import type {
   OHLCVResponse,
   UploadImageRequest,
   UploadImageResponse,
+  HolderListResponse,
 } from '@shared/types/api';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api';
@@ -160,6 +161,15 @@ export function submitTrade(trade: {
     method: 'POST',
     body: JSON.stringify(trade),
   });
+}
+
+export function getTokenHolders(
+  address: string,
+  limit = 10,
+): Promise<HolderListResponse> {
+  return request<HolderListResponse>(
+    `/v1/tokens/${encodeURIComponent(address)}/holders?limit=${limit}`,
+  );
 }
 
 export { ApiError };
