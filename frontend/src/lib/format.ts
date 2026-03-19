@@ -33,12 +33,6 @@ export function formatBtc(sats: number | string, decimals = 4): string {
   return `${s.toLocaleString()} sats`;
 }
 
-export function formatSats(sats: number): string {
-  if (sats >= 1_000_000_000) return `${(sats / 1_000_000_000).toFixed(2)}B`;
-  if (sats >= 1_000_000) return `${(sats / 1_000_000).toFixed(2)}M`;
-  if (sats >= 1_000) return `${(sats / 1_000).toFixed(1)}k`;
-  return sats.toLocaleString();
-}
 
 /**
  * Format token units for display. Accepts string to preserve precision
@@ -53,12 +47,6 @@ export function formatTokenAmount(units: number | string): string {
   return tokens.toFormat(2);
 }
 
-export function formatPrice(sats: number): string {
-  if (sats >= SATS_PER_BTC) return `${(sats / SATS_PER_BTC).toFixed(6)} BTC`;
-  if (sats >= 1000) return `${(sats / 1000).toFixed(2)}k sats`;
-  if (sats >= 1) return `${sats.toFixed(2)} sats`;
-  return `${sats.toFixed(6)} sats`;
-}
 
 export function formatPercent(value: number): string {
   const sign = value >= 0 ? '+' : '';
@@ -70,6 +58,39 @@ export function formatNumber(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
   return value.toLocaleString();
+}
+
+export function satsToUsd(sats: number | string, btcPrice: number): number {
+  const val = new BigNumber(sats);
+  return val.div(SATS_PER_BTC).times(btcPrice).toNumber();
+}
+
+export function usdToSats(usd: number, btcPrice: number): number {
+  if (btcPrice <= 0) return 0;
+  return Math.round((usd / btcPrice) * SATS_PER_BTC);
+}
+
+export function formatUsd(sats: number | string, btcPrice: number): string {
+  const usd = satsToUsd(sats, btcPrice);
+  if (usd >= 1_000_000_000) return `$${(usd / 1_000_000_000).toFixed(1)}B`;
+  if (usd >= 1_000_000) return `$${(usd / 1_000_000).toFixed(1)}M`;
+  if (usd >= 1_000) return `$${(usd / 1_000).toFixed(1)}k`;
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(2)}`;
+  if (usd === 0) return '$0.00';
+  // Sub-cent: show enough decimals for 2 significant digits
+  const digits = Math.max(2, Math.ceil(-Math.log10(usd)) + 2);
+  return `$${usd.toFixed(digits)}`;
+}
+
+export function formatUsdPrice(sats: number, btcPrice: number): string {
+  const usd = satsToUsd(sats, btcPrice);
+  if (usd === 0) return '$0.00';
+  if (usd >= 1) return `$${usd.toFixed(6)}`;
+  if (usd >= 0.01) return `$${usd.toFixed(6)}`;
+  // Sub-cent: show enough decimals for 4 significant digits
+  const digits = Math.max(6, Math.ceil(-Math.log10(usd)) + 4);
+  return `$${usd.toFixed(digits)}`;
 }
 
 export function shortenAddress(address: string, chars = 6): string {

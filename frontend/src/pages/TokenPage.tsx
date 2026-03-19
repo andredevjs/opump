@@ -18,7 +18,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { usePriceFeed } from '@/hooks/use-price-feed';
-import { formatBtc, formatNumber, timeAgo } from '@/lib/format';
+import { formatUsd, formatNumber, timeAgo } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import type { TimeframeKey } from '@/types/api';
 import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
 
@@ -35,6 +36,7 @@ export function TokenPage() {
   const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
   const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
+  const { btcPrice } = useBtcPrice();
 
   // S24: Fetch token from API if not in store — depend on address and fetchToken
   useEffect(() => {
@@ -82,7 +84,7 @@ export function TokenPage() {
               <span className="text-text-muted font-mono">${token.symbol}</span>
               <TokenBadge status={token.status} />
             </div>
-            <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} size="md" isOptimistic={livePrice?.isOptimistic} />
+            <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} btcPrice={btcPrice} size="md" isOptimistic={livePrice?.isOptimistic} />
           </div>
         </div>
 
@@ -119,8 +121,8 @@ export function TokenPage() {
           {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Volume 24h', value: formatBtc(token.volume24hSats) },
-              { label: 'Market Cap', value: formatBtc(token.marketCapSats) },
+              { label: 'Volume 24h', value: formatUsd(token.volume24hSats, btcPrice) },
+              { label: 'Market Cap', value: formatUsd(token.marketCapSats, btcPrice) },
               { label: 'Holders', value: formatNumber(token.holderCount) },
               { label: 'Trades 24h', value: formatNumber(token.tradeCount24h) },
             ].map((stat) => (

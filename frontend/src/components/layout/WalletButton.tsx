@@ -3,11 +3,13 @@ import { Wallet } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { Button } from '@/components/ui/Button';
 import { useWalletStore } from '@/stores/wallet-store';
-import { shortenAddress, formatBtc } from '@/lib/format';
+import { shortenAddress, formatUsd } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { WalletPopoverContent } from './WalletPopover';
 
 export function WalletButton() {
   const { connected, address, balanceSats, connect } = useWalletStore();
+  const { btcPrice } = useBtcPrice();
   const [open, setOpen] = useState(false);
 
   if (connected && address) {
@@ -15,7 +17,7 @@ export function WalletButton() {
       <Popover.Root open={open} onOpenChange={setOpen}>
         <Popover.Trigger asChild>
           <button className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-elevated border border-border text-sm cursor-pointer hover:border-accent/50 transition-colors">
-            <span className="font-mono text-accent">{formatBtc(balanceSats)}</span>
+            <span className="font-mono text-accent">{formatUsd(balanceSats, btcPrice)}</span>
             <span className="text-text-muted">|</span>
             <span className="font-mono text-text-secondary">{shortenAddress(address, 4)}</span>
           </button>

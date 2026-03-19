@@ -5,13 +5,15 @@ import {
   tokenUnitsToTokens,
   tokensToUnits,
   formatBtc,
-  formatSats,
   formatTokenAmount,
-  formatPrice,
   formatPercent,
   formatNumber,
   shortenAddress,
   timeAgo,
+  satsToUsd,
+  usdToSats,
+  formatUsd,
+  formatUsdPrice,
 } from '../format';
 
 describe('format', () => {
@@ -114,25 +116,6 @@ describe('format', () => {
     });
   });
 
-  describe('formatSats', () => {
-    it('formats billions', () => {
-      expect(formatSats(3_000_000_000)).toBe('3.00B');
-    });
-
-    it('formats millions', () => {
-      expect(formatSats(1_500_000)).toBe('1.50M');
-    });
-
-    it('formats thousands', () => {
-      expect(formatSats(50_000)).toBe('50.0k');
-    });
-
-    it('formats small numbers with locale string', () => {
-      const result = formatSats(999);
-      // toLocaleString output varies by environment but should be the number
-      expect(result).toBe('999');
-    });
-  });
 
   describe('formatTokenAmount', () => {
     it('formats billions of tokens', () => {
@@ -160,21 +143,86 @@ describe('format', () => {
     });
   });
 
-  describe('formatPrice', () => {
-    it('formats >= 1 BTC in BTC', () => {
-      expect(formatPrice(100_000_000)).toBe('1.000000 BTC');
+  describe('satsToUsd', () => {
+    it('converts 1 BTC worth of sats to USD', () => {
+      expect(satsToUsd(100_000_000, 65000)).toBe(65000);
     });
 
-    it('formats >= 1000 sats in k sats', () => {
-      expect(formatPrice(5000)).toBe('5.00k sats');
+    it('converts small sats to USD', () => {
+      // 500 / 100_000_000 * 65000 = 0.325
+      expect(satsToUsd(500, 65000)).toBeCloseTo(0.325, 6);
     });
 
-    it('formats >= 1 sat with 2 decimals', () => {
-      expect(formatPrice(3)).toBe('3.00 sats');
+    it('handles string input', () => {
+      expect(satsToUsd('100000000', 65000)).toBe(65000);
     });
 
-    it('formats sub-sat with 6 decimals', () => {
-      expect(formatPrice(0.5)).toBe('0.500000 sats');
+    it('returns 0 when btcPrice is 0', () => {
+      expect(satsToUsd(100_000_000, 0)).toBe(0);
+    });
+  });
+
+  describe('usdToSats', () => {
+    it('converts $65000 to 1 BTC of sats', () => {
+      expect(usdToSats(65000, 65000)).toBe(100_000_000);
+    });
+
+    it('converts $1 to sats', () => {
+      const sats = usdToSats(1, 65000);
+      expect(sats).toBe(Math.round(100_000_000 / 65000));
+    });
+
+    it('returns 0 when btcPrice is 0', () => {
+      expect(usdToSats(100, 0)).toBe(0);
+    });
+  });
+
+  describe('formatUsd', () => {
+    it('formats billions', () => {
+      // 100T sats = 1M BTC * $65k = $65B
+      expect(formatUsd(100_000_000_000_000, 65000)).toBe('$65.0B');
+    });
+
+    it('formats millions', () => {
+      // 10B sats = 100 BTC * $65k = $6.5M
+      expect(formatUsd(10_000_000_000, 65000)).toBe('$6.5M');
+    });
+
+    it('formats thousands', () => {
+      // 5M sats = $3250 at $65k
+      expect(formatUsd(5_000_000, 65000)).toBe('$3.3k');
+    });
+
+    it('formats regular dollars', () => {
+      // 100k sats = $65 at $65k
+      expect(formatUsd(100_000, 65000)).toBe('$65.00');
+    });
+
+    it('formats sub-cent amounts', () => {
+      // 1 sat at $65k = $0.00065
+      const result = formatUsd(1, 65000);
+      expect(result).toMatch(/^\$0\.000/);
+    });
+
+    it('formats zero', () => {
+      expect(formatUsd(0, 65000)).toBe('$0.00');
+    });
+  });
+
+  describe('formatUsdPrice', () => {
+    it('formats dollar prices >= $1 with 6 decimals', () => {
+      // 1 BTC at $65k
+      expect(formatUsdPrice(100_000_000, 65000)).toBe('$65000.000000');
+    });
+
+    it('formats sub-cent token prices with precision', () => {
+      // 500 sats at $65k = $0.325
+      const result = formatUsdPrice(500, 65000);
+      expect(result).toBe('$0.325000');
+    });
+
+    it('formats zero', () => {
+      expect(formatUsdPrice(0, 65000)).toBe('$0.00');
     });
   });
 

@@ -1,15 +1,16 @@
 import { cn } from '@/lib/cn';
-import { formatPrice, formatPercent } from '@/lib/format';
+import { formatUsdPrice, formatPercent } from '@/lib/format';
 
 interface TokenPriceProps {
   priceSats: number;
   change24h: number;
+  btcPrice: number;
   size?: 'sm' | 'md' | 'lg';
   showChange?: boolean;
   isOptimistic?: boolean;
 }
 
-export function TokenPrice({ priceSats, change24h, size = 'md', showChange = true, isOptimistic = false }: TokenPriceProps) {
+export function TokenPrice({ priceSats, change24h, btcPrice, size = 'md', showChange = true, isOptimistic = false }: TokenPriceProps) {
   const isPositive = change24h >= 0;
 
   return (
@@ -21,7 +22,7 @@ export function TokenPrice({ priceSats, change24h, size = 'md', showChange = tru
           'text-xl': size === 'lg',
         })}
       >
-        {isOptimistic ? '~' : ''}{formatPrice(priceSats)}
+        {isOptimistic ? '~' : ''}{formatUsdPrice(priceSats, btcPrice)}
       </span>
       {showChange && (
         <span

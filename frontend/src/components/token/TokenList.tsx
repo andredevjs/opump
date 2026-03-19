@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import type { Token } from '@/types/token';
 import { TokenBadge } from './TokenBadge';
-import { formatPrice, formatPercent, formatBtc } from '@/lib/format';
+import { formatUsdPrice, formatPercent, formatUsd } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { cn } from '@/lib/cn';
 
 interface TokenListProps {
@@ -10,6 +11,7 @@ interface TokenListProps {
 
 export function TokenList({ tokens }: TokenListProps) {
   const navigate = useNavigate();
+  const { btcPrice } = useBtcPrice();
 
   return (
     <div className="overflow-x-auto">
@@ -53,13 +55,13 @@ export function TokenList({ tokens }: TokenListProps) {
                 </div>
               </td>
               <td className="text-right py-3 px-2 font-mono text-text-primary">
-                {formatPrice(token.currentPriceSats)}
+                {formatUsdPrice(token.currentPriceSats, btcPrice)}
               </td>
               <td className={cn('text-right py-3 px-2 font-mono', token.priceChange24h >= 0 ? 'text-bull' : 'text-bear')}>
                 {formatPercent(token.priceChange24h)}
               </td>
               <td className="text-right py-3 px-2 font-mono text-text-secondary hidden sm:table-cell">
-                {formatBtc(token.volume24hSats)}
+                {formatUsd(token.volume24hSats, btcPrice)}
               </td>
               <td className="text-right py-3 px-2 font-mono text-text-secondary hidden md:table-cell">
                 {token.holderCount.toLocaleString()}

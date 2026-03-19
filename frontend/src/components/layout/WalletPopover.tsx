@@ -5,7 +5,8 @@ import { Copy, Check, ExternalLink, LogOut, Coins } from 'lucide-react';
 import { useWalletStore } from '@/stores/wallet-store';
 import { getKnownTokenAddresses } from '@/lib/known-tokens';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
-import { formatBtc, formatTokenAmount, shortenAddress } from '@/lib/format';
+import { formatUsd, formatTokenAmount, shortenAddress } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { mapApiTokenToToken } from '@/lib/mappers';
 import * as api from '@/services/api';
 import type { Token } from '@/types/token';
@@ -23,6 +24,7 @@ interface WalletPopoverContentProps {
 export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
   const navigate = useNavigate();
   const { address, balanceSats, disconnect, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { btcPrice } = useBtcPrice();
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<HoldingEntry[]>([]);
@@ -86,7 +88,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
 
   return (
     <div className="w-72 sm:w-80">
-      {/* Header — address + BTC balance */}
+      {/* Header — address + balance */}
       <div className="px-4 pt-4 pb-3 border-b border-border">
         <div className="flex items-center justify-between mb-1">
           <button
@@ -97,7 +99,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
             {copied ? <Check size={14} className="text-green" /> : <Copy size={14} />}
           </button>
         </div>
-        <p className="text-lg font-semibold font-mono text-accent">{formatBtc(balanceSats)}</p>
+        <p className="text-lg font-semibold font-mono text-accent">{formatUsd(balanceSats, btcPrice)}</p>
       </div>
 
       {/* Holdings list */}
@@ -167,7 +169,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
                   </div>
                   <div className="text-right flex-shrink-0 ml-2">
                     <p className="text-sm font-mono text-text-primary">{formatTokenAmount(units)}</p>
-                    <p className="text-xs font-mono text-text-secondary">{formatBtc(valueSats)}</p>
+                    <p className="text-xs font-mono text-text-secondary">{formatUsd(valueSats, btcPrice)}</p>
                   </div>
                 </button>
               );

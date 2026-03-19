@@ -1,7 +1,8 @@
 import { Card } from '@/components/ui/Card';
 import { AddressDisplay } from '@/components/shared/AddressDisplay';
 import type { CreatorProfile } from '@/types/api';
-import { formatBtc, formatNumber, timeAgo } from '@/lib/format';
+import { formatUsd, formatNumber, timeAgo } from '@/lib/format';
+import { useBtcPrice } from '@/stores/btc-price-store';
 import { User, Calendar, BarChart3, Coins } from 'lucide-react';
 
 interface ProfileHeaderProps {
@@ -9,6 +10,8 @@ interface ProfileHeaderProps {
 }
 
 export function ProfileHeader({ profile }: ProfileHeaderProps) {
+  const { btcPrice } = useBtcPrice();
+
   return (
     <Card className="p-6">
       <div className="flex items-center gap-4 mb-4">
@@ -33,7 +36,7 @@ export function ProfileHeader({ profile }: ProfileHeaderProps) {
           <BarChart3 size={18} className="text-accent" />
           <div>
             <p className="text-xs text-text-muted">Total Volume</p>
-            <p className="font-mono font-semibold text-text-primary">{formatBtc(profile.totalVolumeSats)}</p>
+            <p className="font-mono font-semibold text-text-primary">{formatUsd(profile.totalVolumeSats, btcPrice)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2 p-3 rounded-lg bg-elevated">
