@@ -1,6 +1,7 @@
 import { Hero } from '@/components/home/Hero';
 import { PlatformStats } from '@/components/home/PlatformStats';
 import { HowItWorks } from '@/components/home/HowItWorks';
+import { FeeTransparency } from '@/components/home/FeeTransparency';
 import { TopTokens } from '@/components/home/TopTokens';
 import { RecentTokens } from '@/components/home/RecentTokens';
 
@@ -12,6 +13,7 @@ export function HomePage() {
       <TopTokens />
       <RecentTokens />
       <HowItWorks />
+      <FeeTransparency />
     </div>
   );
 }
