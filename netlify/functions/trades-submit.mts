@@ -12,7 +12,7 @@ import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
-import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR } from "./_shared/constants.mts";
+import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR, TOTAL_FEE_BPS, FEE_DENOMINATOR } from "./_shared/constants.mts";
 
 interface TradeSubmitBody {
   txHash: string;
@@ -96,6 +96,32 @@ export default async (req: Request, _context: Context) => {
       const scaledPrice = BigInt(Math.round(Number(body.pricePerToken) * PRICE_DISPLAY_DIVISOR));
       const marketCapSats = (scaledPrice * INITIAL_VIRTUAL_TOKEN_SUPPLY / PRICE_PRECISION).toString();
 
+      // --- Optimistic reserve updates (mempool-first) ---
+      // Compute new reserves using the bonding curve AMM formula so the
+      // graduation progress bar and bonding curve visual update immediately.
+      const curVBtc = BigInt(token.virtualBtcReserve);
+      const curVToken = BigInt(token.virtualTokenSupply);
+      const curRealBtc = BigInt(token.realBtcReserve);
+      const k = BigInt(token.kConstant);
+
+      let newVBtc: bigint;
+      let newVToken: bigint;
+      let newRealBtc: bigint;
+
+      if (body.type === "buy") {
+        const fee = (btcAmountBig * TOTAL_FEE_BPS) / FEE_DENOMINATOR;
+        const btcAfterFee = btcAmountBig - fee;
+        newVBtc = curVBtc + btcAfterFee;
+        newVToken = k / newVBtc;
+        newRealBtc = curRealBtc + btcAfterFee;
+      } else {
+        const tokensIn = BigInt(body.tokenAmount);
+        newVToken = curVToken + tokensIn;
+        newVBtc = k / newVToken;
+        const btcOutBeforeFee = curVBtc - newVBtc;
+        newRealBtc = curRealBtc - btcOutBeforeFee;
+      }
+
       await updateToken(trade.tokenAddress, {
         currentPriceSats: body.pricePerToken,
         tradeCount: (token.tradeCount || 0) + 1,
@@ -104,6 +130,9 @@ export default async (req: Request, _context: Context) => {
         volumeTotal: (BigInt(token.volumeTotal || "0") + btcAmountBig).toString(),
         holderCount: await getHolderCount(trade.tokenAddress),
         marketCapSats,
+        virtualBtcReserve: newVBtc.toString(),
+        virtualTokenSupply: newVToken.toString(),
+        realBtcReserve: newRealBtc.toString(),
         status: token.status,
       });
     } else {
