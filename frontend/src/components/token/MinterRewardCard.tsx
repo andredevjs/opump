@@ -55,6 +55,8 @@ export function MinterRewardCard({ tokenAddress }: MinterRewardCardProps) {
   }, [connected, walletAddress, hashedMLDSAKey, publicKey, tokenAddress]);
 
   if (!connected) return null;
+  // Don't render while still loading minter info (prevents flash)
+  if (!minterInfo && !error) return null;
   if (minterInfo && minterInfo.shares === '0') return null;
 
   const handleClaim = async () => {
