@@ -86,7 +86,7 @@ export function ProfilePage() {
       <Card>
         <TabsRoot defaultValue="created">
           <TabsList>
-            <TabsTrigger value="created">Created Tokens ({createdTokens.length})</TabsTrigger>
+            <TabsTrigger value="created">Created OP20 Tokens ({createdTokens.length})</TabsTrigger>
             <TabsTrigger value="holdings">Holdings</TabsTrigger>
           </TabsList>
 

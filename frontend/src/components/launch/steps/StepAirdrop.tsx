@@ -15,7 +15,7 @@ export function StepAirdrop() {
       <div>
         <h3 className="text-lg font-semibold text-text-primary mb-1">Community Airdrop</h3>
         <p className="text-sm text-text-secondary">
-          Distribute tokens to existing Bitcoin communities.
+          Distribute OP20 tokens to existing Bitcoin communities.
         </p>
       </div>
 

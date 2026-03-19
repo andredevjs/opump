@@ -44,7 +44,7 @@ export function Holdings() {
   if (entries.length === 0) {
     return (
       <div className="text-center py-12 text-text-muted">
-        <p>No holdings yet. Buy some tokens to get started!</p>
+        <p>No holdings yet. Buy some OP20 tokens to get started!</p>
       </div>
     );
   }

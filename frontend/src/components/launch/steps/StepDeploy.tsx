@@ -168,8 +168,8 @@ export function StepDeploy() {
   return (
     <div className="space-y-6 max-w-md mx-auto">
       <div>
-        <h3 className="text-lg font-semibold text-text-primary mb-1">Deploy Token</h3>
-        <p className="text-sm text-text-secondary">Review and launch your token on OPNet.</p>
+        <h3 className="text-lg font-semibold text-text-primary mb-1">Deploy OP20 Token</h3>
+        <p className="text-sm text-text-secondary">Review and launch your OP20 token on OPNet.</p>
       </div>
 
       {/* Summary */}
@@ -177,7 +177,7 @@ export function StepDeploy() {
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-lg bg-input flex items-center justify-center text-2xl overflow-hidden">
             {previewUrl ? (
-              <img src={previewUrl} alt="Token" className="w-full h-full object-cover" />
+              <img src={previewUrl} alt="OP20 Token" className="w-full h-full object-cover" />
             ) : (
               formData.image || '🪙'
             )}
@@ -242,8 +242,8 @@ export function StepDeploy() {
       {deployedAddress && (
         <div className="text-center space-y-3 p-4 rounded-lg bg-bull/5 border border-bull/20">
           <div className="text-4xl">🎉</div>
-          <p className="text-lg font-semibold text-bull">Token Deployed!</p>
-          <p className="text-sm text-text-secondary">Your token is now live on OPNet.</p>
+          <p className="text-lg font-semibold text-bull">OP20 Token Deployed!</p>
+          <p className="text-sm text-text-secondary">Your OP20 token is now live on OPNet.</p>
           <Button
             onClick={() => navigate(`/token/${deployedAddress}`)}
             className="w-full"
@@ -277,7 +277,7 @@ export function StepDeploy() {
             ) : (
               <>
                 <Rocket size={16} className="mr-2" />
-                Deploy Token
+                Deploy OP20 Token
               </>
             )}
           </Button>

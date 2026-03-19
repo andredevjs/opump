@@ -5,7 +5,7 @@ const STEPS = [
   {
     icon: Rocket,
     title: 'Launch',
-    description: 'Create a token in 6 steps. No liquidity needed — the bonding curve is the market maker from block one.',
+    description: 'Create an OP20 token in 6 steps. No liquidity needed — the bonding curve is the market maker from block one.',
   },
   {
     icon: TrendingUp,
@@ -15,7 +15,7 @@ const STEPS = [
   {
     icon: Award,
     title: 'Graduate',
-    description: 'At 6.9M sats in real BTC reserve, the token graduates to MotoSwap DEX with automatic liquidity migration.',
+    description: 'At 6.9M sats in real BTC reserve, the OP20 token graduates to MotoSwap DEX with automatic liquidity migration.',
   },
 ];
 

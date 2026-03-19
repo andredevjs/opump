@@ -2,7 +2,7 @@
 
 ## The One-Liner
 
-OPump is a Bitcoin-native token launchpad built on OPNet — anyone can create and trade tokens directly on Bitcoin L1 using a bonding curve, with no initial liquidity needed, no bridges, and no sidechains.
+OPump is a Bitcoin-native OP20 token launchpad built on OPNet — anyone can create and trade OP20 tokens directly on Bitcoin L1 using a bonding curve, with no initial liquidity needed, no bridges, and no sidechains.
 
 ---
 
@@ -10,7 +10,7 @@ OPump is a Bitcoin-native token launchpad built on OPNet — anyone can create a
 
 ### For Token Creators
 
-Launch a token in a 6-step wizard:
+Launch an OP20 token in a 6-step wizard:
 
 1. **Details** — name, symbol, description, image
 2. **Socials** — website, Twitter, Telegram, Discord, GitHub
@@ -23,15 +23,15 @@ No liquidity required. The bonding curve *is* the market maker from block one.
 
 ### For Traders
 
-- Browse tokens in the "Trenches" discovery page (search, filter by active/graduated, sort by volume/price/market cap)
-- Buy tokens by sending BTC to the bonding curve — constant-product AMM (`k = virtualBTC * virtualTokens`)
-- Sell tokens back to the curve at any time
+- Browse OP20 tokens in the "Trenches" discovery page (search, filter by active/graduated, sort by volume/price/market cap)
+- Buy OP20 tokens by sending BTC to the bonding curve — constant-product AMM (`k = virtualBTC * virtualTokens`)
+- Sell OP20 tokens back to the curve at any time
 - See trades within ~1 second via mempool optimistic updates, confirmed in ~10 minutes
 - Earn **minter rewards**: early buyers who hold for 30 days claim a share of 0.25% of all trading fees
 
 ### Graduation to DEX
 
-When a token accumulates **6.9M sats (~$69k) in real BTC reserve**, it graduates to MotoSwap DEX with automatic liquidity migration. Trading moves from bonding curve to a full DEX pool.
+When an OP20 token accumulates **6.9M sats (~$69k) in real BTC reserve**, it graduates to MotoSwap DEX with automatic liquidity migration. Trading moves from bonding curve to a full DEX pool.
 
 ---
 
@@ -101,11 +101,11 @@ Users see their trade reflected in the price within seconds. Confirmation follow
 
 ### 1. Bitcoin Can Do DeFi Natively
 
-The narrative has always been "Bitcoin is just a store of value, you need Ethereum/Solana for DeFi." OPump is a working counterexample — a fully functional AMM launchpad running on Bitcoin L1. Every trade settles on Bitcoin. No L2, no sidechain, no bridge.
+The narrative has always been "Bitcoin is just a store of value, you need Ethereum/Solana for DeFi." OPump is a working counterexample — a fully functional OP20 token AMM launchpad running on Bitcoin L1. Every trade settles on Bitcoin. No L2, no sidechain, no bridge.
 
 ### 2. Bitcoin Holders Can Finally Participate
 
-Bitcoin has the largest holder base in crypto, but they've been locked out of the token launch economy. To participate in pump.fun-style launches, they had to bridge to Solana or Ethereum. OPump means they stay in the Bitcoin ecosystem — their BTC never leaves L1.
+Bitcoin has the largest holder base in crypto, but they've been locked out of the OP20 token launch economy. To participate in pump.fun-style launches, they had to bridge to Solana or Ethereum. OPump means they stay in the Bitcoin ecosystem — their BTC never leaves L1.
 
 ### 3. It's Structurally Fairer Than Solana Alternatives
 
@@ -143,7 +143,7 @@ OPump is a complex, multi-contract application (factory + individual bonding cur
 
 **Pump.fun is fast. OPump is fair.**
 
-Bitcoin users don't need sub-second finality to launch tokens. They need a platform where:
+Bitcoin users don't need sub-second finality to launch OP20 tokens. They need a platform where:
 
 - The rules are transparent (bonding curve math is deterministic)
 - Bots don't win by default (10-minute blocks + reservations)
@@ -151,4 +151,4 @@ Bitcoin users don't need sub-second finality to launch tokens. They need a platf
 - Creators have sustainable revenue (fees + flywheel tax)
 - Everything settles on the most secure blockchain in existence
 
-OPump is what pump.fun would look like if it was built for Bitcoin from day one — slower by design, fairer by architecture, native to the chain with the most value.
+OPump is what pump.fun would look like if it was built for Bitcoin OP20 tokens from day one — slower by design, fairer by architecture, native to the chain with the most value.

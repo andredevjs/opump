@@ -15,7 +15,7 @@ export function Hero() {
         </div>
 
         <h1 className="text-4xl sm:text-6xl font-bold text-text-primary mb-4 leading-tight">
-          Launch Tokens on{' '}
+          Launch OP20 Tokens on{' '}
           <span className="text-accent">Bitcoin</span>
         </h1>
         <p className="text-lg sm:text-xl text-text-secondary max-w-2xl mx-auto mb-8">
@@ -27,13 +27,13 @@ export function Hero() {
           <Link to="/launch">
             <Button size="lg">
               <Rocket size={18} className="mr-2" />
-              Launch Token
+              Launch OP20 Token
             </Button>
           </Link>
           <Link to="/trenches">
             <Button variant="secondary" size="lg">
               <TrendingUp size={18} className="mr-2" />
-              Explore Tokens
+              Explore OP20 Tokens
             </Button>
           </Link>
         </div>

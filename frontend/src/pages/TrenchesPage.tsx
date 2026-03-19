@@ -17,12 +17,12 @@ const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
 ];
 
 const EMPTY_HINTS: Record<TokenStatus | 'all', string> = {
-  all: 'No tokens found. Try adjusting your search.',
-  active: 'No active tokens on the bonding curve right now.',
-  graduated: 'No tokens have graduated yet.',
-  migrated: 'No tokens have migrated to the DEX yet.',
-  migrating: 'No tokens are currently migrating.',
-  new: 'No new tokens awaiting their first trade.',
+  all: 'No OP20 tokens found. Try adjusting your search.',
+  active: 'No active OP20 tokens on the bonding curve right now.',
+  graduated: 'No OP20 tokens have graduated yet.',
+  migrated: 'No OP20 tokens have migrated to the DEX yet.',
+  migrating: 'No OP20 tokens are currently migrating.',
+  new: 'No new OP20 tokens awaiting their first trade.',
 };
 
 const SORT_OPTIONS: TokenSortOption[] = [
@@ -69,7 +69,7 @@ export function TrenchesPage() {
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
           <Input
-            placeholder="Search tokens..."
+            placeholder="Search OP20 tokens..."
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"

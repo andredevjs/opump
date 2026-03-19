@@ -11,7 +11,7 @@ export function StepAllocation() {
       <div>
         <h3 className="text-lg font-semibold text-text-primary mb-1">Creator Allocation</h3>
         <p className="text-sm text-text-secondary">
-          Reserve a percentage of the token supply for yourself. Max {MAX_CREATOR_ALLOCATION_PERCENT}%.
+          Reserve a percentage of the OP20 token supply for yourself. Max {MAX_CREATOR_ALLOCATION_PERCENT}%.
         </p>
       </div>
 

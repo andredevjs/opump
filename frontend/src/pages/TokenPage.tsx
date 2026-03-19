@@ -210,7 +210,7 @@ export function TokenPage() {
             <Card className="text-center py-8">
               <Badge variant="bull" className="mb-3 text-base px-4 py-1">Trading on MotoSwap</Badge>
               <p className="text-text-secondary text-sm mt-2">
-                This token has migrated to MotoSwap DEX for open-market trading.
+                This OP20 token has migrated to MotoSwap DEX for open-market trading.
               </p>
               {MOTOSWAP_URL && (
                 <a

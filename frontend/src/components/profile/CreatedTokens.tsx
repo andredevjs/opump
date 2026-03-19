@@ -9,7 +9,7 @@ export function CreatedTokens({ tokens }: CreatedTokensProps) {
   if (tokens.length === 0) {
     return (
       <div className="text-center py-12 text-text-muted">
-        <p>No tokens launched yet.</p>
+        <p>No OP20 tokens launched yet.</p>
       </div>
     );
   }
