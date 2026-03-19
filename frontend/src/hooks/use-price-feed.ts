@@ -23,10 +23,24 @@ function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLC
   const bucketSeconds = TIMEFRAME_SECONDS[tf];
   const buckets = new Map<number, OHLCVCandle>();
 
+  // Deduplicate: when a pending trade gets confirmed, both versions appear in the
+  // trade list. Build a set of confirmed trade signatures so we can skip the stale
+  // pending duplicate (which has a no-fee price that conflicts with the real price).
+  const confirmedKeys = new Set<string>();
+  for (const t of trades) {
+    if (t.status === 'confirmed') {
+      confirmedKeys.add(`${t.tokenAddress}:${t.btcAmount}:${t.tokenAmount}`);
+    }
+  }
+
   // trades are newest-first from API, reverse for chronological order
   const sorted = [...trades].reverse();
 
   for (const t of sorted) {
+    // Skip pending trades that have a confirmed counterpart
+    if (t.status === 'pending' && confirmedKeys.has(`${t.tokenAddress}:${t.btcAmount}:${t.tokenAmount}`)) {
+      continue;
+    }
     const price = Number(t.pricePerToken);
     const volume = Number(t.btcAmount);
     if (!price || isNaN(price)) continue;
@@ -90,7 +104,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
   const intervalRef = useRef<number>();
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
-  const lastSpotPriceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -105,20 +118,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     }
 
     let cancelled = false;
-
-    function applySpotPriceToLastCandle(address: string) {
-      const spotPrice = lastSpotPriceRef.current;
-      if (spotPrice == null || spotPrice <= 0) return;
-      const candles = usePriceStore.getState().candles[address] ?? [];
-      const last = candles[candles.length - 1];
-      if (!last || last.close === spotPrice) return;
-      usePriceStore.getState().updateLastCandle(address, {
-        ...last,
-        high: Math.max(last.high, spotPrice),
-        low: Math.min(last.low, spotPrice),
-        close: spotPrice,
-      });
-    }
 
     const updateTokenStats = useTokenStore.getState().updateTokenStats;
 
@@ -136,7 +135,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
           setCandles(addr, merged);
         }
         if (priceResp) {
-          lastSpotPriceRef.current = Number(priceResp.currentPriceSats);
           setLivePrice(addr, {
             currentPriceSats: priceResp.currentPriceSats,
             virtualBtcReserve: priceResp.virtualBtcReserve,
@@ -163,7 +161,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
             updateTokenStats(token.address, statsUpdate);
           }
         }
-        applySpotPriceToLastCandle(addr);
         setLoading(addr, false);
       }).catch(() => {
         if (!cancelled) {
@@ -183,7 +180,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         if (cancelled) return;
         consecutiveFailures = 0;
         const newPrice = Number(price.currentPriceSats);
-        lastSpotPriceRef.current = newPrice;
         setLivePrice(token.address, {
           currentPriceSats: price.currentPriceSats,
           virtualBtcReserve: price.virtualBtcReserve,
@@ -198,8 +194,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const oldChange = existing?.address === token.address ? existing.priceChange24h : 0;
         const newChange = computeOptimistic24hChange(oldPrice, oldChange, newPrice);
         updateTokenPrice(token.address, newPrice, newChange);
-
-        applySpotPriceToLastCandle(token.address);
 
         // Update market cap and graduation progress
         if (price.virtualBtcReserve != null && price.virtualTokenSupply != null) {
@@ -232,14 +226,12 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
         if (merged.length > 0) {
           setCandles(token.address, merged);
-          applySpotPriceToLastCandle(token.address);
         }
       }).catch(() => { /* best-effort */ });
     }, PRICE_UPDATE_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      lastSpotPriceRef.current = null;
       setLoading(token.address, false);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
