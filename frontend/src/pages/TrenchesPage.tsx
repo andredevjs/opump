@@ -13,14 +13,14 @@ const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Graduated', value: 'graduated' },
-  { label: 'On DEX', value: 'migrated' },
+  { label: 'On MotoSwap DEX', value: 'migrated' },
 ];
 
 const EMPTY_HINTS: Record<TokenStatus | 'all', string> = {
   all: 'No OP20 tokens found. Try adjusting your search.',
   active: 'No active OP20 tokens on the bonding curve right now.',
   graduated: 'No OP20 tokens have graduated yet.',
-  migrated: 'No OP20 tokens have migrated to the DEX yet.',
+  migrated: 'No OP20 tokens have migrated to MotoSwap DEX yet.',
   migrating: 'No OP20 tokens are currently migrating.',
   new: 'No new OP20 tokens awaiting their first trade.',
 };

@@ -243,7 +243,7 @@ export function TokenPage() {
                 This token has graduated from the bonding curve.
               </p>
               <p className="text-text-muted text-xs mt-1">
-                DEX liquidity migration starting soon.
+                MotoSwap DEX liquidity migration starting soon.
               </p>
               <div className="mt-4 flex justify-center">
                 <div className="h-5 w-5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />

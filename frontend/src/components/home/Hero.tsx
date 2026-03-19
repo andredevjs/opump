@@ -20,7 +20,7 @@ export function Hero() {
         </h1>
         <p className="text-lg sm:text-xl text-text-secondary max-w-2xl mx-auto mb-8">
           The Bitcoin-native token launchpad. Fair launches, bonding curve trading,
-          and automatic DEX graduation — all on Bitcoin L1 via Op_Net.
+          and automatic MotoSwap DEX graduation — all on Bitcoin L1 via Op_Net.
         </p>
 
         <div className="flex items-center justify-center gap-4">

@@ -15,7 +15,7 @@ interface GraduationProgressProps {
 function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): string {
   if (status === 'migrated') return 'Trading on MotoSwap';
   if (status === 'migrating') return 'Migrating to MotoSwap...';
-  if (isGraduated || status === 'graduated') return 'Graduated to DEX';
+  if (isGraduated || status === 'graduated') return 'Graduated to MotoSwap DEX';
   return 'Graduation Progress';
 }
 
