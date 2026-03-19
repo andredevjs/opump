@@ -14,7 +14,7 @@ export function LaunchPage() {
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-text-primary">Launch Your OP20 Token</h1>
         <p className="text-text-secondary mt-2">
-          Deploy a bonding curve OP20 token on Bitcoin L1 in minutes.
+          Deploy a bonding curve OP20 token on Bitcoin L1 via Op_Net in minutes.
         </p>
       </div>
       <LaunchWizard />

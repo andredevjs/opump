@@ -15,7 +15,7 @@ export function Footer() {
             <Link to="/" className="hover:text-text-secondary transition-colors">Home</Link>
             <Link to="/launch" className="hover:text-text-secondary transition-colors">Launch</Link>
             <Link to="/trenches" className="hover:text-text-secondary transition-colors">Trenches</Link>
-            <span>Built on Bitcoin L1</span>
+            <span>Built on Bitcoin L1 via Op_Net</span>
           </div>
         </div>
       </div>
