@@ -9,6 +9,7 @@ import {
   getToken,
   getTokensBatch,
   saveTrade,
+  findAndRemoveOrphanedPendingTrade,
   updateToken,
   updateOHLCV,
   getStats,
@@ -292,14 +293,20 @@ async function processBuyEvent(
 
   const { isNew } = await saveTrade(trade);
 
-  // Only write OHLCV if this trade wasn't already submitted optimistically
-  // via trades-submit. Prevents double-counting volume (HINCRBY).
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-    const priceSats = Number(spotPrice);
-    const volumeSats = Number(data.btcIn);
-    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    // New trade (no pending version with same txHash existed).
+    // Check for an orphaned pending trade with a different hash but same trade params.
+    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "buy", data.tokensOut.toString());
+
+    // Only write OHLCV if no orphan was found — an orphan means trades-submit
+    // already wrote OHLCV for this trade under the old hash.
+    if (!orphan) {
+      const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+      const priceSats = Number(spotPrice);
+      const volumeSats = Number(data.btcIn);
+      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    }
   }
 }
 
@@ -340,14 +347,16 @@ async function processSellEvent(
 
   const { isNew } = await saveTrade(trade);
 
-  // Only write OHLCV if this trade wasn't already submitted optimistically
-  // via trades-submit. Prevents double-counting volume (HINCRBY).
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-    const priceSats = Number(spotPrice);
-    const volumeSats = Number(data.btcOut);
-    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "sell", data.tokensIn.toString());
+
+    if (!orphan) {
+      const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+      const priceSats = Number(spotPrice);
+      const volumeSats = Number(data.btcOut);
+      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    }
   }
 }
 

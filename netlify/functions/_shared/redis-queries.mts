@@ -314,6 +314,70 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
 }
 
 /**
+ * Find and remove an orphaned pending trade that matches a confirmed trade.
+ *
+ * When the indexer confirms a trade from a block, the on-chain txHash may differ
+ * from the broadcast hash stored by trades-submit. This finds a pending trade
+ * with matching tokenAddress + type + tokenAmount and removes it so we don't
+ * double-count volume/trades.
+ *
+ * Returns the orphan's txHash if one was found and removed, or null.
+ */
+export async function findAndRemoveOrphanedPendingTrade(
+  confirmedTxHash: string,
+  tokenAddress: string,
+  type: "buy" | "sell",
+  tokenAmount: string,
+): Promise<string | null> {
+  const redis = getRedis();
+  const indexKey = TRADE_TOKEN_INDEX(tokenAddress);
+
+  // Fetch the 50 most recent txHashes (newest first) — orphans are recent
+  const recentHashes: string[] = await redis.zrange(indexKey, 0, 49, { rev: true });
+  if (recentHashes.length === 0) return null;
+
+  // Pipeline-fetch status, type, and tokenAmount for each
+  const pipe = redis.pipeline();
+  for (const hash of recentHashes) {
+    pipe.hmget(TRADE_KEY(hash), "status", "type", "tokenAmount");
+  }
+  const results = await pipe.exec();
+
+  // Find the first pending trade that matches type + tokenAmount but has a different hash
+  let orphanHash: string | null = null;
+  for (let i = 0; i < recentHashes.length; i++) {
+    const hash = recentHashes[i];
+    if (hash === confirmedTxHash) continue;
+
+    const fields = results[i] as [string | null, string | null, string | null] | null;
+    if (!fields) continue;
+
+    const [status, tradeType, tradeTokenAmount] = fields;
+    if (status === "pending" && tradeType === type && tradeTokenAmount === tokenAmount) {
+      orphanHash = hash;
+      break;
+    }
+  }
+
+  if (!orphanHash) return null;
+
+  // Read the trader address so we can clean up their index too
+  const traderAddress = await redis.hget(TRADE_KEY(orphanHash), "traderAddress") as string | null;
+
+  // Remove the orphan: delete hash, remove from token index and trader index
+  const deletePipe = redis.pipeline();
+  deletePipe.del(TRADE_KEY(orphanHash));
+  deletePipe.zrem(indexKey, orphanHash);
+  if (traderAddress) {
+    deletePipe.zrem(TRADE_TRADER_INDEX(traderAddress), orphanHash);
+  }
+  await deletePipe.exec();
+
+  console.log(`[Dedup] Removed orphaned pending trade ${orphanHash} (confirmed as ${confirmedTxHash})`);
+  return orphanHash;
+}
+
+/**
  * Get the number of unique holders for a token.
  */
 export async function getHolderCount(tokenAddress: string): Promise<number> {
