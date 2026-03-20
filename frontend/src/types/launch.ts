@@ -32,7 +32,7 @@ export interface LaunchFormData {
 }
 
 export type AirdropType = 'moto_holders' | 'motocat_holders' | 'custom';
-export type TaxDestination = 'burn' | 'community_pool' | 'creator_wallet';
+export type TaxDestination = 'burn' | 'creator';
 
 export type LaunchStep = 1 | 2 | 3 | 4 | 5 | 6;
 
