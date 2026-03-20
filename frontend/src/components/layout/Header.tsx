@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { label: 'Home', path: '/' },
   { label: 'Launch', path: '/launch' },
   { label: 'Trenches', path: '/trenches' },
+  { label: 'Referrals', path: '/referral' },
 ];
 
 export function Header() {

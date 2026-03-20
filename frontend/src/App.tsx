@@ -5,6 +5,7 @@ import { LaunchPage } from '@/pages/LaunchPage';
 import { TrenchesPage } from '@/pages/TrenchesPage';
 import { TokenPage } from '@/pages/TokenPage';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { ReferralPage } from '@/pages/ReferralPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 function RouteErrorFallback() {
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
       { path: '/trenches', element: <TrenchesPage /> },
       { path: '/token/:address', element: <TokenPage /> },
       { path: '/profile/:address', element: <ProfilePage /> },
+      { path: '/referral', element: <ReferralPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },
