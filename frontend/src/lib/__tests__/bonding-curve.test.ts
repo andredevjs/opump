@@ -20,12 +20,12 @@ describe('bonding-curve', () => {
       expect(result!.newPriceSats).toBeGreaterThan(0);
     });
 
-    it('deducts 1.5% fee from input (rounded up)', () => {
+    it('deducts 1.25% fee from input (rounded up)', () => {
       const btcInput = '1000000'; // 1M sats
       const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, btcInput);
 
-      // Fee should be ceil(1.5% of input) = ceil(15000) = 15000 sats
-      expect(result!.fee).toBe(15000);
+      // Fee should be ceil(1.25% of input) = ceil(12500) = 12500 sats
+      expect(result!.fee).toBe(12500);
     });
 
     it('increases the BTC reserve and decreases token supply', () => {
@@ -121,16 +121,16 @@ describe('bonding-curve', () => {
       expect(Number(sell.outputAmount)).toBeLessThan(Number(btcInput));
     });
 
-    it('deducts 1.5% fee from gross BTC output (rounded up)', () => {
+    it('deducts 1.25% fee from gross BTC output (rounded up)', () => {
       const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
       const newBtc = new BigNumber(buy.newVirtualBtc);
       const newToken = new BigNumber(buy.newVirtualToken);
 
       const sell = calculateSell(newBtc, newToken, buy.outputAmount)!;
 
-      // Fee is ceil(1.5% of grossBtcOut)
+      // Fee is ceil(1.25% of grossBtcOut)
       const grossBtcOut = Number(sell.outputAmount) + sell.fee;
-      const expectedFee = Math.ceil(grossBtcOut * 0.015);
+      const expectedFee = Math.ceil(grossBtcOut * 0.0125);
       expect(sell.fee).toBe(expectedFee);
     });
 
