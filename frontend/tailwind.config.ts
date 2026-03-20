@@ -17,7 +17,7 @@ const config: Config = {
         'accent-hover': '#d4a910',
         bull: '#22c55e',
         bear: '#ef4444',
-        pending: '#eab308',
+        pending: '#f5c518',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

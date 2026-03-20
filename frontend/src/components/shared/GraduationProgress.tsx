@@ -43,7 +43,7 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
         <Progress.Indicator
           className={cn(
             'h-full rounded-full transition-all duration-500',
-            isMigrated ? 'bg-bull' : isMigrating ? 'bg-yellow-500 animate-pulse' : isGraduated ? 'bg-bull' : 'bg-accent',
+            isMigrated ? 'bg-bull' : isMigrating ? 'bg-accent animate-pulse' : isGraduated ? 'bg-bull' : 'bg-accent',
           )}
           style={{ width: `${Math.min(100, progress)}%` }}
         />

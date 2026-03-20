@@ -19,7 +19,7 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
           'bg-bear/10 text-bear': variant === 'bear',
           'bg-pending/10 text-pending': variant === 'pending',
           'border border-border text-text-secondary': variant === 'outline',
-          'bg-yellow-500/10 text-yellow-400': variant === 'warning',
+          'bg-accent/10 text-accent': variant === 'warning',
         },
         className,
       )}
