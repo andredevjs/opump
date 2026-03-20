@@ -97,16 +97,6 @@ export type ClaimCreatorFees = CallResult<
 >;
 
 /**
- * @description Represents the result of the claimMinterReward function call.
- */
-export type ClaimMinterReward = CallResult<
-    {
-        amount: bigint;
-    },
-    OPNetEvent<FeeClaimedEvent>[]
->;
-
-/**
  * @description Represents the result of the migrate function call.
  */
 export type Migrate = CallResult<
@@ -174,25 +164,12 @@ export type IsGraduated = CallResult<
 >;
 
 /**
- * @description Represents the result of the getMinterInfo function call.
- */
-export type GetMinterInfo = CallResult<
-    {
-        shares: bigint;
-        buyBlock: bigint;
-        eligible: boolean;
-    },
-    OPNetEvent<never>[]
->;
-
-/**
  * @description Represents the result of the getFeePools function call.
  */
 export type GetFeePools = CallResult<
     {
         platformFees: bigint;
         creatorFees: bigint;
-        minterFees: bigint;
     },
     OPNetEvent<never>[]
 >;
@@ -218,14 +195,12 @@ export interface ILaunchToken extends IOP_NETContract {
     cancelReservation(): Promise<CancelReservation>;
     claimPlatformFees(): Promise<ClaimPlatformFees>;
     claimCreatorFees(): Promise<ClaimCreatorFees>;
-    claimMinterReward(): Promise<ClaimMinterReward>;
     migrate(recipient: Address): Promise<Migrate>;
     isMigrated(): Promise<IsMigrated>;
     getReserves(): Promise<GetReserves>;
     getPrice(): Promise<GetPrice>;
     getConfig(): Promise<GetConfig>;
     isGraduated(): Promise<IsGraduated>;
-    getMinterInfo(addr: Address): Promise<GetMinterInfo>;
     getFeePools(): Promise<GetFeePools>;
     getReservation(addr: Address): Promise<GetReservation>;
 }

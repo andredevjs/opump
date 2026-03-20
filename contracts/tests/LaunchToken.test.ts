@@ -159,11 +159,11 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
 
     await vm.it('should revert buy if graduated', async () => {
         // Deploy with threshold matching netBtc of a 50k buy to graduate on first buy
-        // netBtc = 50_000 - floor(50_000 * 150 / 10_000) = 50_000 - 750 = 49_250
+        // netBtc = 50_000 - floor(50_000 * 125 / 10_000) = 50_000 - 625 = 49_375
         token.dispose();
         Blockchain.clearContracts();
 
-        const config = makeConfig({ graduationThreshold: 49_250n });
+        const config = makeConfig({ graduationThreshold: 49_375n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -251,7 +251,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     // BUY — FEES & FLYWHEEL
     // ==========================================
 
-    await vm.it('should accumulate platform/creator/minter fees on buy', async () => {
+    await vm.it('should accumulate platform/creator fees on buy', async () => {
         const buyer = Blockchain.generateRandomAddress();
         const buyAmount = 1_000_000n; // 0.01 BTC
         setTxWithOutput(vaultAddress, buyAmount);
@@ -296,40 +296,6 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     });
 
     // ==========================================
-    // BUY — MINTER TRACKING
-    // ==========================================
-
-    await vm.it('should track minter within window', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 50_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        // Block is 100, deploy was at 100, window is 4320 blocks
-        await token.buy(buyAmount, buyer);
-
-        const info = await token.getMinterInfo(buyer);
-        Assert.expect(info.shares).toBeGreaterThan(0n);
-        Assert.expect(info.buyBlock).toEqual(100n);
-    });
-
-    await vm.it('should not track minter after window expires', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 50_000n;
-
-        // Force deployment at block 100 by calling a view method first
-        await token.getReserves();
-
-        // Now move well past the minter window (deployBlock=100, windowEnd=100+4320=4420)
-        Blockchain.blockNumber = 10_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        await token.buy(buyAmount, buyer);
-
-        const info = await token.getMinterInfo(buyer);
-        Assert.expect(info.shares).toEqual(0n);
-    });
-
-    // ==========================================
     // SELL — LIQUIDITY GUARD (Fix 2)
     // ==========================================
 
@@ -337,8 +303,8 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc = 50_000 - 750 = 49_250 matches threshold exactly
-        const config = makeConfig({ graduationThreshold: 49_250n });
+        // netBtc = 50_000 - 625 = 49_375 matches threshold exactly
+        const config = makeConfig({ graduationThreshold: 49_375n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -598,8 +564,8 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc for 100_000 buy = 100_000 - 1_500 = 98_500; set threshold to match
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        // netBtc for 100_000 buy = 100_000 - 1_250 = 98_750; set threshold to match
+        const config = makeConfig({ graduationThreshold: 98_750n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -616,8 +582,8 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         token.dispose();
         Blockchain.clearContracts();
 
-        // netBtc for 100_000 buy = 98_500; threshold matches exactly
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        // netBtc for 100_000 buy = 98_750; threshold matches exactly
+        const config = makeConfig({ graduationThreshold: 98_750n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -756,16 +722,14 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         await token.buy(buyAmount, buyer);
 
         const pools = await token.getFeePools();
-        // Total fee = 1.5% of 1_000_000 = 15_000 sats
-        // Platform = 1% = 10_000, Creator = 0.25% = 2_500, Minter = remainder = 2_500
+        // Total fee = 1.25% of 1_000_000 = 12_500 sats
+        // Platform = 1% = 10_000, Creator = remainder = 2_500
         const expectedPlatform = (buyAmount * 100n) / 10_000n;
-        const expectedCreator = (buyAmount * 25n) / 10_000n;
-        const expectedTotal = (buyAmount * 150n) / 10_000n;
-        const expectedMinter = expectedTotal - expectedPlatform - expectedCreator;
+        const expectedTotal = (buyAmount * 125n) / 10_000n;
+        const expectedCreator = expectedTotal - expectedPlatform;
 
         Assert.expect(pools.platformFees).toEqual(expectedPlatform);
         Assert.expect(pools.creatorFees).toEqual(expectedCreator);
-        Assert.expect(pools.minterFees).toEqual(expectedMinter);
     });
 
     await vm.it('should accumulate sell fees in pools', async () => {
@@ -782,10 +746,9 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         await token.sell(sellAmount, buyer);
 
         const poolsAfterSell = await token.getFeePools();
-        // All three pools should increase from sell fees
+        // Both pools should increase from sell fees
         Assert.expect(poolsAfterSell.platformFees).toBeGreaterThan(poolsAfterBuy.platformFees);
         Assert.expect(poolsAfterSell.creatorFees).toBeGreaterThan(poolsAfterBuy.creatorFees);
-        Assert.expect(poolsAfterSell.minterFees).toBeGreaterThan(poolsAfterBuy.minterFees);
     });
 
     // ==========================================
@@ -827,51 +790,6 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     });
 
     // ==========================================
-    // MINTER REWARD CLAIM SUCCESS
-    // ==========================================
-
-    await vm.it('should allow minter to claim reward after hold period', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 500_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        // Buy at block 100 (within minter window)
-        await token.buy(buyAmount, buyer);
-
-        const infoBefore = await token.getMinterInfo(buyer);
-        Assert.expect(infoBefore.shares).toBeGreaterThan(0n);
-
-        // Advance past hold period (4320 blocks)
-        Blockchain.blockNumber = 100n + 4320n + 1n;
-
-        // Claim
-        const { amount } = await token.claimMinterReward(buyer);
-        Assert.expect(amount).toBeGreaterThan(0n);
-
-        // Shares should be zeroed after claim
-        const infoAfter = await token.getMinterInfo(buyer);
-        Assert.expect(infoAfter.shares).toEqual(0n);
-    });
-
-    await vm.it('should revert claimMinterReward if tokens were sold', async () => {
-        const buyer = Blockchain.generateRandomAddress();
-        const buyAmount = 500_000n;
-        setTxWithOutput(vaultAddress, buyAmount);
-
-        const { tokensOut } = await token.buy(buyAmount, buyer);
-
-        // Sell all tokens
-        await token.sell(tokensOut, buyer);
-
-        // Advance past hold period
-        Blockchain.blockNumber = 100n + 4320n + 1n;
-
-        await Assert.expect(async () => {
-            await token.claimMinterReward(buyer);
-        }).toThrow('Must hold tokens');
-    });
-
-    // ==========================================
     // MIGRATION
     // ==========================================
 
@@ -888,10 +806,10 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     });
 
     await vm.it('should revert migrate if not deployer', async () => {
-        // Graduate first — netBtc for 100k buy = 98_500
+        // Graduate first — netBtc for 100k buy = 98_750
         token.dispose();
         Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        const config = makeConfig({ graduationThreshold: 98_750n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -908,7 +826,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     await vm.it('should migrate successfully after graduation', async () => {
         token.dispose();
         Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        const config = makeConfig({ graduationThreshold: 98_750n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -935,7 +853,7 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
     await vm.it('should revert double migration', async () => {
         token.dispose();
         Blockchain.clearContracts();
-        const config = makeConfig({ graduationThreshold: 98_500n });
+        const config = makeConfig({ graduationThreshold: 98_750n });
         token = await createToken(config);
 
         const buyer = Blockchain.generateRandomAddress();
@@ -970,9 +888,10 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         await token.buy(buyAmount, buyer);
 
         const pools = await token.getFeePools();
-        // Only base fees (1.5%), no flywheel addition to any pool
+        // Only base fees (1.25%), no flywheel addition to any pool
         const expectedPlatform = (buyAmount * 100n) / 10_000n;
-        const expectedCreator = (buyAmount * 25n) / 10_000n;
+        const expectedTotal = (buyAmount * 125n) / 10_000n;
+        const expectedCreator = expectedTotal - expectedPlatform;
         Assert.expect(pools.platformFees).toEqual(expectedPlatform);
         Assert.expect(pools.creatorFees).toEqual(expectedCreator);
     });
@@ -1090,6 +1009,5 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
         const pools = await token.getFeePools();
         Assert.expect(pools.platformFees).toEqual(0n);
         Assert.expect(pools.creatorFees).toEqual(0n);
-        Assert.expect(pools.minterFees).toEqual(0n);
     });
 });

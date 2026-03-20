@@ -90,12 +90,6 @@ export const LaunchTokenAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
-        name: 'claimMinterReward',
-        inputs: [],
-        outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
         name: 'migrate',
         inputs: [{ name: 'recipient', type: ABIDataTypes.ADDRESS }],
         outputs: [{ name: 'tokenAmount', type: ABIDataTypes.UINT256 }],
@@ -148,24 +142,12 @@ export const LaunchTokenAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
-        name: 'getMinterInfo',
-        constant: true,
-        inputs: [{ name: 'addr', type: ABIDataTypes.ADDRESS }],
-        outputs: [
-            { name: 'shares', type: ABIDataTypes.UINT256 },
-            { name: 'buyBlock', type: ABIDataTypes.UINT256 },
-            { name: 'eligible', type: ABIDataTypes.BOOL },
-        ],
-        type: BitcoinAbiTypes.Function,
-    },
-    {
         name: 'getFeePools',
         constant: true,
         inputs: [],
         outputs: [
             { name: 'platformFees', type: ABIDataTypes.UINT256 },
             { name: 'creatorFees', type: ABIDataTypes.UINT256 },
-            { name: 'minterFees', type: ABIDataTypes.UINT256 },
         ],
         type: BitcoinAbiTypes.Function,
     },

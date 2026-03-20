@@ -18,13 +18,8 @@ export const MIN_TRADE_SATS = 10_000n; // ~$1
 // Fee schedule (basis points, 1 bp = 0.01%)
 export const PLATFORM_FEE_BPS = 100n; // 1%
 export const CREATOR_FEE_BPS = 25n; // 0.25%
-export const MINTER_FEE_BPS = 25n; // 0.25%
-export const TOTAL_FEE_BPS = 150n; // 1.5% total
+export const TOTAL_FEE_BPS = 125n; // 1.25% total
 export const FEE_DENOMINATOR = 10_000n;
-
-// Minter rewards
-export const MINTER_WINDOW_BLOCKS = 4_320n; // ~30 days of Bitcoin blocks
-export const MINTER_HOLD_BLOCKS = 4_320n; // must hold for ~30 days
 
 // Creator allocation caps
 export const MAX_CREATOR_ALLOCATION_BPS = 1_000n; // 10%

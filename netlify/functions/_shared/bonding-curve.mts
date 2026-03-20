@@ -10,7 +10,6 @@ import {
   TOTAL_FEE_BPS,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
-  MINTER_FEE_BPS,
   FEE_DENOMINATOR,
   MIN_TRADE_SATS,
   GRADUATION_THRESHOLD_SATS,
@@ -28,7 +27,6 @@ export interface Reserves {
 export interface FeeBreakdown {
   platform: bigint;
   creator: bigint;
-  minter: bigint;
   flywheel: bigint;
   total: bigint;
 }
@@ -147,13 +145,12 @@ export class BondingCurveSimulator {
 
   private calculateFees(amount: bigint, flywheelBps: bigint): FeeBreakdown {
     const platform = (amount * PLATFORM_FEE_BPS) / FEE_DENOMINATOR;
-    const creator = (amount * CREATOR_FEE_BPS) / FEE_DENOMINATOR;
-    const minter = (amount * MINTER_FEE_BPS) / FEE_DENOMINATOR;
-    const flywheel = (amount * flywheelBps) / FEE_DENOMINATOR;
     const baseFee = (amount * TOTAL_FEE_BPS) / FEE_DENOMINATOR;
+    const creator = baseFee - platform;
+    const flywheel = (amount * flywheelBps) / FEE_DENOMINATOR;
     const total = baseFee + flywheel;
 
-    return { platform, creator, minter, flywheel, total };
+    return { platform, creator, flywheel, total };
   }
 
   calculatePrice(virtualBtc: bigint, virtualToken: bigint): bigint {

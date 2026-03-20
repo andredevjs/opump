@@ -54,13 +54,6 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     inputs: [],
     outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
   },
-  {
-    name: 'claimMinterReward',
-    type: BitcoinAbiTypes.Function,
-    inputs: [],
-    outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
-  },
-
   // --- Read methods ---
   {
     name: 'getReserves',
@@ -102,17 +95,6 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     outputs: [{ name: 'isGraduated', type: ABIDataTypes.BOOL }],
   },
   {
-    name: 'getMinterInfo',
-    type: BitcoinAbiTypes.Function,
-    constant: true,
-    inputs: [{ name: 'addr', type: ABIDataTypes.ADDRESS }],
-    outputs: [
-      { name: 'shares', type: ABIDataTypes.UINT256 },
-      { name: 'buyBlock', type: ABIDataTypes.UINT256 },
-      { name: 'eligible', type: ABIDataTypes.BOOL },
-    ],
-  },
-  {
     name: 'getFeePools',
     type: BitcoinAbiTypes.Function,
     constant: true,
@@ -120,7 +102,6 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     outputs: [
       { name: 'platformFees', type: ABIDataTypes.UINT256 },
       { name: 'creatorFees', type: ABIDataTypes.UINT256 },
-      { name: 'minterFees', type: ABIDataTypes.UINT256 },
     ],
   },
   {
@@ -214,8 +195,7 @@ export type GetReservesResult = CallResult<{ virtualBtc: bigint; virtualToken: b
 export type GetPriceResult = CallResult<{ priceSatsPerToken: bigint }, []>;
 export type GetConfigResult = CallResult<{ creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint }, []>;
 export type IsGraduatedResult = CallResult<{ isGraduated: boolean }, []>;
-export type GetMinterInfoResult = CallResult<{ shares: bigint; buyBlock: bigint; eligible: boolean }, []>;
-export type GetFeePoolsResult = CallResult<{ platformFees: bigint; creatorFees: bigint; minterFees: bigint }, []>;
+export type GetFeePoolsResult = CallResult<{ platformFees: bigint; creatorFees: bigint }, []>;
 export type GetReservationResult = CallResult<{ amount: bigint; expiryBlock: bigint }, []>;
 
 // ============ LaunchToken Interface ============
@@ -227,14 +207,12 @@ export interface ILaunchTokenContract extends IOP20Contract {
   reserve(btcAmount: bigint): Promise<ReserveResult>;
   cancelReservation(): Promise<CancelReservationResult>;
   claimCreatorFees(): Promise<ClaimResult>;
-  claimMinterReward(): Promise<ClaimResult>;
   // Read
   getReserves(): Promise<GetReservesResult>;
   getPrice(): Promise<GetPriceResult>;
   getConfig(): Promise<GetConfigResult>;
   getFeePools(): Promise<GetFeePoolsResult>;
   isGraduated(): Promise<IsGraduatedResult>;
-  getMinterInfo(addr: Address): Promise<GetMinterInfoResult>;
   getReservation(addr: Address): Promise<GetReservationResult>;
 }
 

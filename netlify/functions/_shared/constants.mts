@@ -11,8 +11,7 @@ export const GRADUATION_THRESHOLD_SATS = 6_900_000n;
 export const MIN_TRADE_SATS = 10_000n;
 export const PLATFORM_FEE_BPS = 100n;
 export const CREATOR_FEE_BPS = 25n;
-export const MINTER_FEE_BPS = 25n;
-export const TOTAL_FEE_BPS = 150n;
+export const TOTAL_FEE_BPS = 125n;
 export const FEE_DENOMINATOR = 10_000n;
 export const TOKEN_DECIMALS = 8;
 export const PRICE_PRECISION = 10n ** 18n;
@@ -93,7 +92,6 @@ export type TradeStatus = "pending" | "confirmed";
 export interface TradeFees {
   platform: string;
   creator: string;
-  minter: string;
   flywheel: string;
 }
 

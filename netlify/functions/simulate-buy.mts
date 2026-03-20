@@ -62,7 +62,6 @@ export default async (req: Request, _context: Context) => {
       fees: {
         platform: result.fees.platform.toString(),
         creator: result.fees.creator.toString(),
-        minter: result.fees.minter.toString(),
         flywheel: result.fees.flywheel.toString(),
         total: result.fees.total.toString(),
       },

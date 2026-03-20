@@ -25,8 +25,6 @@ import {
   DEFAULT_GRADUATION_THRESHOLD,
   MIN_TRADE_AMOUNT,
   FEE_DENOMINATOR,
-  MINTER_WINDOW_BLOCKS,
-  MINTER_HOLD_BLOCKS,
   MAX_CREATOR_ALLOCATION_BPS,
   MAX_BUY_TAX_BPS,
   MAX_SELL_TAX_BPS,
@@ -48,7 +46,6 @@ export class LaunchToken extends OP20 {
 
   // Fee pools
   private readonly creatorFeePoolPtr: u16 = Blockchain.nextPointer;
-  private readonly minterFeePoolPtr: u16 = Blockchain.nextPointer;
   private readonly platformFeePoolPtr: u16 = Blockchain.nextPointer;
 
   // Deployment info (block number stored as u64 in a StoredU64 slot)
@@ -59,11 +56,6 @@ export class LaunchToken extends OP20 {
   private readonly buyTaxBpsPtr: u16 = Blockchain.nextPointer;
   private readonly sellTaxBpsPtr: u16 = Blockchain.nextPointer;
   private readonly flywheelDestinationPtr: u16 = Blockchain.nextPointer;
-
-  // Minter tracking
-  private readonly minterSharesPtr: u16 = Blockchain.nextPointer;
-  private readonly minterBuyBlockPtr: u16 = Blockchain.nextPointer;
-  private readonly totalMinterSharesPtr: u16 = Blockchain.nextPointer;
 
   // Reservations
   private readonly reservationsPtr: u16 = Blockchain.nextPointer;
@@ -82,7 +74,6 @@ export class LaunchToken extends OP20 {
   private readonly migrated: StoredBoolean = new StoredBoolean(this.migratedPtr, false);
 
   private readonly creatorFeePool: StoredU256 = new StoredU256(this.creatorFeePoolPtr, EMPTY_POINTER);
-  private readonly minterFeePool: StoredU256 = new StoredU256(this.minterFeePoolPtr, EMPTY_POINTER);
   private readonly platformFeePool: StoredU256 = new StoredU256(this.platformFeePoolPtr, EMPTY_POINTER);
 
   private readonly deployBlock: StoredU64 = new StoredU64(this.deployBlockPtr, EMPTY_POINTER);
@@ -92,10 +83,6 @@ export class LaunchToken extends OP20 {
   private readonly sellTaxBps: StoredU256 = new StoredU256(this.sellTaxBpsPtr, EMPTY_POINTER);
   // Values: 0 = burn, 1 = community pool, 2 = creator
   private readonly flywheelDestination: StoredU256 = new StoredU256(this.flywheelDestinationPtr, EMPTY_POINTER);
-
-  private readonly minterShares: AddressMemoryMap = new AddressMemoryMap(this.minterSharesPtr);
-  private readonly minterBuyBlock: AddressMemoryMap = new AddressMemoryMap(this.minterBuyBlockPtr);
-  private readonly totalMinterShares: StoredU256 = new StoredU256(this.totalMinterSharesPtr, EMPTY_POINTER);
 
   private readonly reservations: AddressMemoryMap = new AddressMemoryMap(this.reservationsPtr);
   private readonly reservationExpiry: AddressMemoryMap = new AddressMemoryMap(this.reservationExpiryPtr);
@@ -219,7 +206,6 @@ export class LaunchToken extends OP20 {
     const fees = BondingCurve.splitFees(btcAmount);
     const platformFee = fees[0];
     const creatorFee = fees[1];
-    const minterFee = fees[2];
     const totalFee = BondingCurve.calculateTotalFee(btcAmount);
 
     // Calculate flywheel tax
@@ -251,16 +237,12 @@ export class LaunchToken extends OP20 {
     // Accumulate fee pools
     this.platformFeePool.set(SafeMath.add(this.platformFeePool.value, platformFee));
     this.creatorFeePool.set(SafeMath.add(this.creatorFeePool.value, creatorFee));
-    this.minterFeePool.set(SafeMath.add(this.minterFeePool.value, minterFee));
 
     // Apply flywheel tax based on destination
     this._applyFlywheel(flywheelFee, sender);
 
     // Mint tokens to buyer
     this._mint(sender, tokensOut);
-
-    // Track minter eligibility (first ~30 days)
-    this._trackMinter(sender, tokensOut);
 
     // Check graduation
     this._checkGraduation();
@@ -315,7 +297,6 @@ export class LaunchToken extends OP20 {
     const fees = BondingCurve.splitFees(grossBtcOut);
     const platformFee = fees[0];
     const creatorFee = fees[1];
-    const minterFee = fees[2];
     const totalFee = BondingCurve.calculateTotalFee(grossBtcOut);
 
     // Calculate flywheel tax
@@ -336,7 +317,6 @@ export class LaunchToken extends OP20 {
     // Accumulate fee pools
     this.platformFeePool.set(SafeMath.add(this.platformFeePool.value, platformFee));
     this.creatorFeePool.set(SafeMath.add(this.creatorFeePool.value, creatorFee));
-    this.minterFeePool.set(SafeMath.add(this.minterFeePool.value, minterFee));
 
     // Apply flywheel
     this._applyFlywheel(flywheelFee, sender);
@@ -491,61 +471,6 @@ export class LaunchToken extends OP20 {
     return writer;
   }
 
-  /**
-   * Claims accumulated minter reward based on proportional shares.
-   *
-   * NOTE: This method records the claim and zeros the shares, but does NOT
-   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
-   * outputs constructed by the caller. The claim emits an event that an
-   * off-chain settlement process monitors to fulfill the BTC transfer.
-   *
-   * The caller must construct the appropriate BTC outputs in their transaction.
-   */
-  @method()
-  @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
-  @emit('FeeClaimed')
-  public claimMinterReward(calldata: Calldata): BytesWriter {
-    const sender = Blockchain.tx.sender;
-
-    // Check eligibility
-    const sharesValue = this.minterShares.get(sender);
-    if (sharesValue == u256.Zero) {
-      throw new Revert('No minter shares');
-    }
-
-    // Check hold period
-    const buyBlock = this.minterBuyBlock.get(sender);
-    const currentBlock = u256.fromU64(Blockchain.block.number);
-    if (currentBlock < SafeMath.add(buyBlock, MINTER_HOLD_BLOCKS)) {
-      throw new Revert('Hold period not met');
-    }
-
-    // Check still holds tokens
-    if (this._balanceOf(sender) == u256.Zero) {
-      throw new Revert('Must hold tokens');
-    }
-
-    // Calculate proportional share
-    const totalShares = this.totalMinterShares.value;
-    if (totalShares == u256.Zero) {
-      throw new Revert('No minter shares in pool');
-    }
-    const pool = this.minterFeePool.value;
-    const amount = SafeMath.div(SafeMath.mul(pool, sharesValue), totalShares);
-
-    // Zero out shares (prevent double claim)
-    this.minterShares.set(sender, u256.Zero);
-    this.totalMinterShares.set(SafeMath.sub(totalShares, sharesValue));
-    this.minterFeePool.set(SafeMath.sub(pool, amount));
-
-    // feeType 1 = minter
-    this.emitEvent(new FeeClaimedEvent(sender, amount, u256.One));
-
-    const writer = new BytesWriter(32);
-    writer.writeU256(amount);
-    return writer;
-  }
-
   @method({ name: 'recipient', type: ABIDataTypes.ADDRESS })
   @returns({ name: 'tokenAmount', type: ABIDataTypes.UINT256 })
   @emit('Migration')
@@ -646,42 +571,15 @@ export class LaunchToken extends OP20 {
   }
 
   @view
-  @method({ name: 'addr', type: ABIDataTypes.ADDRESS })
-  @returns(
-    { name: 'shares', type: ABIDataTypes.UINT256 },
-    { name: 'buyBlock', type: ABIDataTypes.UINT256 },
-    { name: 'eligible', type: ABIDataTypes.BOOL },
-  )
-  public getMinterInfo(calldata: Calldata): BytesWriter {
-    const addr = calldata.readAddress();
-    const shares = this.minterShares.get(addr);
-    const buyBlock = this.minterBuyBlock.get(addr);
-
-    // Check eligibility
-    const currentBlock = u256.fromU64(Blockchain.block.number);
-    const eligible = shares > u256.Zero &&
-      currentBlock >= SafeMath.add(buyBlock, MINTER_HOLD_BLOCKS) &&
-      this._balanceOf(addr) > u256.Zero;
-
-    const writer = new BytesWriter(32 + 32 + 1);
-    writer.writeU256(shares);
-    writer.writeU256(buyBlock);
-    writer.writeBoolean(eligible);
-    return writer;
-  }
-
-  @view
   @method()
   @returns(
     { name: 'platformFees', type: ABIDataTypes.UINT256 },
     { name: 'creatorFees', type: ABIDataTypes.UINT256 },
-    { name: 'minterFees', type: ABIDataTypes.UINT256 },
   )
   public getFeePools(calldata: Calldata): BytesWriter {
-    const writer = new BytesWriter(32 * 3);
+    const writer = new BytesWriter(32 * 2);
     writer.writeU256(this.platformFeePool.value);
     writer.writeU256(this.creatorFeePool.value);
-    writer.writeU256(this.minterFeePool.value);
     return writer;
   }
 
@@ -735,25 +633,6 @@ export class LaunchToken extends OP20 {
     this.reservationExpiry.set(sender, u256.Zero);
   }
 
-  private _trackMinter(buyer: Address, tokensOut: u256): void {
-    const currentBlock = u256.fromU64(Blockchain.block.number);
-    const deployBlockU256 = u256.fromU64(this.deployBlock.get(0));
-    const windowEnd = SafeMath.add(deployBlockU256, MINTER_WINDOW_BLOCKS);
-
-    if (currentBlock < windowEnd) {
-      const existingSharesValue = this.minterShares.get(buyer);
-
-      // Record buy block if first purchase
-      if (existingSharesValue == u256.Zero) {
-        this.minterBuyBlock.set(buyer, currentBlock);
-      }
-
-      // Add shares proportional to tokens purchased
-      this.minterShares.set(buyer, SafeMath.add(existingSharesValue, tokensOut));
-      this.totalMinterShares.set(SafeMath.add(this.totalMinterShares.value, tokensOut));
-    }
-  }
-
   private _checkGraduation(): void {
     const realBtc = this.realBtcReserve.value;
     const threshold = this.graduationThreshold.value;
@@ -773,8 +652,8 @@ export class LaunchToken extends OP20 {
       // Burn destination: sats already deducted from curve input, not redistributed
       return;
     } else if (dest == u256.One) {
-      // Community pool — add to minter fee pool
-      this.minterFeePool.set(SafeMath.add(this.minterFeePool.value, flywheelFee));
+      // Community pool — add to creator fee pool
+      this.creatorFeePool.set(SafeMath.add(this.creatorFeePool.value, flywheelFee));
     } else {
       // Creator — add to creator fee pool
       this.creatorFeePool.set(SafeMath.add(this.creatorFeePool.value, flywheelFee));

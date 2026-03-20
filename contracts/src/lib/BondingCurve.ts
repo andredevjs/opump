@@ -4,8 +4,6 @@ import {
   TOTAL_FEE_BPS,
   FEE_DENOMINATOR,
   PLATFORM_FEE_BPS,
-  CREATOR_FEE_BPS,
-  MINTER_FEE_BPS,
   PRICE_PRECISION,
 } from './Constants';
 
@@ -64,22 +62,20 @@ export class BondingCurve {
   }
 
   /**
-   * Split the total fee into platform, creator, and minter portions.
-   * Returns [platformFee, creatorFee, minterFee]
+   * Split the total fee into platform and creator portions.
+   * Returns [platformFee, creatorFee]
    *
-   * INVARIANT: TOTAL_FEE_BPS == PLATFORM_FEE_BPS + CREATOR_FEE_BPS + MINTER_FEE_BPS
-   * Minter gets the rounding remainder (total - platform - creator) to ensure no dust is lost.
+   * INVARIANT: TOTAL_FEE_BPS == PLATFORM_FEE_BPS + CREATOR_FEE_BPS
+   * Creator gets the rounding remainder (total - platform) to ensure no dust is lost.
    */
   static splitFees(amount: u256): StaticArray<u256> {
     const total = BondingCurve.calculateTotalFee(amount);
     const platformFee = SafeMath.div(SafeMath.mul(amount, PLATFORM_FEE_BPS), FEE_DENOMINATOR);
-    const creatorFee = SafeMath.div(SafeMath.mul(amount, CREATOR_FEE_BPS), FEE_DENOMINATOR);
-    // Minter gets remainder to avoid dust loss from integer division
-    const minterFee = SafeMath.sub(total, SafeMath.add(platformFee, creatorFee));
-    const result = new StaticArray<u256>(3);
+    // Creator gets remainder to avoid dust loss from integer division
+    const creatorFee = SafeMath.sub(total, platformFee);
+    const result = new StaticArray<u256>(2);
     result[0] = platformFee;
     result[1] = creatorFee;
-    result[2] = minterFee;
     return result;
   }
 
