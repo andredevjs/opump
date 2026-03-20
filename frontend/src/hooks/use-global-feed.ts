@@ -36,7 +36,7 @@ export function useGlobalFeed(): void {
             const existing = storeTokens.find((t) => t.address === mapped.address);
             if (!existing) {
               // New token — prepend only when no search/status filter is active;
-              // TrenchesPage's own poll already handles filtered refreshes.
+              // FieldsPage's own poll already handles filtered refreshes.
               if (!hasActiveFilter) {
                 useTokenStore.setState((state) => ({
                   tokens: [mapped, ...state.tokens],

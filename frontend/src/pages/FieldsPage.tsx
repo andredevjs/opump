@@ -32,7 +32,7 @@ const SORT_OPTIONS: TokenSortOption[] = [
   { label: 'Newest', value: 'newest' },
 ];
 
-export function TrenchesPage() {
+export function FieldsPage() {
   const { tokens, filter, setFilter, setPage, pagination, fetchTokens } = useTokenStore();
   const { viewMode, setViewMode } = useUIStore();
 
@@ -62,7 +62,7 @@ export function TrenchesPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-text-primary mb-6">The Trenches</h1>
+      <h1 className="text-3xl font-bold text-text-primary mb-6">The Fields</h1>
 
       {/* Search + Controls */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">

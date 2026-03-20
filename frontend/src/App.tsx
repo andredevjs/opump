@@ -2,7 +2,7 @@ import { createBrowserRouter, RouterProvider, useRouteError } from 'react-router
 import { RootLayout } from '@/components/layout/RootLayout';
 import { HomePage } from '@/pages/HomePage';
 import { LaunchPage } from '@/pages/LaunchPage';
-import { TrenchesPage } from '@/pages/TrenchesPage';
+import { FieldsPage } from '@/pages/FieldsPage';
 import { TokenPage } from '@/pages/TokenPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { ReferralPage } from '@/pages/ReferralPage';
@@ -27,7 +27,7 @@ function RouteErrorFallback() {
           </a>
           <button
             onClick={() => window.location.reload()}
-            className="px-4 py-2 text-sm rounded-lg bg-orange-600 text-white hover:bg-orange-700 transition-colors"
+            className="px-4 py-2 text-sm rounded-lg bg-accent text-black hover:bg-accent-hover transition-colors"
           >
             Reload page
           </button>
@@ -44,7 +44,7 @@ const router = createBrowserRouter([
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/launch', element: <LaunchPage /> },
-      { path: '/trenches', element: <TrenchesPage /> },
+      { path: '/fields', element: <FieldsPage /> },
       { path: '/token/:address', element: <TokenPage /> },
       { path: '/profile/:address', element: <ProfilePage /> },
       { path: '/referral', element: <ReferralPage /> },

@@ -35,20 +35,20 @@ export const CHART_THEME = {
   fontFamily: 'JetBrains Mono, monospace',
   fontSize: 11,
   gridColor: '#1a1a27',
-  crosshairColor: '#f7931a',
+  crosshairColor: '#f5c518',
   borderColor: '#2a2a3d',
   upColor: '#22c55e',
   downColor: '#ef4444',
-  lineColor: '#f7931a',
-  volumeColor: '#f7931a',
+  lineColor: '#f5c518',
+  volumeColor: '#f5c518',
   errorBg: '#0a0a12',
   errorCardBg: '#12121a',
   errorBorder: '#2a2a3d',
   errorText: '#e4e4ed',
   errorMuted: 'rgb(156 163 175)', // gray-400
   errorButton: '#1a1a2e',
-  errorAccent: 'rgb(234 88 12)', // orange-600
-  errorAccentHover: 'rgb(194 65 12)', // orange-700
+  errorAccent: '#f5c518',
+  errorAccentHover: '#d4a910',
 } as const;
 
 // UI
