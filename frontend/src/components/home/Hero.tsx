@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Rocket, TrendingUp } from 'lucide-react';
+import cornhubFieldsFull from '@/assets/brand/cornhub-fields-full.jpg';
 
 export function Hero() {
   return (
@@ -13,6 +14,12 @@ export function Hero() {
           <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
           Live on Bitcoin L1 via Op_Net
         </div>
+
+        <img
+          src={cornhubFieldsFull}
+          alt="CornHub Fields"
+          className="mx-auto mb-6 max-w-md w-full rounded-xl"
+        />
 
         <h1 className="text-4xl sm:text-6xl font-bold text-text-primary mb-4 leading-tight">
           Launch OP20 Tokens on{' '}
@@ -30,7 +37,7 @@ export function Hero() {
               Launch OP20 Token
             </Button>
           </Link>
-          <Link to="/trenches">
+          <Link to="/fields">
             <Button variant="secondary" size="lg">
               <TrendingUp size={18} className="mr-2" />
               Explore OP20 Tokens
