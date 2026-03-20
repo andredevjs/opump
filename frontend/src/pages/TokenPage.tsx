@@ -6,7 +6,6 @@ import { TradePanel } from '@/components/trade/TradePanel';
 import { TradeHistory } from '@/components/trade/TradeHistory';
 import { TokenPrice } from '@/components/token/TokenPrice';
 import { TokenBadge } from '@/components/token/TokenBadge';
-import { MinterRewardCard } from '@/components/token/MinterRewardCard';
 import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { BondingCurveVisual } from '@/components/shared/BondingCurveVisual';
@@ -266,7 +265,6 @@ export function TokenPage() {
             />
           </Card>
 
-          <MinterRewardCard tokenAddress={token.address} />
           <CreatorFeeCard tokenAddress={token.address} creatorAddress={token.creatorAddress} />
         </div>
       </div>

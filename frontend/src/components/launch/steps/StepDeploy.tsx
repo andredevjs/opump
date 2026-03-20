@@ -132,7 +132,7 @@ export function StepDeploy() {
         imageUrl = uploaded.url;
       }
 
-      const flywheelDestNames = ['burn', 'communityPool', 'creator'] as const;
+      const flywheelDestNames = ['burn', 'creator', 'creator'] as const;
 
       await createToken({
         name: formData.name,

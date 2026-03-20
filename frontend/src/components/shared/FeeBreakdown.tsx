@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn';
 import { formatUsd } from '@/lib/format';
-import { PLATFORM_FEE_PERCENT, CREATOR_FEE_PERCENT, MINTER_FEE_PERCENT, TOTAL_FEE_PERCENT } from '@/config/constants';
+import { PLATFORM_FEE_PERCENT, CREATOR_FEE_PERCENT, TOTAL_FEE_PERCENT } from '@/config/constants';
 
 interface FeeBreakdownProps {
   totalFeeSats: number;
@@ -12,9 +12,7 @@ interface FeeBreakdownProps {
 
 export function FeeBreakdown({ totalFeeSats, btcPrice, flywheelTaxSats, flywheelDestination, className }: FeeBreakdownProps) {
   const platformFee = Math.floor(totalFeeSats * (PLATFORM_FEE_PERCENT / TOTAL_FEE_PERCENT));
-  const creatorFee = Math.floor(totalFeeSats * (CREATOR_FEE_PERCENT / TOTAL_FEE_PERCENT));
-  // Derive minter fee as remainder to ensure sub-fees sum to total
-  const minterFee = totalFeeSats - platformFee - creatorFee;
+  const creatorFee = totalFeeSats - platformFee;
 
   return (
     <div className={cn('space-y-1 text-xs', className)}>
@@ -25,10 +23,6 @@ export function FeeBreakdown({ totalFeeSats, btcPrice, flywheelTaxSats, flywheel
       <div className="flex justify-between text-text-secondary">
         <span>Creator ({CREATOR_FEE_PERCENT}%)</span>
         <span className="font-mono">{formatUsd(creatorFee, btcPrice)}</span>
-      </div>
-      <div className="flex justify-between text-text-secondary">
-        <span>Minter Pool ({MINTER_FEE_PERCENT}%)</span>
-        <span className="font-mono">{formatUsd(minterFee, btcPrice)}</span>
       </div>
       {flywheelTaxSats != null && flywheelTaxSats > 0 && (
         <div className="flex justify-between text-text-secondary">

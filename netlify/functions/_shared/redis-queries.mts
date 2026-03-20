@@ -616,7 +616,7 @@ function unflattenTrade(raw: Record<string, string>): TradeDocument {
     btcAmount: raw.btcAmount,
     tokenAmount: raw.tokenAmount,
     pricePerToken: raw.pricePerToken,
-    fees: safeJsonParse(raw.fees, { platform: "0", creator: "0", minter: "0", flywheel: "0" }),
+    fees: safeJsonParse(raw.fees, { platform: "0", creator: "0", flywheel: "0" }),
     priceImpactBps: parseInt(raw.priceImpactBps || "0"),
     status: (raw.status as "pending" | "confirmed") || "confirmed",
     blockNumber: raw.blockNumber ? parseInt(raw.blockNumber) : undefined,

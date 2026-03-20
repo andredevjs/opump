@@ -7,11 +7,8 @@ import {
   MIN_TRADE_SATS,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
-  MINTER_FEE_BPS,
   TOTAL_FEE_BPS,
   FEE_DENOMINATOR,
-  MINTER_WINDOW_BLOCKS,
-  MINTER_HOLD_BLOCKS,
   MAX_CREATOR_ALLOCATION_BPS,
   MAX_AIRDROP_BPS,
   MAX_COMBINED_ALLOCATION_BPS,
@@ -40,8 +37,8 @@ describe('shared constants', () => {
   });
 
   describe('fee schedule', () => {
-    it('total fee = platform + creator + minter', () => {
-      expect(TOTAL_FEE_BPS).toBe(PLATFORM_FEE_BPS + CREATOR_FEE_BPS + MINTER_FEE_BPS);
+    it('total fee = platform + creator', () => {
+      expect(TOTAL_FEE_BPS).toBe(PLATFORM_FEE_BPS + CREATOR_FEE_BPS);
     });
 
     it('platform fee = 1% (100 bps)', () => {
@@ -52,12 +49,8 @@ describe('shared constants', () => {
       expect(CREATOR_FEE_BPS).toBe(25n);
     });
 
-    it('minter fee = 0.25% (25 bps)', () => {
-      expect(MINTER_FEE_BPS).toBe(25n);
-    });
-
-    it('total fee = 1.5% (150 bps)', () => {
-      expect(TOTAL_FEE_BPS).toBe(150n);
+    it('total fee = 1.25% (125 bps)', () => {
+      expect(TOTAL_FEE_BPS).toBe(125n);
     });
 
     it('fee denominator = 10000 (basis points)', () => {
@@ -80,20 +73,6 @@ describe('shared constants', () => {
   describe('trade limits', () => {
     it('minimum trade = 10,000 sats', () => {
       expect(MIN_TRADE_SATS).toBe(10_000n);
-    });
-  });
-
-  describe('minter rewards', () => {
-    it('minter window = 4320 blocks (~30 days)', () => {
-      expect(MINTER_WINDOW_BLOCKS).toBe(4_320n);
-    });
-
-    it('minter hold period = 4320 blocks (~30 days)', () => {
-      expect(MINTER_HOLD_BLOCKS).toBe(4_320n);
-    });
-
-    it('minter window equals hold period (symmetric)', () => {
-      expect(MINTER_WINDOW_BLOCKS).toBe(MINTER_HOLD_BLOCKS);
     });
   });
 

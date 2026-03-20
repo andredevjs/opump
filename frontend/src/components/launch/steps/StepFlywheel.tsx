@@ -8,7 +8,7 @@ import type { TaxDestination } from '@/types/launch';
 
 const TAX_DESTINATIONS: { value: TaxDestination; label: string; description: string }[] = [
   { value: 'burn', label: 'Burn', description: 'Reduce supply over time' },
-  { value: 'community_pool', label: 'Community Pool', description: 'Shared treasury' },
+  { value: 'community_pool', label: 'Creator Pool', description: 'Additional creator revenue' },
   { value: 'creator_wallet', label: 'Creator Wallet', description: 'Direct to you' },
 ];
 

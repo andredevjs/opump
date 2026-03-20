@@ -56,7 +56,6 @@ export interface SimulateSellRequest {
 export interface SimulationFees {
   platform: string;
   creator: string;
-  minter: string;
   flywheel: string;
   total: string;
 }

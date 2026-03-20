@@ -67,7 +67,7 @@ export default async (req: Request, _context: Context) => {
       btcAmount: body.btcAmount,
       tokenAmount: body.tokenAmount,
       pricePerToken: body.pricePerToken,
-      fees: { platform: "0", creator: "0", minter: "0", flywheel: "0" },
+      fees: { platform: "0", creator: "0", flywheel: "0" },
       priceImpactBps: 0,
       status: "pending",
       createdAt: new Date(),

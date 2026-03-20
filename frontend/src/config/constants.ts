@@ -14,11 +14,10 @@ export const K = INITIAL_VIRTUAL_BTC_SATS.times(INITIAL_VIRTUAL_TOKEN_SUPPLY);
 // Graduation threshold
 export const GRADUATION_THRESHOLD_SATS = 6_900_000; // 6.9M sats
 
-// Fee structure (percentages — matches shared TOTAL_FEE_BPS=150, i.e. 1.5%)
-export const TOTAL_FEE_PERCENT = 1.5;       // 150 bps
+// Fee structure (percentages — matches shared TOTAL_FEE_BPS=125, i.e. 1.25%)
+export const TOTAL_FEE_PERCENT = 1.25;      // 125 bps
 export const PLATFORM_FEE_PERCENT = 1.0;    // 100 bps
 export const CREATOR_FEE_PERCENT = 0.25;    //  25 bps
-export const MINTER_FEE_PERCENT = 0.25;     //  25 bps
 
 // Launch limits
 export const MAX_CREATOR_ALLOCATION_PERCENT = 10;

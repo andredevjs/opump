@@ -8,7 +8,6 @@ export type TradeStatus = 'pending' | 'confirmed';
 export interface TradeFees {
   platform: string;
   creator: string;
-  minter: string;
   flywheel: string;
 }
 

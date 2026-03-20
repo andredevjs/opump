@@ -94,19 +94,6 @@
             ]
         },
         {
-            "name": "claimMinterReward",
-            "type": "Function",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [],
-            "outputs": [
-                {
-                    "name": "amount",
-                    "type": "UINT256"
-                }
-            ]
-        },
-        {
             "name": "migrate",
             "type": "Function",
             "payable": false,
@@ -218,32 +205,6 @@
             ]
         },
         {
-            "name": "getMinterInfo",
-            "type": "View",
-            "payable": false,
-            "onlyOwner": false,
-            "inputs": [
-                {
-                    "name": "addr",
-                    "type": "ADDRESS"
-                }
-            ],
-            "outputs": [
-                {
-                    "name": "shares",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "buyBlock",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "eligible",
-                    "type": "BOOL"
-                }
-            ]
-        },
-        {
             "name": "getFeePools",
             "type": "View",
             "payable": false,
@@ -256,10 +217,6 @@
                 },
                 {
                     "name": "creatorFees",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "minterFees",
                     "type": "UINT256"
                 }
             ]

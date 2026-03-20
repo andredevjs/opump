@@ -1,10 +1,9 @@
-import { Shield, Percent, User, Users } from 'lucide-react';
+import { Shield, Percent, User } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import {
   TOTAL_FEE_PERCENT,
   PLATFORM_FEE_PERCENT,
   CREATOR_FEE_PERCENT,
-  MINTER_FEE_PERCENT,
 } from '@/config/constants';
 
 const FEES = [
@@ -19,12 +18,6 @@ const FEES = [
     label: 'Token Creator',
     percent: CREATOR_FEE_PERCENT,
     description: 'Rewards the creator on every trade of their token.',
-  },
-  {
-    icon: Users,
-    label: 'Minter Pool',
-    percent: MINTER_FEE_PERCENT,
-    description: 'Shared among early buyers for ~30 days after launch.',
   },
 ];
 
@@ -55,15 +48,11 @@ export function FeeTransparency() {
             className="bg-green-500"
             style={{ width: `${(CREATOR_FEE_PERCENT / TOTAL_FEE_PERCENT) * 100}%` }}
           />
-          <div
-            className="bg-blue-500"
-            style={{ width: `${(MINTER_FEE_PERCENT / TOTAL_FEE_PERCENT) * 100}%` }}
-          />
         </div>
       </div>
 
       {/* Fee cards */}
-      <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+      <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
         {FEES.map((fee) => (
           <Card key={fee.label} className="text-center p-6">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-accent/10 text-accent mb-4">

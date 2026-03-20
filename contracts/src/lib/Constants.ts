@@ -17,14 +17,8 @@ export const MIN_TRADE_AMOUNT: u256 = u256.fromString('10000'); // 10,000 sats
 // Fee schedule (basis points)
 export const PLATFORM_FEE_BPS: u256 = u256.fromU32(100); // 1%
 export const CREATOR_FEE_BPS: u256 = u256.fromU32(25); // 0.25%
-export const MINTER_FEE_BPS: u256 = u256.fromU32(25); // 0.25%
-export const TOTAL_FEE_BPS: u256 = u256.fromU32(150); // 1.5% total
+export const TOTAL_FEE_BPS: u256 = u256.fromU32(125); // 1.25% total
 export const FEE_DENOMINATOR: u256 = u256.fromU32(10000);
-
-// Minter reward timing
-// Assumes ~10-minute Bitcoin blocks (mainnet). Adjust for testnet/regtest.
-export const MINTER_WINDOW_BLOCKS: u256 = u256.fromU32(4320); // ~30 days
-export const MINTER_HOLD_BLOCKS: u256 = u256.fromU32(4320); // must hold ~30 days
 
 // Creator allocation caps
 export const MAX_CREATOR_ALLOCATION_BPS: u256 = u256.fromU32(1000); // 10%

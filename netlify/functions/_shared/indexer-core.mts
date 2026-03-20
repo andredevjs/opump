@@ -28,7 +28,6 @@ import {
   INITIAL_VIRTUAL_TOKEN_SUPPLY,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
-  MINTER_FEE_BPS,
   FEE_DENOMINATOR,
 } from "./constants.mts";
 import type { TradeDocument } from "./constants.mts";
@@ -281,7 +280,6 @@ async function processBuyEvent(
     fees: {
       platform: fees.platform.toString(),
       creator: fees.creator.toString(),
-      minter: fees.minter.toString(),
       flywheel: "0",
     },
     priceImpactBps: 0,
@@ -335,7 +333,6 @@ async function processSellEvent(
     fees: {
       platform: fees.platform.toString(),
       creator: fees.creator.toString(),
-      minter: fees.minter.toString(),
       flywheel: "0",
     },
     priceImpactBps: 0,
@@ -372,11 +369,10 @@ function normalizeBlockTime(blockTime: number): Date {
   return new Date(blockTime * 1000);
 }
 
-function calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: bigint; minter: bigint } {
+function calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: bigint } {
   return {
     platform: (amount * PLATFORM_FEE_BPS) / FEE_DENOMINATOR,
     creator: (amount * CREATOR_FEE_BPS) / FEE_DENOMINATOR,
-    minter: (amount * MINTER_FEE_BPS) / FEE_DENOMINATOR,
   };
 }
 
