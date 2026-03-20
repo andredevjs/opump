@@ -17,7 +17,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
           'disabled:opacity-50 disabled:cursor-not-allowed',
           {
-            'bg-accent hover:bg-accent-hover text-white': variant === 'primary',
+            'bg-accent/10 hover:bg-accent/20 text-accent border border-accent/20': variant === 'primary',
             'bg-elevated hover:bg-input text-text-primary border border-border': variant === 'secondary',
             'bg-transparent hover:bg-elevated text-text-secondary hover:text-text-primary': variant === 'ghost',
             'bg-bear/10 hover:bg-bear/20 text-bear': variant === 'danger',
