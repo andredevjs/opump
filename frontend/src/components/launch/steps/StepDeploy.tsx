@@ -26,8 +26,7 @@ const LAUNCH_TOKEN_WASM_URL = '/contracts/LaunchToken.wasm';
 
 const flywheelDestMap: Record<TaxDestination, number> = {
   burn: 0,
-  community_pool: 1,
-  creator_wallet: 2,
+  creator: 1,
 };
 
 function PhaseIcon({ status }: { status: string }) {
@@ -132,7 +131,7 @@ export function StepDeploy() {
         imageUrl = uploaded.url;
       }
 
-      const flywheelDestNames = ['burn', 'creator', 'creator'] as const;
+      const flywheelDestNames = ['burn', 'creator'] as const;
 
       await createToken({
         name: formData.name,

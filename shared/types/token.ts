@@ -21,7 +21,7 @@ export interface TokenConfig {
   creatorAllocationBps: number;
   buyTaxBps: number;
   sellTaxBps: number;
-  flywheelDestination: 'burn' | 'communityPool' | 'creator';
+  flywheelDestination: 'burn' | 'creator';
   graduationThreshold: string;
   airdropConfig?: AirdropConfig;
 }

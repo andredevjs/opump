@@ -114,7 +114,7 @@ export interface CreateTokenRequest {
     creatorAllocationBps: number;
     buyTaxBps: number;
     sellTaxBps: number;
-    flywheelDestination: 'burn' | 'communityPool' | 'creator';
+    flywheelDestination: 'burn' | 'creator';
   };
   deployTxHash: string;
 }

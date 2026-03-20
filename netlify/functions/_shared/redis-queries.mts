@@ -567,13 +567,17 @@ function unflattenToken(raw: Record<string, unknown>): TokenDocument {
     virtualTokenSupply: String(raw.virtualTokenSupply),
     kConstant: String(raw.kConstant),
     realBtcReserve: String(raw.realBtcReserve),
-    config: safeJsonParse(raw.config as string | object | undefined, {
-      creatorAllocationBps: 0,
-      buyTaxBps: 0,
-      sellTaxBps: 0,
-      flywheelDestination: "burn",
-      graduationThreshold: "0",
-    }),
+    config: (() => {
+      const cfg = safeJsonParse(raw.config as string | object | undefined, {
+        creatorAllocationBps: 0,
+        buyTaxBps: 0,
+        sellTaxBps: 0,
+        flywheelDestination: "burn" as const,
+        graduationThreshold: "0",
+      });
+      if (cfg.flywheelDestination === "communityPool") cfg.flywheelDestination = "creator";
+      return cfg;
+    })(),
     status: (String(raw.status || "active")) as TokenStatus,
     currentPriceSats: String(raw.currentPriceSats || "0"),
     volume24h: String(raw.volume24h || "0"),
