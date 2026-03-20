@@ -75,6 +75,20 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
       network: data.network,
       isConnecting: false,
     });
+
+    // Fire-and-forget: link referral code if one was captured from URL
+    if (data.connected && data.address) {
+      const refCode = localStorage.getItem('opump_ref');
+      if (refCode) {
+        import('@/stores/referral-store').then(({ useReferralStore }) => {
+          useReferralStore.getState().linkReferral(data.address!, refCode).finally(() => {
+            localStorage.removeItem('opump_ref');
+          });
+        }).catch(() => {
+          // Referral linking is best-effort
+        });
+      }
+    }
   },
 
   disconnect: () => {

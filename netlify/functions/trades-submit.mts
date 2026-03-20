@@ -140,6 +140,23 @@ export default async (req: Request, _context: Context) => {
       await updateToken(trade.tokenAddress, { currentPriceSats: body.pricePerToken });
     }
 
+    // --- Referral earnings (fire-and-forget) ---
+    // Credit referrer if the trader was referred. Errors must NOT fail the trade.
+    try {
+      const { getReferrer, creditReferralEarnings } = await import("./_shared/referral-queries.mts");
+      const referrer = await getReferrer(body.traderAddress);
+      if (referrer) {
+        const btcAmountBig = BigInt(body.btcAmount);
+        const platformFee = (btcAmountBig * 100n) / 10_000n; // 1% of trade
+        const referralReward = (platformFee * 10n) / 100n;    // 10% of platform fee
+        if (referralReward > 0n) {
+          await creditReferralEarnings(referrer, referralReward.toString());
+        }
+      }
+    } catch (refErr) {
+      console.warn("[trades-submit] Referral credit failed (non-fatal):", refErr instanceof Error ? refErr.message : refErr);
+    }
+
     return json({ ok: true, txHash: body.txHash });
   } catch (err) {
     return error(err instanceof Error ? err.message : "Internal error", 500, "InternalError");

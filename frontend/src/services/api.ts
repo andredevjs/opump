@@ -172,4 +172,24 @@ export function getTokenHolders(
   );
 }
 
+// ─── Referral ───────────────────────────────────────────────
+
+export function getReferralInfo(address: string): Promise<{
+  code: string | null;
+  earnings: { totalSats: string; tradeCount: number; referralCount: number };
+  referredBy: string | null;
+}> {
+  return request(`/v1/referral/${encodeURIComponent(address)}`);
+}
+
+export function linkReferral(
+  walletAddress: string,
+  referralCode: string,
+): Promise<{ ok: boolean; referrerAddress?: string }> {
+  return request('/v1/referral/link', {
+    method: 'POST',
+    body: JSON.stringify({ walletAddress, referralCode }),
+  });
+}
+
 export { ApiError };
