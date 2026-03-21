@@ -2,6 +2,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { WalletButton } from './WalletButton';
 import { useUIStore } from '@/stores/ui-store';
+import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/cn';
 import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.webp';
 
@@ -15,6 +16,8 @@ const NAV_LINKS = [
 export function Header() {
   const location = useLocation();
   const { mobileMenuOpen, toggleMobileMenu, closeMobileMenu } = useUIStore();
+  const address = useWalletStore((s) => s.address);
+  const portfolioPath = address ? `/profile/${address}` : null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
@@ -39,6 +42,19 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
+            {portfolioPath && (
+              <Link
+                to={portfolioPath}
+                className={cn(
+                  'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  location.pathname === portfolioPath
+                    ? 'text-accent bg-accent/10'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-elevated',
+                )}
+              >
+                Portfolio
+              </Link>
+            )}
           </nav>
         </div>
 
@@ -72,6 +88,20 @@ export function Header() {
                 {link.label}
               </Link>
             ))}
+            {portfolioPath && (
+              <Link
+                to={portfolioPath}
+                onClick={closeMobileMenu}
+                className={cn(
+                  'px-3 py-3 rounded-lg text-sm font-medium transition-colors',
+                  location.pathname === portfolioPath
+                    ? 'text-accent bg-accent/10'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-elevated',
+                )}
+              >
+                Portfolio
+              </Link>
+            )}
           </nav>
         </div>
       )}
