@@ -6,15 +6,23 @@ import cornhubFieldsLogo from '@/assets/brand/cornhub-fields-full.webp';
 export function Hero() {
   return (
     <section className="relative overflow-hidden py-20 sm:py-28">
-      {/* Background glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/5 rounded-full blur-3xl pointer-events-none" />
+      {/* Blurred Video Background */}
+      <video
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        style={{ filter: 'blur(8px) brightness(0.35)', transform: 'scale(1.1)' }}
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden="true"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
+
+      {/* Film Grain Overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-grain" />
 
       <div className="relative max-w-4xl mx-auto text-center px-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/10 text-accent text-sm font-medium mb-6">
-          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-          Live on Bitcoin L1 via Op_Net
-        </div>
-
         <img
           src={cornhubFieldsLogo}
           alt="CornHub Fields"
