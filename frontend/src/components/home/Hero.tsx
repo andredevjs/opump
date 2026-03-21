@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Rocket, TrendingUp } from 'lucide-react';
-import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.webp';
+import cornhubFieldsLogo from '@/assets/brand/cornhub-fields-full.webp';
 
 export function Hero() {
   return (
@@ -16,11 +16,11 @@ export function Hero() {
         </div>
 
         <img
-          src={cornhubLogo}
-          alt="CornHub"
-          className="mx-auto mb-6 max-w-md w-full"
-          width={900}
-          height={162}
+          src={cornhubFieldsLogo}
+          alt="CornHub Fields"
+          className="mx-auto mb-6 max-w-lg w-full"
+          width={1206}
+          height={842}
         />
 
         <h1 className="text-4xl sm:text-6xl font-bold text-text-primary mb-4 leading-tight">
