@@ -12,6 +12,15 @@ export function StepDetails() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const prevUrlRef = useRef<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [touched, setTouched] = useState<Record<'name' | 'symbol' | 'description', boolean>>({
+    name: false,
+    symbol: false,
+    description: false,
+  });
+
+  const touch = (field: 'name' | 'symbol' | 'description') => {
+    if (!touched[field]) setTouched((prev) => ({ ...prev, [field]: true }));
+  };
 
   // Cleanup blob URL on unmount or when it changes
   useEffect(() => {
@@ -66,9 +75,16 @@ export function StepDetails() {
             id="token-name"
             placeholder="e.g. Bitcoin Pizza"
             value={formData.name}
-            onChange={(e) => updateForm({ name: e.target.value })}
+            onChange={(e) => { touch('name'); updateForm({ name: e.target.value }); }}
+            onBlur={() => touch('name')}
             maxLength={32}
+            error={touched.name && formData.name.length > 0 && formData.name.length < 2 ? 'At least 2 characters' : undefined}
           />
+          {formData.name.length > 0 && (
+            <p className={`text-xs mt-1 ${formData.name.length < 2 ? 'text-bear' : 'text-text-muted'}`}>
+              {formData.name.length < 2 ? `${formData.name.length}/2 min` : `${formData.name.length}/32`}
+            </p>
+          )}
         </div>
 
         <div>
@@ -77,22 +93,35 @@ export function StepDetails() {
             id="token-symbol"
             placeholder="e.g. PIZZA"
             value={formData.symbol}
-            onChange={(e) => updateForm({ symbol: e.target.value.toUpperCase() })}
+            onChange={(e) => { touch('symbol'); updateForm({ symbol: e.target.value.toUpperCase() }); }}
+            onBlur={() => touch('symbol')}
             maxLength={8}
+            error={touched.symbol && formData.symbol.length > 0 && formData.symbol.length < 2 ? 'At least 2 characters' : undefined}
           />
+          {formData.symbol.length > 0 && (
+            <p className={`text-xs mt-1 ${formData.symbol.length < 2 ? 'text-bear' : 'text-text-muted'}`}>
+              {formData.symbol.length < 2 ? `${formData.symbol.length}/2 min` : `${formData.symbol.length}/8`}
+            </p>
+          )}
         </div>
 
         <div>
           <label htmlFor="token-description" className="text-sm text-text-secondary mb-1.5 block">Description</label>
           <textarea
             id="token-description"
-            className="w-full h-24 px-3 py-2 rounded-lg bg-input border border-border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none"
+            className={`w-full h-24 px-3 py-2 rounded-lg bg-input border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none transition-colors ${touched.description && formData.description.length > 0 && formData.description.length < 10 ? 'border-bear' : 'border-border'}`}
             placeholder="What makes your token special?"
             value={formData.description}
-            onChange={(e) => updateForm({ description: e.target.value })}
+            onChange={(e) => { touch('description'); updateForm({ description: e.target.value }); }}
+            onBlur={() => touch('description')}
             maxLength={500}
           />
-          <p className="text-xs text-text-muted mt-1">{formData.description.length}/500</p>
+          {touched.description && formData.description.length > 0 && formData.description.length < 10 && (
+            <p className="text-xs text-bear mt-1">At least 10 characters</p>
+          )}
+          <p className={`text-xs mt-1 ${formData.description.length > 0 && formData.description.length < 10 ? 'text-bear' : 'text-text-muted'}`}>
+            {formData.description.length < 10 ? `${formData.description.length}/10 min` : `${formData.description.length}/500`}
+          </p>
         </div>
 
         <div>
@@ -150,6 +179,9 @@ export function StepDetails() {
         </div>
       </div>
 
+      {!canProceed && (
+        <p className="text-xs text-text-muted text-center">Fill in all required fields to continue</p>
+      )}
       <Button onClick={nextStep} disabled={!canProceed} className="w-full" size="lg">
         Next: Socials
       </Button>
