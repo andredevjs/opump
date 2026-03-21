@@ -48,7 +48,7 @@ export function PlatformStats() {
   ];
 
   return (
-    <section className="max-w-7xl mx-auto px-4 -mt-8">
+    <section className="max-w-7xl mx-auto px-4 mt-6">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {items.map((item) => (
           <Card key={item.label} className="text-center py-6">
