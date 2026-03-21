@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.png';
+import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.webp';
 
 export function Footer() {
   return (
@@ -7,7 +7,7 @@ export function Footer() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src={cornhubLogo} alt="CornHub" className="h-6" />
+            <img src={cornhubLogo} alt="CornHub" className="h-6" width={133} height={24} loading="lazy" />
             <span className="text-sm text-text-secondary">
               — Bitcoin-native token launchpad on OPNet
             </span>

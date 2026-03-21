@@ -3,7 +3,7 @@ import { Menu, X } from 'lucide-react';
 import { WalletButton } from './WalletButton';
 import { useUIStore } from '@/stores/ui-store';
 import { cn } from '@/lib/cn';
-import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.png';
+import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.webp';
 
 const NAV_LINKS = [
   { label: 'Home', path: '/' },
@@ -21,7 +21,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2" onClick={closeMobileMenu}>
-            <img src={cornhubLogo} alt="CornHub" className="h-8" />
+            <img src={cornhubLogo} alt="CornHub" className="h-8" width={178} height={32} />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
