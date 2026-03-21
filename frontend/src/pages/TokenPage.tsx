@@ -133,7 +133,7 @@ export function TokenPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: 'Volume 24h', value: formatUsd(token.volume24hSats, btcPrice) },
-              { label: 'Market Cap', value: formatUsd(token.marketCapSats, btcPrice) },
+              { label: 'Market Cap', value: formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice)) },
               { label: 'Holders', value: formatNumber(token.holderCount) },
               { label: 'Trades 24h', value: formatNumber(token.tradeCount24h) },
             ].map((stat) => (
@@ -213,7 +213,7 @@ export function TokenPage() {
                     realBtcSats={Number(token.realBtcReserve)}
                     status={token.status}
                     btcPrice={btcPrice}
-                    marketCapSats={token.marketCapSats}
+                    currentPriceSats={token.currentPriceSats}
                   />
                 </div>
               </TabsContent>
@@ -277,7 +277,7 @@ export function TokenPage() {
               realBtcSats={Number(token.realBtcReserve)}
               status={token.status}
               btcPrice={btcPrice}
-              marketCapSats={token.marketCapSats}
+              currentPriceSats={token.currentPriceSats}
             />
           </Card>
 

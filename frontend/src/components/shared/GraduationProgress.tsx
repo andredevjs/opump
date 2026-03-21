@@ -1,6 +1,6 @@
 import * as Progress from '@radix-ui/react-progress';
 import { cn } from '@/lib/cn';
-import { formatBtc, formatMcapUsd } from '@/lib/format';
+import { formatBtc, formatMcapUsd, priceSatsToMcapUsd } from '@/lib/format';
 import { GRADUATION_THRESHOLD_SATS, SATS_PER_BTC, INITIAL_VIRTUAL_BTC_SATS, K, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
 import type { TokenStatus } from '@/types/token';
 
@@ -11,7 +11,7 @@ interface GraduationProgressProps {
   compact?: boolean;
   status?: TokenStatus;
   btcPrice?: number;
-  marketCapSats?: number;
+  currentPriceSats?: number;
 }
 
 function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): string {
@@ -28,13 +28,13 @@ function computeGraduationMcapUsd(btcPrice: number): number {
   return gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
 }
 
-export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice, marketCapSats }: GraduationProgressProps) {
+export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice, currentPriceSats }: GraduationProgressProps) {
   const isGraduated = progress >= 100;
   const isMigrating = status === 'migrating';
   const isMigrated = status === 'migrated';
 
   const showUsd = btcPrice != null && btcPrice > 0;
-  const currentMcapUsd = showUsd ? (marketCapSats ?? 0) / SATS_PER_BTC * btcPrice! : 0;
+  const currentMcapUsd = showUsd ? priceSatsToMcapUsd(currentPriceSats ?? 0, btcPrice!) : 0;
   const gradMcapUsd = showUsd ? computeGraduationMcapUsd(btcPrice!) : 0;
 
   return (

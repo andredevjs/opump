@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Globe, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { useBtcPrice } from '@/stores/btc-price-store';
-import { formatUsd, formatNumber, timeAgo, shortenAddress, formatPercent } from '@/lib/format';
+import { formatUsd, formatNumber, timeAgo, shortenAddress, formatPercent, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/types/token';
 
@@ -65,7 +65,7 @@ export function TrenchTokenRow({ token }: TrenchTokenRowProps) {
           <span className="text-text-muted">·</span>
           <span>V {formatUsd(token.volume24hSats, btcPrice)}</span>
           <span className="text-text-muted">·</span>
-          <span>MC {formatUsd(token.marketCapSats, btcPrice)}</span>
+          <span>MC {formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}</span>
         </div>
 
         {/* Row 4: pills */}

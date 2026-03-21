@@ -4,7 +4,7 @@ import { TokenPrice } from './TokenPrice';
 import { TokenBadge } from './TokenBadge';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import type { Token } from '@/types/token';
-import { formatUsd, formatNumber } from '@/lib/format';
+import { formatUsd, formatNumber, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import { cn } from '@/lib/cn';
 
@@ -58,7 +58,7 @@ export function TokenCard({ token, compact }: TokenCardProps) {
             </div>
             <div>
               <span className="text-text-muted">MCap</span>
-              <p className="font-mono text-text-secondary">{formatUsd(token.marketCapSats, btcPrice)}</p>
+              <p className="font-mono text-text-secondary">{formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}</p>
             </div>
             <div>
               <span className="text-text-muted">Holders</span>
