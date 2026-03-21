@@ -8,6 +8,22 @@ import { RecentTokens } from '@/components/home/RecentTokens';
 export function HomePage() {
   return (
     <div>
+      {/* Blurred Video Background — landing page only */}
+      <video
+        className="fixed inset-0 z-0 w-full h-full object-cover pointer-events-none"
+        style={{ filter: 'blur(8px) brightness(0.35)', transform: 'scale(1.1)' }}
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden="true"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
+
+      {/* Film Grain Overlay */}
+      <div className="fixed inset-0 z-[1] pointer-events-none opacity-[0.04] bg-grain" />
+
       <Hero />
       <PlatformStats />
       <TopTokens />
