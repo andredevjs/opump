@@ -1,164 +1,71 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Search, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
-import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { TokenCard } from '@/components/token/TokenCard';
-import { TokenList } from '@/components/token/TokenList';
-import { useTokenStore } from '@/stores/token-store';
-import { useUIStore } from '@/stores/ui-store';
-import { cn } from '@/lib/cn';
-import type { TokenStatus, TokenSortOption } from '@/types/token';
+import { useEffect } from 'react';
+import { Sparkles, Flame, GraduationCap } from 'lucide-react';
+import { TrenchColumn } from '@/components/fields/TrenchColumn';
+import { useTrenchesStore, type ColumnKey } from '@/stores/trenches-store';
+import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 
-const STATUS_FILTERS: { label: string; value: TokenStatus | 'all' }[] = [
-  { label: 'All', value: 'all' },
-  { label: 'Active', value: 'active' },
-  { label: 'Graduated', value: 'graduated' },
-  { label: 'On DEX', value: 'migrated' },
-];
-
-const EMPTY_HINTS: Record<TokenStatus | 'all', string> = {
-  all: 'No OP20 tokens found. Try adjusting your search.',
-  active: 'No active OP20 tokens on the bonding curve right now.',
-  graduated: 'No OP20 tokens have graduated yet.',
-  migrated: 'No OP20 tokens have migrated to the DEX yet.',
-  migrating: 'No OP20 tokens are currently migrating.',
-  new: 'No new OP20 tokens awaiting their first trade.',
-};
-
-const SORT_OPTIONS: TokenSortOption[] = [
-  { label: 'Volume', value: 'volume' },
-  { label: 'Market Cap', value: 'marketCap' },
-  { label: 'Price', value: 'price' },
-  { label: 'Newest', value: 'newest' },
+const COLUMNS: { key: ColumnKey; title: string; icon: React.ReactNode }[] = [
+  { key: 'new', title: 'New', icon: <Sparkles size={16} /> },
+  { key: 'edging', title: 'Edging', icon: <Flame size={16} /> },
+  { key: 'graduated', title: 'Graduated', icon: <GraduationCap size={16} /> },
 ];
 
 export function FieldsPage() {
-  const { tokens, filter, setFilter, setPage, pagination, fetchTokens } = useTokenStore();
-  const { viewMode, setViewMode } = useUIStore();
+  const fetchColumn = useTrenchesStore((s) => s.fetchColumn);
 
-  // Local search input state — debounced before hitting the store/API
-  const [searchInput, setSearchInput] = useState(filter.search);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchInput(value);
-    clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setFilter({ search: value });
-    }, 300);
-  }, [setFilter]);
-
-  // Cleanup debounce timer on unmount
-  useEffect(() => () => clearTimeout(debounceRef.current), []);
-
-  // Fetch tokens on mount + silent periodic refresh
+  // Initial fetch + 5s polling (silent refresh)
   useEffect(() => {
-    fetchTokens();
-    const id = setInterval(() => fetchTokens(true), 5_000);
-    return () => clearInterval(id);
-  }, [fetchTokens]);
+    const keys: ColumnKey[] = ['new', 'edging', 'graduated'];
+    keys.forEach((k) => fetchColumn(k));
 
-  const { page, totalPages } = pagination;
+    const id = setInterval(() => {
+      keys.forEach((k) => fetchColumn(k, true));
+    }, 5_000);
+
+    return () => clearInterval(id);
+  }, [fetchColumn]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-text-primary mb-6">The Fields</h1>
-
-      {/* Search + Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-          <Input
-            placeholder="Search OP20 tokens..."
-            value={searchInput}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
+    <div className="h-[calc(100vh-4rem)] flex flex-col">
+      {/* Desktop: 3-column grid */}
+      <div className="hidden lg:grid grid-cols-3 gap-4 flex-1 min-h-0 px-4 pb-4 pt-4">
+        {COLUMNS.map((col) => (
+          <TrenchColumn
+            key={col.key}
+            title={col.title}
+            icon={col.icon}
+            columnKey={col.key}
           />
-        </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={filter.sort}
-            onChange={(e) => setFilter({ sort: e.target.value as TokenSortOption['value'] })}
-            className="h-10 px-3 rounded-lg bg-input border border-border text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={cn('p-2.5', viewMode === 'grid' ? 'bg-accent/10 text-accent' : 'bg-elevated text-text-muted')}
-            >
-              <LayoutGrid size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={cn('p-2.5', viewMode === 'list' ? 'bg-accent/10 text-accent' : 'bg-elevated text-text-muted')}
-            >
-              <List size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Status filters */}
-      <div className="flex gap-2 mb-6">
-        {STATUS_FILTERS.map((sf) => (
-          <button
-            key={sf.value}
-            onClick={() => setFilter({ status: sf.value })}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-              filter.status === sf.value
-                ? 'bg-accent/10 text-accent'
-                : 'text-text-muted hover:text-text-secondary hover:bg-elevated',
-            )}
-          >
-            {sf.label}
-          </button>
         ))}
       </div>
 
-      {/* Token display */}
-      {tokens.length === 0 ? (
-        <div className="text-center py-16 text-text-muted">
-          <p className="text-lg">{EMPTY_HINTS[filter.status]}</p>
-        </div>
-      ) : viewMode === 'grid' ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {tokens.map((token) => (
-            <TokenCard key={token.address} token={token} />
+      {/* Mobile: tabs */}
+      <div className="lg:hidden flex-1 flex flex-col min-h-0 px-4 pb-4 pt-4">
+        <TabsRoot defaultValue="new" className="flex flex-col flex-1 min-h-0">
+          <TabsList className="flex-shrink-0">
+            {COLUMNS.map((col) => (
+              <TabsTrigger key={col.key} value={col.key} className="flex items-center gap-1.5">
+                {col.icon}
+                {col.title}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {COLUMNS.map((col) => (
+            <TabsContent
+              key={col.key}
+              value={col.key}
+              className="flex-1 min-h-0 !pt-2"
+            >
+              <TrenchColumn
+                title={col.title}
+                icon={col.icon}
+                columnKey={col.key}
+                className="h-full"
+              />
+            </TabsContent>
           ))}
-        </div>
-      ) : (
-        <TokenList tokens={tokens} />
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 mt-8">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setPage(Math.max(1, page - 1))}
-            disabled={page === 1}
-          >
-            <ChevronLeft size={16} />
-          </Button>
-          <span className="text-sm text-text-secondary">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setPage(Math.min(totalPages, page + 1))}
-            disabled={page === totalPages}
-          >
-            <ChevronRight size={16} />
-          </Button>
-        </div>
-      )}
+        </TabsRoot>
+      </div>
     </div>
   );
 }
