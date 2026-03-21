@@ -5,23 +5,7 @@ import cornhubFieldsLogo from '@/assets/brand/cornhub-fields-full.webp';
 
 export function Hero() {
   return (
-    <section className="relative py-20 sm:py-28 pb-28 sm:pb-36">
-      {/* Video + grain wrapper — clips the scaled video without clipping child content */}
-      <div className="absolute inset-0 overflow-hidden">
-        <video
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-          style={{ filter: 'blur(8px) brightness(0.35)', transform: 'scale(1.1)' }}
-          autoPlay
-          muted
-          loop
-          playsInline
-          aria-hidden="true"
-        >
-          <source src="/bg-video.mp4" type="video/mp4" />
-        </video>
-        <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-grain" />
-      </div>
-
+    <section className="relative py-20 sm:py-28">
       <div className="relative max-w-4xl mx-auto text-center px-4">
         <img
           src={cornhubFieldsLogo}
