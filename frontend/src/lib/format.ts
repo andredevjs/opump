@@ -1,5 +1,5 @@
 import BigNumber from 'bignumber.js';
-import { SATS_PER_BTC, TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
+import { SATS_PER_BTC, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
 
 export function satsToBtc(sats: number): number {
   return sats / SATS_PER_BTC;
@@ -91,6 +91,18 @@ export function formatUsdPrice(sats: number, btcPrice: number): string {
   // Sub-cent: show enough decimals for 4 significant digits
   const digits = Math.max(6, Math.ceil(-Math.log10(usd)) + 4);
   return `$${usd.toFixed(digits)}`;
+}
+
+export function priceSatsToMcapUsd(pricePerToken: number, btcPrice: number): number {
+  return pricePerToken * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
+}
+
+export function formatMcapUsd(value: number): string {
+  if (value === 0) return '$0';
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
+  if (value >= 1) return `$${value.toFixed(0)}`;
+  return `$${value.toFixed(2)}`;
 }
 
 export function shortenAddress(address: string, chars = 6): string {
