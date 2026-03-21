@@ -23,6 +23,12 @@ export function HomePage() {
         </video>
         <div className="absolute inset-0 pointer-events-none opacity-[0.04] bg-grain" />
 
+        {/* Bottom gradient fade into background */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-24 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, transparent, #0a0a0f)' }}
+        />
+
         <div className="relative">
           <Hero />
         </div>
