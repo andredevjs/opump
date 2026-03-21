@@ -80,10 +80,8 @@ export function StepDetails() {
             maxLength={32}
             error={touched.name && formData.name.length > 0 && formData.name.length < 2 ? 'At least 2 characters' : undefined}
           />
-          {formData.name.length > 0 && (
-            <p className={`text-xs mt-1 ${formData.name.length < 2 ? 'text-bear' : 'text-text-muted'}`}>
-              {formData.name.length < 2 ? `${formData.name.length}/2 min` : `${formData.name.length}/32`}
-            </p>
+          {formData.name.length >= 2 && (
+            <p className="text-xs mt-1 text-text-muted">{formData.name.length}/32</p>
           )}
         </div>
 
@@ -98,10 +96,8 @@ export function StepDetails() {
             maxLength={8}
             error={touched.symbol && formData.symbol.length > 0 && formData.symbol.length < 2 ? 'At least 2 characters' : undefined}
           />
-          {formData.symbol.length > 0 && (
-            <p className={`text-xs mt-1 ${formData.symbol.length < 2 ? 'text-bear' : 'text-text-muted'}`}>
-              {formData.symbol.length < 2 ? `${formData.symbol.length}/2 min` : `${formData.symbol.length}/8`}
-            </p>
+          {formData.symbol.length >= 2 && (
+            <p className="text-xs mt-1 text-text-muted">{formData.symbol.length}/8</p>
           )}
         </div>
 
@@ -116,12 +112,11 @@ export function StepDetails() {
             onBlur={() => touch('description')}
             maxLength={500}
           />
-          {touched.description && formData.description.length > 0 && formData.description.length < 10 && (
+          {touched.description && formData.description.length > 0 && formData.description.length < 10 ? (
             <p className="text-xs text-bear mt-1">At least 10 characters</p>
+          ) : (
+            <p className="text-xs mt-1 text-text-muted">{formData.description.length}/500</p>
           )}
-          <p className={`text-xs mt-1 ${formData.description.length > 0 && formData.description.length < 10 ? 'text-bear' : 'text-text-muted'}`}>
-            {formData.description.length < 10 ? `${formData.description.length}/10 min` : `${formData.description.length}/500`}
-          </p>
         </div>
 
         <div>
