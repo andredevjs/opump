@@ -8,9 +8,20 @@ interface PriceChartProps {
   candles: OHLCVCandle[];
   loading?: boolean;
   className?: string;
+  priceFormatter?: (value: number) => string;
 }
 
-export function PriceChart({ candles, loading, className }: PriceChartProps) {
+const defaultFormatter = (price: number) => {
+  if (price === 0) return '0';
+  const abs = Math.abs(price);
+  if (abs >= 1000) return price.toFixed(0);
+  if (abs >= 1) return price.toFixed(2);
+  if (abs >= 0.01) return price.toFixed(4);
+  if (abs >= 0.0001) return price.toFixed(6);
+  return price.toFixed(8);
+};
+
+export function PriceChart({ candles, loading, className, priceFormatter }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -70,7 +81,7 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
           const range = res.priceRange.maxValue - res.priceRange.minValue;
           const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
           if (range < mid * 0.001) {
-            const margin = mid * 0.05 || 0.00000001;
+            const margin = mid * 0.05 || (priceFormatter ? 1 : 0.00000001);
             res.priceRange.minValue -= margin;
             res.priceRange.maxValue += margin;
           }
@@ -78,17 +89,9 @@ export function PriceChart({ candles, loading, className }: PriceChartProps) {
         return res;
       },
       priceFormat: {
-        type: 'custom',
-        formatter: (price: number) => {
-          if (price === 0) return '0';
-          const abs = Math.abs(price);
-          if (abs >= 1000) return price.toFixed(0);
-          if (abs >= 1) return price.toFixed(2);
-          if (abs >= 0.01) return price.toFixed(4);
-          if (abs >= 0.0001) return price.toFixed(6);
-          return price.toFixed(8);
-        },
-        minMove: 0.00000001,
+        type: 'custom' as const,
+        formatter: priceFormatter ?? defaultFormatter,
+        minMove: priceFormatter ? 0.01 : 0.00000001,
       },
     });
 

@@ -14,6 +14,9 @@ export const K = INITIAL_VIRTUAL_BTC_SATS.times(INITIAL_VIRTUAL_TOKEN_SUPPLY);
 // Graduation threshold
 export const GRADUATION_THRESHOLD_SATS = 6_900_000; // 6.9M sats
 
+// Total supply in whole tokens (for price → mcap conversion)
+export const TOTAL_SUPPLY_WHOLE_TOKENS = 1_000_000_000; // 1B tokens (INITIAL_VIRTUAL_TOKEN_SUPPLY / TOKEN_UNITS_PER_TOKEN)
+
 // Fee structure (percentages — matches shared TOTAL_FEE_BPS=125, i.e. 1.25%)
 export const TOTAL_FEE_PERCENT = 1.25;      // 125 bps
 export const PLATFORM_FEE_PERCENT = 1.0;    // 100 bps

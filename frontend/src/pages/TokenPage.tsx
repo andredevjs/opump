@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PriceChart } from '@/components/chart/PriceChart';
 import { ChartControls } from '@/components/chart/ChartControls';
@@ -18,7 +18,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { usePriceFeed } from '@/hooks/use-price-feed';
-import { formatUsd, formatNumber, timeAgo } from '@/lib/format';
+import { formatUsd, formatNumber, timeAgo, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import type { TimeframeKey } from '@/types/api';
 import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
@@ -37,6 +37,17 @@ export function TokenPage() {
   const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
   const { btcPrice } = useBtcPrice();
+
+  const mcapCandles = useMemo(() => {
+    if (btcPrice <= 0) return candles;
+    return candles.map((c) => ({
+      ...c,
+      open: priceSatsToMcapUsd(c.open, btcPrice),
+      high: priceSatsToMcapUsd(c.high, btcPrice),
+      low: priceSatsToMcapUsd(c.low, btcPrice),
+      close: priceSatsToMcapUsd(c.close, btcPrice),
+    }));
+  }, [candles, btcPrice]);
 
   // S24: Fetch token from API if not in store — depend on address and fetchToken
   useEffect(() => {
@@ -112,10 +123,10 @@ export function TokenPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-0 overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-border">
-              <span className="text-sm font-medium text-text-secondary">Price Chart</span>
+              <span className="text-sm font-medium text-text-secondary">Market Cap</span>
               <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} />
             </div>
-            <PriceChart candles={candles} loading={chartLoading} />
+            <PriceChart candles={mcapCandles} loading={chartLoading} priceFormatter={formatMcapUsd} />
           </Card>
 
           {/* Stats row */}
@@ -195,11 +206,14 @@ export function TokenPage() {
                     virtualBtcReserve={token.virtualBtcReserve}
                     virtualTokenSupply={token.virtualTokenSupply}
                     realBtcReserve={token.realBtcReserve}
+                    btcPrice={btcPrice}
                   />
                   <GraduationProgress
                     progress={token.graduationProgress}
                     realBtcSats={Number(token.realBtcReserve)}
                     status={token.status}
+                    btcPrice={btcPrice}
+                    marketCapSats={token.marketCapSats}
                   />
                 </div>
               </TabsContent>
@@ -262,6 +276,8 @@ export function TokenPage() {
               progress={token.graduationProgress}
               realBtcSats={Number(token.realBtcReserve)}
               status={token.status}
+              btcPrice={btcPrice}
+              marketCapSats={token.marketCapSats}
             />
           </Card>
 

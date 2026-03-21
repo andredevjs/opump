@@ -1,7 +1,7 @@
 import * as Progress from '@radix-ui/react-progress';
 import { cn } from '@/lib/cn';
-import { formatBtc } from '@/lib/format';
-import { GRADUATION_THRESHOLD_SATS } from '@/config/constants';
+import { formatBtc, formatMcapUsd } from '@/lib/format';
+import { GRADUATION_THRESHOLD_SATS, SATS_PER_BTC, INITIAL_VIRTUAL_BTC_SATS, K, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
 import type { TokenStatus } from '@/types/token';
 
 interface GraduationProgressProps {
@@ -10,6 +10,8 @@ interface GraduationProgressProps {
   className?: string;
   compact?: boolean;
   status?: TokenStatus;
+  btcPrice?: number;
+  marketCapSats?: number;
 }
 
 function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): string {
@@ -19,10 +21,21 @@ function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): 
   return 'Graduation Progress';
 }
 
-export function GraduationProgress({ progress, realBtcSats, className, compact, status }: GraduationProgressProps) {
+function computeGraduationMcapUsd(btcPrice: number): number {
+  const gradVBtc = INITIAL_VIRTUAL_BTC_SATS.toNumber() + GRADUATION_THRESHOLD_SATS;
+  const gradVToken = K.div(gradVBtc).toNumber();
+  const gradPrice = gradVBtc * TOKEN_UNITS_PER_TOKEN / gradVToken;
+  return gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
+}
+
+export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice, marketCapSats }: GraduationProgressProps) {
   const isGraduated = progress >= 100;
   const isMigrating = status === 'migrating';
   const isMigrated = status === 'migrated';
+
+  const showUsd = btcPrice != null && btcPrice > 0;
+  const currentMcapUsd = showUsd ? (marketCapSats ?? 0) / SATS_PER_BTC * btcPrice! : 0;
+  const gradMcapUsd = showUsd ? computeGraduationMcapUsd(btcPrice!) : 0;
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -50,8 +63,8 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
       </Progress.Root>
       {!compact && (
         <div className="flex items-center justify-between text-xs text-text-muted">
-          <span>{formatBtc(realBtcSats)}</span>
-          <span>{formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
+          <span>{showUsd ? formatMcapUsd(currentMcapUsd) : formatBtc(realBtcSats)}</span>
+          <span>{showUsd ? formatMcapUsd(gradMcapUsd) : formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
         </div>
       )}
     </div>
