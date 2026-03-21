@@ -5,8 +5,8 @@ import cornhubFieldsLogo from '@/assets/brand/cornhub-fields-full.webp';
 
 export function Hero() {
   return (
-    <section>
-      <div className="relative max-w-4xl mx-auto text-center px-4">
+    <section className="pt-10 sm:pt-16 pb-16 sm:pb-20">
+      <div className="max-w-4xl mx-auto text-center px-4">
         <img
           src={cornhubFieldsLogo}
           alt="CornHub Fields"

@@ -8,7 +8,7 @@ import { RecentTokens } from '@/components/home/RecentTokens';
 export function HomePage() {
   return (
     <div>
-      {/* Video background covers hero + stats */}
+      {/* Video background — hero only */}
       <div className="relative overflow-hidden">
         <video
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
@@ -25,9 +25,10 @@ export function HomePage() {
 
         <div className="relative">
           <Hero />
-          <PlatformStats />
         </div>
       </div>
+
+      <PlatformStats />
 
       <TopTokens />
       <RecentTokens />
