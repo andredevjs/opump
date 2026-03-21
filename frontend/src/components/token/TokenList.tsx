@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import type { Token } from '@/types/token';
 import { TokenBadge } from './TokenBadge';
-import { formatUsdPrice, formatPercent, formatUsd } from '@/lib/format';
+import { priceSatsToMcapUsd, formatMcapUsd, formatPercent, formatUsd } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import { cn } from '@/lib/cn';
 
@@ -19,7 +19,7 @@ export function TokenList({ tokens }: TokenListProps) {
         <thead>
           <tr className="text-text-muted text-xs border-b border-border">
             <th scope="col" className="text-left py-3 px-2">Token</th>
-            <th scope="col" className="text-right py-3 px-2">Price</th>
+            <th scope="col" className="text-right py-3 px-2">MCAP</th>
             <th scope="col" className="text-right py-3 px-2">24h</th>
             <th scope="col" className="text-right py-3 px-2 hidden sm:table-cell">Volume</th>
             <th scope="col" className="text-right py-3 px-2 hidden md:table-cell">Holders</th>
@@ -55,7 +55,7 @@ export function TokenList({ tokens }: TokenListProps) {
                 </div>
               </td>
               <td className="text-right py-3 px-2 font-mono text-text-primary">
-                {formatUsdPrice(token.currentPriceSats, btcPrice)}
+                {formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}
               </td>
               <td className={cn('text-right py-3 px-2 font-mono', token.priceChange24h >= 0 ? 'text-bull' : 'text-bear')}>
                 {formatPercent(token.priceChange24h)}

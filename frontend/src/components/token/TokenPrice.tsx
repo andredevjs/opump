@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn';
-import { formatUsdPrice, formatPercent } from '@/lib/format';
+import { priceSatsToMcapUsd, formatMcapUsd, formatPercent } from '@/lib/format';
 
 interface TokenPriceProps {
   priceSats: number;
@@ -22,7 +22,7 @@ export function TokenPrice({ priceSats, change24h, btcPrice, size = 'md', showCh
           'text-xl': size === 'lg',
         })}
       >
-        {isOptimistic ? '~' : ''}{formatUsdPrice(priceSats, btcPrice)}
+        {isOptimistic ? '~' : ''}{formatMcapUsd(priceSatsToMcapUsd(priceSats, btcPrice))} <span className="text-text-muted font-normal">MCAP</span>
       </span>
       {showChange && (
         <span
