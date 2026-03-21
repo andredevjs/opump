@@ -9,7 +9,7 @@ import { formatUsd, formatTokenAmount, usdToSats } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import BigNumber from 'bignumber.js';
 
-const QUICK_AMOUNTS = [5, 25, 50, 250]; // USD
+const QUICK_AMOUNTS = [25, 50, 100, 250]; // USD
 
 interface BuyFormProps {
   token: Token;
