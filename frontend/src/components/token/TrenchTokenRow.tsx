@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Globe, MessageCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import { formatUsd, formatNumber, timeAgo, shortenAddress, formatPercent, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { cn } from '@/lib/cn';
@@ -74,18 +75,21 @@ export function TrenchTokenRow({ token }: TrenchTokenRowProps) {
             {formatNumber(token.holderCount)} holders
           </Badge>
           <Badge
-            variant={token.graduationProgress >= 75 ? 'bull' : 'default'}
-            className="text-[10px] px-1.5 py-0"
-          >
-            {token.graduationProgress.toFixed(0)}%
-          </Badge>
-          <Badge
             variant={token.priceChange24h >= 0 ? 'bull' : 'bear'}
             className={cn('text-[10px] px-1.5 py-0')}
           >
             {formatPercent(token.priceChange24h)}
           </Badge>
         </div>
+
+        {/* Graduation progress bar */}
+        <GraduationProgress
+          progress={token.graduationProgress}
+          realBtcSats={Number(token.realBtcReserve)}
+          status={token.status}
+          compact
+          className="mt-1.5"
+        />
       </div>
     </div>
   );
