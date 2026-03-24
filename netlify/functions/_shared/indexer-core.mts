@@ -294,7 +294,7 @@ async function processBuyEvent(
   if (isNew) {
     // New trade (no pending version with same txHash existed).
     // Check for an orphaned pending trade with a different hash but same trade params.
-    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "buy", data.tokensOut.toString());
+    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "buy", trade.traderAddress);
 
     // Only write OHLCV if no orphan was found — an orphan means trades-submit
     // already wrote OHLCV for this trade under the old hash.
@@ -345,7 +345,7 @@ async function processSellEvent(
   const { isNew } = await saveTrade(trade);
 
   if (isNew) {
-    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "sell", data.tokensIn.toString());
+    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "sell", trade.traderAddress);
 
     if (!orphan) {
       const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
