@@ -93,29 +93,46 @@ export function StepDeploy() {
       const contractAddress = deployResult.contractAddress;
       const deployTxHash = deployResult.revealTxHash;
 
-      // Wait for deployment to confirm before proceeding
-      const { waitForConfirmation } = await import('@/services/contract');
-      await waitForConfirmation(deployTxHash);
-
       // Phase 2: Register with factory
+      // No confirmation wait — mempool-first: the RPC exposes deployed
+      // contracts as soon as the reveal tx is broadcast.
       advanceDeployPhase(1);
 
       if (FACTORY_ADDRESS) {
         const { getFactoryContract, sendContractCall } = await import('@/services/contract');
-        const factory = getFactoryContract(FACTORY_ADDRESS);
 
-        const sim = await factory.registerToken(
-          formData.name,
-          formData.symbol,
-          BigInt(Math.round(formData.creatorAllocationPercent * 100)),
-          BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
-          BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
-          BigInt(flywheelDestMap[formData.taxDestination]),
-        );
-        await sendContractCall(sim, {
-          refundTo: walletAddress,
-          maximumAllowedSatToSpend: 100000n,
-        });
+        // Retry wrapper: the RPC node may need a moment to index the
+        // mempool deployment before the factory can see the new contract.
+        const MAX_RETRIES = 5;
+        const RETRY_DELAY_MS = 3_000;
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            const factory = getFactoryContract(FACTORY_ADDRESS);
+            const sim = await factory.registerToken(
+              formData.name,
+              formData.symbol,
+              BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+              BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
+              BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
+              BigInt(flywheelDestMap[formData.taxDestination]),
+            );
+            await sendContractCall(sim, {
+              refundTo: walletAddress,
+              maximumAllowedSatToSpend: 100000n,
+            });
+            lastError = null;
+            break;
+          } catch (err) {
+            lastError = err;
+            if (attempt < MAX_RETRIES - 1) {
+              await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+            }
+          }
+        }
+
+        if (lastError) throw lastError;
       }
 
       // Phase 3: Upload image + register metadata in backend
