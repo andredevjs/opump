@@ -19,7 +19,22 @@ export function RootLayout() {
   useEffect(() => startPolling(), [startPolling]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col relative">
+      {/* Fixed video background — site-wide */}
+      <video
+        className="fixed inset-0 w-full h-full object-cover pointer-events-none -z-20"
+        style={{ filter: 'blur(8px) brightness(0.3)', transform: 'scale(1.1)' }}
+        autoPlay
+        muted
+        loop
+        playsInline
+        aria-hidden="true"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
+      {/* Grain texture overlay */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.04] bg-grain -z-10" />
+
       <ReferralBanner />
       <Header />
       <main className="flex-1">
