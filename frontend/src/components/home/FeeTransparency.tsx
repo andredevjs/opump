@@ -11,7 +11,7 @@ const FEES = [
     icon: Shield,
     label: 'Platform',
     percent: PLATFORM_FEE_PERCENT,
-    description: 'Maintains infrastructure, indexers, and development.',
+    description: 'Maintains infrastructure, indexers, development, ecosystem incentives, buybacks, listings, and marketing.',
   },
   {
     icon: User,

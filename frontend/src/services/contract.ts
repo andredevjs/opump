@@ -257,6 +257,7 @@ export async function buildLaunchTokenCalldata(opts: {
   symbol: string;
   maxSupply?: bigint;
   creatorAllocationBps: bigint;
+  airdropBps: bigint;
   buyTaxBps: bigint;
   sellTaxBps: bigint;
   flywheelDestination: bigint;
@@ -269,6 +270,7 @@ export async function buildLaunchTokenCalldata(opts: {
   writer.writeStringWithLength(opts.symbol);
   writer.writeU256(opts.maxSupply ?? 0n); // 0 = use contract default
   writer.writeU256(opts.creatorAllocationBps);
+  writer.writeU256(opts.airdropBps);
   writer.writeU256(opts.buyTaxBps);
   writer.writeU256(opts.sellTaxBps);
   writer.writeU256(opts.flywheelDestination);

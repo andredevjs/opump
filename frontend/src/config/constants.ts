@@ -23,9 +23,19 @@ export const PLATFORM_FEE_PERCENT = 1.0;    // 100 bps
 export const CREATOR_FEE_PERCENT = 0.25;    //  25 bps
 
 // Launch limits
-export const MAX_CREATOR_ALLOCATION_PERCENT = 10;
+export const MAX_CREATOR_ALLOCATION_PERCENT = 70;
+export const MAX_AIRDROP_PERCENT = 70;
+export const MAX_COMBINED_ALLOCATION_PERCENT = 70;
 export const MAX_BUY_TAX_PERCENT = 3;
 export const MAX_SELL_TAX_PERCENT = 5;
+
+// Airdrop communities — placeholder holder counts (dynamic fetching is a follow-up)
+export const AIRDROP_COMMUNITIES = {
+  bitcoin_puppets: { name: 'Bitcoin Puppets', type: 'ordinals' as const, estimatedHolders: 10_000 },
+  motocats:        { name: 'MotoCats',        type: 'ordinals' as const, estimatedHolders: 3_000 },
+  moto:            { name: '$MOTO',           type: 'op20' as const,     estimatedHolders: 5_000 },
+  pill:            { name: '$PILL',           type: 'op20' as const,     estimatedHolders: 2_000 },
+} as const;
 
 // Factory / vault address — single source of truth
 export const FACTORY_ADDRESS = import.meta.env.VITE_FACTORY_ADDRESS || '';

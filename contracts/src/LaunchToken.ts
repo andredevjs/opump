@@ -26,6 +26,8 @@ import {
   MIN_TRADE_AMOUNT,
   FEE_DENOMINATOR,
   MAX_CREATOR_ALLOCATION_BPS,
+  MAX_AIRDROP_BPS,
+  MAX_COMBINED_ALLOCATION_BPS,
   MAX_BUY_TAX_BPS,
   MAX_SELL_TAX_BPS,
   RESERVATION_TTL_BLOCKS,
@@ -99,6 +101,10 @@ export class LaunchToken extends OP20 {
   private readonly creatorAddressPtr: u16 = Blockchain.nextPointer;
   private readonly creatorAddress: StoredAddress = new StoredAddress(this.creatorAddressPtr);
 
+  // Airdrop allocation (basis points)
+  private readonly airdropBpsPtr: u16 = Blockchain.nextPointer;
+  private readonly airdropBpsStorage: StoredU256 = new StoredU256(this.airdropBpsPtr, EMPTY_POINTER);
+
   public constructor() {
     super();
   }
@@ -108,6 +114,7 @@ export class LaunchToken extends OP20 {
     const symbol: string = calldata.readStringWithLength();
     const maxSupply: u256 = calldata.readU256();
     const creatorAllocBps: u256 = calldata.readU256();
+    const airdropBps: u256 = calldata.readU256();
     const buyTax: u256 = calldata.readU256();
     const sellTax: u256 = calldata.readU256();
     const flywheelDest: u256 = calldata.readU256();
@@ -121,7 +128,14 @@ export class LaunchToken extends OP20 {
       throw new Revert('Vault address required');
     }
     if (creatorAllocBps > MAX_CREATOR_ALLOCATION_BPS) {
-      throw new Revert('Creator allocation exceeds 10%');
+      throw new Revert('Creator allocation exceeds max');
+    }
+    if (airdropBps > MAX_AIRDROP_BPS) {
+      throw new Revert('Airdrop exceeds max');
+    }
+    const totalOffCurve = SafeMath.add(creatorAllocBps, airdropBps);
+    if (totalOffCurve > MAX_COMBINED_ALLOCATION_BPS) {
+      throw new Revert('Combined allocation exceeds 70%');
     }
     if (buyTax > MAX_BUY_TAX_BPS) {
       throw new Revert('Buy tax exceeds 3%');
@@ -143,6 +157,7 @@ export class LaunchToken extends OP20 {
 
     // Store configuration
     this.creatorAllocationBps.set(creatorAllocBps);
+    this.airdropBpsStorage.set(airdropBps);
     this.buyTaxBps.set(buyTax);
     this.sellTaxBps.set(sellTax);
     this.flywheelDestination.set(flywheelDest);
@@ -150,10 +165,14 @@ export class LaunchToken extends OP20 {
     this.minTradeAmount.set(MIN_TRADE_AMOUNT);
     this.vaultAddress.value = vaultAddr;
 
-    // Initialize bonding curve
+    // Initialize bonding curve — reduce virtualTokenSupply by off-curve allocation
+    // so that totalMinted (allocation + curve trades + migration) never exceeds maxSupply.
+    const curveBps = SafeMath.sub(FEE_DENOMINATOR, totalOffCurve);
+    const curveSupply = SafeMath.div(SafeMath.mul(finalSupply, curveBps), FEE_DENOMINATOR);
+
     this.virtualBtcReserve.set(INITIAL_VIRTUAL_BTC);
-    this.virtualTokenSupply.set(INITIAL_VIRTUAL_TOKEN);
-    this.kConstant.set(SafeMath.mul(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN));
+    this.virtualTokenSupply.set(curveSupply);
+    this.kConstant.set(SafeMath.mul(INITIAL_VIRTUAL_BTC, curveSupply));
 
     // Store deploy block
     this.deployBlock.set(0, Blockchain.block.number);
@@ -173,6 +192,15 @@ export class LaunchToken extends OP20 {
         FEE_DENOMINATOR,
       );
       this._mint(origin, creatorTokens);
+    }
+
+    // Mint airdrop tokens to creator (distributed off-chain)
+    if (airdropBps > u256.Zero) {
+      const airdropTokens = SafeMath.div(
+        SafeMath.mul(finalSupply, airdropBps),
+        FEE_DENOMINATOR,
+      );
+      this._mint(origin, airdropTokens);
     }
   }
 
@@ -546,14 +574,16 @@ export class LaunchToken extends OP20 {
   @method()
   @returns(
     { name: 'creatorBps', type: ABIDataTypes.UINT256 },
+    { name: 'airdropBps', type: ABIDataTypes.UINT256 },
     { name: 'buyTax', type: ABIDataTypes.UINT256 },
     { name: 'sellTax', type: ABIDataTypes.UINT256 },
     { name: 'destination', type: ABIDataTypes.UINT256 },
     { name: 'threshold', type: ABIDataTypes.UINT256 },
   )
   public getConfig(calldata: Calldata): BytesWriter {
-    const writer = new BytesWriter(32 * 5);
+    const writer = new BytesWriter(32 * 6);
     writer.writeU256(this.creatorAllocationBps.value);
+    writer.writeU256(this.airdropBpsStorage.value);
     writer.writeU256(this.buyTaxBps.value);
     writer.writeU256(this.sellTaxBps.value);
     writer.writeU256(this.flywheelDestination.value);

@@ -281,6 +281,71 @@ export async function graduateToken(contractAddress: string, blockNumber: number
   await pipe.exec();
 }
 
+/**
+ * Optimistically mark a token as migrating (mempool-first).
+ * Called when the creator submits the migrate() transaction.
+ */
+export async function startMigration(
+  contractAddress: string,
+  migrateTxHash: string,
+): Promise<void> {
+  const redis = getRedis();
+
+  await redis.hset(TOKEN_KEY(contractAddress), {
+    status: "migrating",
+    migrationStatus: "pending",
+    migrationTxHashes: JSON.stringify({ migrate: migrateTxHash }),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Move a token from graduated/migrating to migrated status in indexes.
+ * Called by the indexer when a confirmed Migration event is detected.
+ */
+export async function migrateToken(
+  contractAddress: string,
+  migrateTxHash: string,
+  liquidityTokens: string,
+  recipientAddress: string,
+): Promise<void> {
+  const redis = getRedis();
+
+  // Read scores from both graduated and migrating indexes (token could be in either)
+  const [score1, score2, score3, score4] = await Promise.all([
+    redis.zscore(TOKEN_INDEX("graduated", "volume24h"), contractAddress),
+    redis.zscore(TOKEN_INDEX("graduated", "marketCap"), contractAddress),
+    redis.zscore(TOKEN_INDEX("graduated", "price"), contractAddress),
+    redis.zscore(TOKEN_INDEX("graduated", "newest"), contractAddress),
+  ]);
+  const scores = [
+    { field: "volume24h", score: score1 },
+    { field: "marketCap", score: score2 },
+    { field: "price", score: score3 },
+    { field: "newest", score: score4 },
+  ];
+
+  const pipe = redis.pipeline();
+
+  pipe.hset(TOKEN_KEY(contractAddress), {
+    status: "migrated",
+    migrationStatus: "tokens_minted",
+    migrationLiquidityTokens: liquidityTokens,
+    migrationTxHashes: JSON.stringify({ migrate: migrateTxHash }),
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Remove from graduated indexes, add to migrated indexes
+  for (const { field, score } of scores) {
+    pipe.zrem(TOKEN_INDEX("graduated", field), contractAddress);
+    if (score !== null) {
+      pipe.zadd(TOKEN_INDEX("migrated", field), { score, member: contractAddress });
+    }
+  }
+
+  await pipe.exec();
+}
+
 // ─── Trade operations ───────────────────────────────────────
 
 /**
@@ -545,6 +610,10 @@ function flattenToken(token: TokenDocument): Record<string, string> {
     deployBlock: String(token.deployBlock),
     deployTxHash: token.deployTxHash,
     graduatedAt: token.graduatedAt !== undefined ? String(token.graduatedAt) : "",
+    migrationStatus: token.migrationStatus || "",
+    migrationLiquidityTokens: token.migrationLiquidityTokens || "",
+    migrationTxHashes: JSON.stringify(token.migrationTxHashes || {}),
+    nativeSwapPoolToken: token.nativeSwapPoolToken || "",
     createdAt: token.createdAt instanceof Date ? token.createdAt.toISOString() : String(token.createdAt),
     updatedAt: token.updatedAt instanceof Date ? token.updatedAt.toISOString() : String(token.updatedAt),
   };
@@ -585,6 +654,10 @@ function unflattenToken(raw: Record<string, unknown>): TokenDocument {
     deployBlock: parseInt(String(raw.deployBlock || "0")),
     deployTxHash: String(raw.deployTxHash || ""),
     graduatedAt: raw.graduatedAt ? parseInt(String(raw.graduatedAt)) : undefined,
+    migrationStatus: raw.migrationStatus ? String(raw.migrationStatus) as TokenDocument['migrationStatus'] : undefined,
+    migrationLiquidityTokens: raw.migrationLiquidityTokens ? String(raw.migrationLiquidityTokens) : undefined,
+    migrationTxHashes: raw.migrationTxHashes ? safeJsonParse(raw.migrationTxHashes as string | object | undefined, undefined) : undefined,
+    nativeSwapPoolToken: raw.nativeSwapPoolToken ? String(raw.nativeSwapPoolToken) : undefined,
     createdAt: new Date(String(raw.createdAt)),
     updatedAt: new Date(String(raw.updatedAt)),
   };

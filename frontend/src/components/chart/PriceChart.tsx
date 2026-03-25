@@ -160,8 +160,7 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
       priceSeriesRef.current = chart.addCandlestickSeries({
         upColor: CHART_THEME.upColor,
         downColor: CHART_THEME.downColor,
-        borderUpColor: CHART_THEME.upColor,
-        borderDownColor: CHART_THEME.downColor,
+        borderVisible: false,
         wickUpColor: CHART_THEME.upColor,
         wickDownColor: CHART_THEME.downColor,
         priceFormat,

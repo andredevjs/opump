@@ -6,7 +6,7 @@ import { useTokenStore } from '@/stores/token-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { useUIStore } from '@/stores/ui-store';
 import { TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
-import { formatTokenAmount, formatUsd } from '@/lib/format';
+import { formatTokenAmount, formatUsd, formatBtc } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import { Card } from '@/components/ui/Card';
 
@@ -49,8 +49,21 @@ export function Holdings() {
     );
   }
 
+  const totalSats = entries.reduce((sum, [address, units]) => {
+    const token = getToken(address);
+    if (!token?.currentPriceSats) return sum;
+    return sum.plus(new BigNumber(units).times(token.currentPriceSats).div(TOKEN_UNITS_PER_TOKEN));
+  }, new BigNumber(0));
+
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-sm text-text-muted">Total Value</span>
+        <div className="text-right">
+          <span className="font-mono font-semibold text-text-primary">{formatUsd(totalSats.toNumber(), btcPrice)}</span>
+          <span className="ml-2 text-xs font-mono text-text-muted">{formatBtc(totalSats.toNumber())}</span>
+        </div>
+      </div>
       {entries.map(([address, units]) => {
         const token = getToken(address);
         if (!token?.currentPriceSats) return null;

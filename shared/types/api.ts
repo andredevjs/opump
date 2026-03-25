@@ -112,6 +112,7 @@ export interface CreateTokenRequest {
   contractAddress: string;
   config: {
     creatorAllocationBps: number;
+    airdropBps: number;
     buyTaxBps: number;
     sellTaxBps: number;
     flywheelDestination: 'burn' | 'creator';

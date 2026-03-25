@@ -12,7 +12,7 @@ import {
   EMPTY_POINTER,
 } from '@btc-vision/btc-runtime/runtime';
 
-import { MAX_COMBINED_ALLOCATION_BPS, MAX_BUY_TAX_BPS, MAX_SELL_TAX_BPS } from './lib/Constants';
+import { MAX_COMBINED_ALLOCATION_BPS, MAX_AIRDROP_BPS, MAX_BUY_TAX_BPS, MAX_SELL_TAX_BPS } from './lib/Constants';
 import { TokenRegisteredEvent } from './events/Events';
 
 @final
@@ -52,6 +52,7 @@ export class OPumpFactory extends OP_NET {
     { name: 'name', type: ABIDataTypes.STRING },
     { name: 'symbol', type: ABIDataTypes.STRING },
     { name: 'creatorAllocationBps', type: ABIDataTypes.UINT256 },
+    { name: 'airdropBps', type: ABIDataTypes.UINT256 },
     { name: 'buyTaxBps', type: ABIDataTypes.UINT256 },
     { name: 'sellTaxBps', type: ABIDataTypes.UINT256 },
     { name: 'flywheelDestination', type: ABIDataTypes.UINT256 },
@@ -62,15 +63,17 @@ export class OPumpFactory extends OP_NET {
     const name: string = calldata.readStringWithLength();
     const symbol: string = calldata.readStringWithLength();
     const creatorAllocationBps: u256 = calldata.readU256();
+    const airdropBps: u256 = calldata.readU256();
     const buyTaxBps: u256 = calldata.readU256();
     const sellTaxBps: u256 = calldata.readU256();
     const flywheelDestination: u256 = calldata.readU256();
 
-    // Combined cap: creatorAllocation + buyTax <= 25% (prevents excessive take on entry)
-    // sellTax is capped separately at 5% — not included in combined check because
-    // sell tax only applies on exit and has a lower individual cap.
-    if (SafeMath.add(creatorAllocationBps, buyTaxBps) > MAX_COMBINED_ALLOCATION_BPS) {
-      throw new Revert('Combined allocation exceeds 25%');
+    // Combined cap: creatorAllocation + airdrop <= 70% (minimum 30% on bonding curve)
+    if (airdropBps > MAX_AIRDROP_BPS) {
+      throw new Revert('Airdrop exceeds max');
+    }
+    if (SafeMath.add(creatorAllocationBps, airdropBps) > MAX_COMBINED_ALLOCATION_BPS) {
+      throw new Revert('Combined allocation exceeds 70%');
     }
     if (buyTaxBps > MAX_BUY_TAX_BPS) {
       throw new Revert('Buy tax exceeds 3%');

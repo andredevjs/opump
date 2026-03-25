@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .revolving-border {
+    position: relative;
+    overflow: hidden;
+    padding: 1px;
+    border-radius: 0.5rem;
+  }
+
+  .revolving-border::before {
+    content: '';
+    position: absolute;
+    inset: -50%;
+    background: conic-gradient(
+      from 0deg,
+      transparent 0%,
+      #f5c518 10%,
+      transparent 20%,
+      transparent 100%
+    );
+    animation: revolve-border 4s linear infinite;
+    z-index: 0;
+  }
+}
+
+@keyframes revolve-border {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

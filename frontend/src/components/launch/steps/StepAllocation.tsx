@@ -1,17 +1,26 @@
 import * as Slider from '@radix-ui/react-slider';
 import { Button } from '@/components/ui/Button';
 import { useLaunchStore } from '@/stores/launch-store';
-import { MAX_CREATOR_ALLOCATION_PERCENT } from '@/config/constants';
+import { MAX_COMBINED_ALLOCATION_PERCENT } from '@/config/constants';
 
 export function StepAllocation() {
   const { formData, updateForm, nextStep, prevStep } = useLaunchStore();
+
+  const airdropPercent = formData.airdropEnabled ? formData.airdropPercent : 0;
+  const maxCreator = MAX_COMBINED_ALLOCATION_PERCENT - airdropPercent;
+  const curvePercent = 100 - formData.creatorAllocationPercent - airdropPercent;
+
+  // Clamp creator allocation if airdrop increased and pushed it over
+  if (formData.creatorAllocationPercent > maxCreator) {
+    updateForm({ creatorAllocationPercent: maxCreator });
+  }
 
   return (
     <div className="space-y-6 max-w-md mx-auto">
       <div>
         <h3 className="text-lg font-semibold text-text-primary mb-1">Creator Allocation</h3>
         <p className="text-sm text-text-secondary">
-          Reserve a percentage of the OP20 token supply for yourself. Max {MAX_CREATOR_ALLOCATION_PERCENT}%.
+          Reserve a percentage of the token supply for yourself. Combined with airdrop, max {MAX_COMBINED_ALLOCATION_PERCENT}%.
         </p>
       </div>
 
@@ -30,7 +39,7 @@ export function StepAllocation() {
         <Slider.Root
           value={[formData.creatorAllocationPercent]}
           onValueChange={([v]) => updateForm({ creatorAllocationPercent: v })}
-          max={MAX_CREATOR_ALLOCATION_PERCENT}
+          max={maxCreator}
           step={0.5}
           className="relative flex items-center select-none touch-none w-full h-5"
         >
@@ -42,7 +51,28 @@ export function StepAllocation() {
 
         <div className="flex justify-between text-xs text-text-muted">
           <span>0% (Fair Launch)</span>
-          <span>{MAX_CREATOR_ALLOCATION_PERCENT}% (Max)</span>
+          <span>{maxCreator}% (Max)</span>
+        </div>
+      </div>
+
+      {/* Supply breakdown */}
+      <div className="p-3 rounded-lg bg-elevated space-y-2">
+        <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Supply Breakdown</p>
+        <div className="flex gap-2 text-xs">
+          <div className="flex-1 p-2 rounded bg-input text-center">
+            <span className="text-text-muted block">Creator</span>
+            <span className="font-mono text-text-primary">{formData.creatorAllocationPercent}%</span>
+          </div>
+          {airdropPercent > 0 && (
+            <div className="flex-1 p-2 rounded bg-input text-center">
+              <span className="text-text-muted block">Airdrop</span>
+              <span className="font-mono text-text-primary">{airdropPercent}%</span>
+            </div>
+          )}
+          <div className="flex-1 p-2 rounded bg-input text-center">
+            <span className="text-text-muted block">Bonding Curve</span>
+            <span className="font-mono text-accent">{curvePercent}%</span>
+          </div>
         </div>
       </div>
 

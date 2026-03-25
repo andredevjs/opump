@@ -20,9 +20,10 @@ export const CREATOR_FEE_BPS: u256 = u256.fromU32(25); // 0.25%
 export const TOTAL_FEE_BPS: u256 = u256.fromU32(125); // 1.25% total
 export const FEE_DENOMINATOR: u256 = u256.fromU32(10000);
 
-// Creator allocation caps
-export const MAX_CREATOR_ALLOCATION_BPS: u256 = u256.fromU32(1000); // 10%
-export const MAX_COMBINED_ALLOCATION_BPS: u256 = u256.fromU32(2500); // 25%
+// Creator / airdrop allocation caps
+export const MAX_CREATOR_ALLOCATION_BPS: u256 = u256.fromU32(7000); // 70%
+export const MAX_AIRDROP_BPS: u256 = u256.fromU32(7000); // 70%
+export const MAX_COMBINED_ALLOCATION_BPS: u256 = u256.fromU32(7000); // 70% (creator + airdrop combined)
 
 // Reservation
 export const RESERVATION_TTL_BLOCKS: u256 = u256.fromU32(3);

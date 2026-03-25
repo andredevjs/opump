@@ -51,6 +51,26 @@ export function decodeSellEvent(event: OPNetEvent): SellEventData | null {
   };
 }
 
+export interface MigrationEventData {
+  recipient: string;
+  tokenAmount: bigint;
+  btcReserve: bigint;
+}
+
+export function decodeMigrationEvent(event: OPNetEvent): MigrationEventData | null {
+  const data = getEventData(event);
+  if (!data || data.length < 96) {
+    console.debug('[Indexer] Malformed Migration event data:', { dataLength: data?.length ?? 0 });
+    return null;
+  }
+
+  return {
+    recipient: readAddressFromEventData(data, 0),
+    tokenAmount: readU256FromEventData(data, 32),
+    btcReserve: readU256FromEventData(data, 64),
+  };
+}
+
 export function getEventData(event: OPNetEvent): Uint8Array | null {
   if (event.data instanceof Uint8Array) {
     return event.data;

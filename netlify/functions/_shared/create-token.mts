@@ -83,8 +83,15 @@ export async function handleCreateToken(req: Request): Promise<Response> {
 
   // Validate BPS values
   const bpsConfig = body.config || {} as CreateTokenRequest["config"];
-  if (bpsConfig.creatorAllocationBps !== undefined && (bpsConfig.creatorAllocationBps < 0 || bpsConfig.creatorAllocationBps > 1000)) {
-    return error("Creator allocation must be 0-1000 bps (0-10%)", 400);
+  if (bpsConfig.creatorAllocationBps !== undefined && (bpsConfig.creatorAllocationBps < 0 || bpsConfig.creatorAllocationBps > 7000)) {
+    return error("Creator allocation must be 0-7000 bps (0-70%)", 400);
+  }
+  if (bpsConfig.airdropBps !== undefined && (bpsConfig.airdropBps < 0 || bpsConfig.airdropBps > 7000)) {
+    return error("Airdrop must be 0-7000 bps (0-70%)", 400);
+  }
+  const combinedAlloc = (bpsConfig.creatorAllocationBps ?? 0) + (bpsConfig.airdropBps ?? 0);
+  if (combinedAlloc > 7000) {
+    return error("Combined allocation (creator + airdrop) exceeds 70%", 400);
   }
   if (bpsConfig.buyTaxBps !== undefined && (bpsConfig.buyTaxBps < 0 || bpsConfig.buyTaxBps > 300)) {
     return error("Buy tax must be 0-300 bps (0-3%)", 400);
@@ -107,6 +114,7 @@ export async function handleCreateToken(req: Request): Promise<Response> {
       body.deployTxHash,
       {
         creatorAllocationBps: bpsConfig.creatorAllocationBps ?? 0,
+        airdropBps: bpsConfig.airdropBps ?? 0,
         buyTaxBps: bpsConfig.buyTaxBps ?? 0,
         sellTaxBps: bpsConfig.sellTaxBps ?? 0,
       },
@@ -136,7 +144,16 @@ export async function handleCreateToken(req: Request): Promise<Response> {
   }
 
   const now = new Date();
-  const initialPriceScaled = (INITIAL_VIRTUAL_BTC_SATS * PRICE_PRECISION) / INITIAL_VIRTUAL_TOKEN_SUPPLY;
+
+  // Calculate curve supply: reduce by off-curve allocation (creator + airdrop)
+  const totalOffCurveBps = BigInt((bpsConfig.creatorAllocationBps ?? 0) + (bpsConfig.airdropBps ?? 0));
+  const curveBps = 10_000n - totalOffCurveBps;
+  const curveSupply = (INITIAL_VIRTUAL_TOKEN_SUPPLY * curveBps) / 10_000n;
+  const kConstant = INITIAL_VIRTUAL_BTC_SATS * curveSupply;
+
+  const initialPriceScaled = curveSupply > 0n
+    ? (INITIAL_VIRTUAL_BTC_SATS * PRICE_PRECISION) / curveSupply
+    : 0n;
   const initialPrice = (Number(initialPriceScaled) / PRICE_DISPLAY_DIVISOR).toString();
 
   const tokenDoc: TokenDocument = {
@@ -149,11 +166,12 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     creatorAddress: body.creatorAddress,
     contractAddress: body.contractAddress,
     virtualBtcReserve: INITIAL_VIRTUAL_BTC_SATS.toString(),
-    virtualTokenSupply: INITIAL_VIRTUAL_TOKEN_SUPPLY.toString(),
-    kConstant: K_CONSTANT.toString(),
+    virtualTokenSupply: curveSupply.toString(),
+    kConstant: kConstant.toString(),
     realBtcReserve: "0",
     config: {
       creatorAllocationBps: body.config?.creatorAllocationBps ?? 0,
+      airdropBps: body.config?.airdropBps ?? 0,
       buyTaxBps: body.config?.buyTaxBps ?? 0,
       sellTaxBps: body.config?.sellTaxBps ?? 0,
       flywheelDestination: body.config?.flywheelDestination || "burn",
@@ -174,10 +192,10 @@ export async function handleCreateToken(req: Request): Promise<Response> {
 
   await saveToken(tokenDoc);
 
-  // Seed creator allocation balance if configured
-  const allocationBps = tokenDoc.config.creatorAllocationBps;
-  if (allocationBps > 0) {
-    const creatorTokens = (INITIAL_VIRTUAL_TOKEN_SUPPLY * BigInt(allocationBps)) / 10000n;
+  // Seed creator + airdrop allocation balance if configured
+  const totalMintedBps = tokenDoc.config.creatorAllocationBps + (tokenDoc.config.airdropBps ?? 0);
+  if (totalMintedBps > 0) {
+    const creatorTokens = (INITIAL_VIRTUAL_TOKEN_SUPPLY * BigInt(totalMintedBps)) / 10000n;
     const redis = getRedis();
     const pipe = redis.pipeline();
     pipe.zadd(TOKEN_HOLDER_BALANCES(tokenDoc.contractAddress), {

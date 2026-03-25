@@ -1,3 +1,6 @@
+export type AirdropCommunity = 'bitcoin_puppets' | 'motocats' | 'moto' | 'pill';
+export type TaxDestination = 'burn' | 'creator';
+
 export interface LaunchFormData {
   // Step 1: Details
   name: string;
@@ -18,9 +21,8 @@ export interface LaunchFormData {
 
   // Step 4: Airdrop
   airdropEnabled: boolean;
-  airdropType: AirdropType;
+  airdropCommunity: AirdropCommunity;
   airdropPercent: number;
-  customAddresses: string;
 
   // Step 5: Flywheel Tax
   flywheelEnabled: boolean;
@@ -30,9 +32,6 @@ export interface LaunchFormData {
 
   // Step 6: Deploy (no form data, just confirmation)
 }
-
-export type AirdropType = 'moto_holders' | 'motocat_holders' | 'custom';
-export type TaxDestination = 'burn' | 'creator';
 
 export type LaunchStep = 1 | 2 | 3 | 4 | 5 | 6;
 

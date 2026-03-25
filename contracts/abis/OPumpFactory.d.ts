@@ -73,6 +73,7 @@ export interface IOPumpFactory extends IOP_NETContract {
         name: string,
         symbol: string,
         creatorAllocationBps: bigint,
+        airdropBps: bigint,
         buyTaxBps: bigint,
         sellTaxBps: bigint,
         flywheelDestination: bigint,

@@ -7,12 +7,14 @@ import { TradeHistory } from '@/components/trade/TradeHistory';
 import { TokenPrice } from '@/components/token/TokenPrice';
 import { TokenBadge } from '@/components/token/TokenBadge';
 import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
+import { MigrationCard } from '@/components/token/MigrationCard';
+import { useMigration } from '@/hooks/use-migration';
+import { useWalletStore } from '@/stores/wallet-store';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { BondingCurveVisual } from '@/components/shared/BondingCurveVisual';
 import { AddressDisplay } from '@/components/shared/AddressDisplay';
 import { TopHolders } from '@/components/token/TopHolders';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useTokenStore } from '@/stores/token-store';
@@ -25,7 +27,6 @@ import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
 
 import type { OHLCVCandle } from '@/types/api';
 
-const MOTOSWAP_URL = import.meta.env.VITE_MOTOSWAP_URL || '';
 const EMPTY_CANDLES: OHLCVCandle[] = [];
 
 export function TokenPage() {
@@ -39,6 +40,8 @@ export function TokenPage() {
   const chartType = usePriceStore((s) => s.chartType);
   const setChartType = usePriceStore((s) => s.setChartType);
   const { btcPrice } = useBtcPrice();
+  const walletAddress = useWalletStore((s) => s.address);
+  const { executeMigrate, migrating, isCreator } = useMigration(token);
 
   const mcapCandles = useMemo(() => {
     if (btcPrice <= 0) return candles;
@@ -225,49 +228,14 @@ export function TokenPage() {
 
         {/* Trade panel sidebar */}
         <div className="space-y-6">
-          {token.status === 'migrated' ? (
-            <Card className="text-center py-8">
-              <Badge variant="bull" className="mb-3 text-base px-4 py-1">Trading on MotoSwap</Badge>
-              <p className="text-text-secondary text-sm mt-2">
-                This OP20 token has migrated to MotoSwap DEX for open-market trading.
-              </p>
-              {MOTOSWAP_URL && (
-                <a
-                  href={`${MOTOSWAP_URL}/swap?token=${token.address}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-4 px-6 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium transition-colors"
-                >
-                  Trade on MotoSwap
-                </a>
-              )}
-            </Card>
-          ) : token.status === 'migrating' ? (
-            <Card className="text-center py-8">
-              <Badge variant="warning" className="mb-3 text-base px-4 py-1 animate-pulse">Migrating</Badge>
-              <p className="text-text-secondary text-sm mt-2">
-                This token is being migrated to MotoSwap DEX.
-              </p>
-              <p className="text-text-muted text-xs mt-1">
-                Liquidity pool creation in progress. Trading will be available shortly.
-              </p>
-              <div className="mt-4 flex justify-center">
-                <div className="h-5 w-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              </div>
-            </Card>
-          ) : token.status === 'graduated' ? (
-            <Card className="text-center py-8">
-              <Badge variant="warning" className="mb-3 text-base px-4 py-1">Graduated</Badge>
-              <p className="text-text-secondary text-sm mt-2">
-                This token has graduated from the bonding curve.
-              </p>
-              <p className="text-text-muted text-xs mt-1">
-                DEX liquidity migration starting soon.
-              </p>
-              <div className="mt-4 flex justify-center">
-                <div className="h-5 w-5 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
-              </div>
-            </Card>
+          {token.status === 'graduated' || token.status === 'migrating' || token.status === 'migrated' ? (
+            <MigrationCard
+              token={token}
+              walletAddress={walletAddress}
+              isCreator={isCreator}
+              migrating={migrating}
+              onMigrate={executeMigrate}
+            />
           ) : (
             <TradePanel token={token} />
           )}

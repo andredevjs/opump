@@ -10,9 +10,9 @@
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount } from "./_shared/redis-queries.mts";
+import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount, graduateToken } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
-import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR, TOTAL_FEE_BPS, FEE_DENOMINATOR } from "./_shared/constants.mts";
+import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR, TOTAL_FEE_BPS, FEE_DENOMINATOR, GRADUATION_THRESHOLD_SATS } from "./_shared/constants.mts";
 
 interface TradeSubmitBody {
   txHash: string;
@@ -56,6 +56,12 @@ export default async (req: Request, _context: Context) => {
 
   if (!isValidBody(body)) {
     return error("Missing required fields: txHash, tokenAddress, type, traderAddress, btcAmount, tokenAmount, pricePerToken", 400);
+  }
+
+  // Reject trades for tokens that have graduated or are migrating
+  const preCheck = await getToken(body.tokenAddress);
+  if (preCheck && (preCheck.status === "graduated" || preCheck.status === "migrating" || preCheck.status === "migrated")) {
+    return error("Token has graduated — bonding curve trading is closed", 400, "TokenGraduated");
   }
 
   try {
@@ -122,6 +128,12 @@ export default async (req: Request, _context: Context) => {
         newRealBtc = curRealBtc - btcOutBeforeFee;
       }
 
+      // Check if this buy caused graduation (mempool-first)
+      let newStatus = token.status;
+      if (body.type === "buy" && token.status === "active" && newRealBtc >= GRADUATION_THRESHOLD_SATS) {
+        newStatus = "graduated";
+      }
+
       await updateToken(trade.tokenAddress, {
         currentPriceSats: body.pricePerToken,
         tradeCount: (token.tradeCount || 0) + 1,
@@ -133,8 +145,13 @@ export default async (req: Request, _context: Context) => {
         virtualBtcReserve: newVBtc.toString(),
         virtualTokenSupply: newVToken.toString(),
         realBtcReserve: newRealBtc.toString(),
-        status: token.status,
+        status: newStatus,
       });
+
+      // Move token to graduated indexes if status just changed
+      if (newStatus === "graduated" && token.status === "active") {
+        await graduateToken(trade.tokenAddress, 0);
+      }
     } else {
       // Fallback: at minimum update the price
       await updateToken(trade.tokenAddress, { currentPriceSats: body.pricePerToken });

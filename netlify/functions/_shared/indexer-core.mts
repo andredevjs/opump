@@ -19,6 +19,7 @@ import {
   acquireIndexerLock,
   releaseIndexerLock,
   graduateToken,
+  migrateToken,
   getHolderCount,
   TRADE_KEY,
 } from "./redis-queries.mts";
@@ -32,7 +33,7 @@ import {
 } from "./constants.mts";
 import type { TradeDocument } from "./constants.mts";
 import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
-import { decodeBuyEvent, decodeSellEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
+import { decodeBuyEvent, decodeSellEvent, decodeMigrationEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
 import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 
 /** Convert a PRICE_PRECISION-scaled bigint to "sats per whole token" string */
@@ -182,6 +183,19 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
                 await graduateToken(contractAddr, Number(blockNum));
                 affectedTokens.add(contractAddr);
                 console.log(`[Indexer] Token ${contractAddr} graduated at block ${blockNum}`);
+              }
+            } else if (eventType === "Migration" && isKnownToken) {
+              const migData = decodeMigrationEvent(evt);
+              if (migData) {
+                const recipientBech32 = hexAddressToBech32m(migData.recipient, network);
+                await migrateToken(
+                  contractAddr,
+                  tx.hash,
+                  migData.tokenAmount.toString(),
+                  recipientBech32,
+                );
+                affectedTokens.add(contractAddr);
+                console.log(`[Indexer] Token ${contractAddr} migrated at block ${blockNum}`);
               }
             } else if (eventType === "TokenDeployed" && isFactory) {
               const data = getEventData(evt);

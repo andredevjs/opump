@@ -163,6 +163,21 @@ export function submitTrade(trade: {
   });
 }
 
+/**
+ * Submit a migration to Redis immediately after broadcast so the UI
+ * transitions to "migrating" without waiting for block confirmation.
+ */
+export function submitMigration(body: {
+  tokenAddress: string;
+  txHash: string;
+  recipientAddress: string;
+}): Promise<unknown> {
+  return request('/v1/migrate', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export function getTokenHolders(
   address: string,
   limit = 10,

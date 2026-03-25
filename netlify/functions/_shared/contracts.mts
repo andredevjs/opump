@@ -22,7 +22,7 @@ export interface DeploymentTx {
  * LaunchToken ABI is constructed at runtime in on-chain-verify.mts and indexer-core.mts
  * using dynamically imported ABIDataTypes and BitcoinAbiTypes from "opnet".
  * Methods: getReserves (outputs: virtualBtc, virtualToken, realBtc, k)
- *          getConfig   (outputs: creatorBps, buyTax, sellTax, destination, threshold)
+ *          getConfig   (outputs: creatorBps, airdropBps, buyTax, sellTax, destination, threshold)
  */
 
 export interface LaunchTokenReservesResponse {
@@ -37,6 +37,7 @@ export interface LaunchTokenReservesResponse {
 export interface LaunchTokenConfigResponse {
   properties: {
     creatorBps: bigint;
+    airdropBps: bigint;
     buyTax: bigint;
     sellTax: bigint;
     destination: bigint;

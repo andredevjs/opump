@@ -127,6 +127,7 @@ export const LaunchTokenAbi = [
         inputs: [],
         outputs: [
             { name: 'creatorBps', type: ABIDataTypes.UINT256 },
+            { name: 'airdropBps', type: ABIDataTypes.UINT256 },
             { name: 'buyTax', type: ABIDataTypes.UINT256 },
             { name: 'sellTax', type: ABIDataTypes.UINT256 },
             { name: 'destination', type: ABIDataTypes.UINT256 },

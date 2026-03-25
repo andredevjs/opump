@@ -54,6 +54,12 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     inputs: [],
     outputs: [{ name: 'amount', type: ABIDataTypes.UINT256 }],
   },
+  {
+    name: 'migrate',
+    type: BitcoinAbiTypes.Function,
+    inputs: [{ name: 'recipient', type: ABIDataTypes.ADDRESS }],
+    outputs: [{ name: 'tokenAmount', type: ABIDataTypes.UINT256 }],
+  },
   // --- Read methods ---
   {
     name: 'getReserves',
@@ -81,6 +87,7 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     inputs: [],
     outputs: [
       { name: 'creatorBps', type: ABIDataTypes.UINT256 },
+      { name: 'airdropBps', type: ABIDataTypes.UINT256 },
       { name: 'buyTax', type: ABIDataTypes.UINT256 },
       { name: 'sellTax', type: ABIDataTypes.UINT256 },
       { name: 'destination', type: ABIDataTypes.UINT256 },
@@ -93,6 +100,13 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
     constant: true,
     inputs: [],
     outputs: [{ name: 'isGraduated', type: ABIDataTypes.BOOL }],
+  },
+  {
+    name: 'isMigrated',
+    type: BitcoinAbiTypes.Function,
+    constant: true,
+    inputs: [],
+    outputs: [{ name: 'isMigrated', type: ABIDataTypes.BOOL }],
   },
   {
     name: 'getFeePools',
@@ -162,6 +176,15 @@ export const LAUNCH_TOKEN_ABI: BitcoinInterfaceAbi = [
       { name: 'feeType', type: ABIDataTypes.UINT256 },
     ],
   },
+  {
+    name: 'Migration',
+    type: BitcoinAbiTypes.Event,
+    values: [
+      { name: 'recipient', type: ABIDataTypes.ADDRESS },
+      { name: 'tokenAmount', type: ABIDataTypes.UINT256 },
+      { name: 'btcReserve', type: ABIDataTypes.UINT256 },
+    ],
+  },
 ];
 
 // ============ LaunchToken Result Types ============
@@ -186,6 +209,12 @@ type FeeClaimedEventData = {
   readonly feeType: bigint;
 };
 
+type MigrationEventData = {
+  readonly recipient: Address;
+  readonly tokenAmount: bigint;
+  readonly btcReserve: bigint;
+};
+
 export type BuyResult = CallResult<{ tokensOut: bigint }, [OPNetEvent<BuyEvent>]>;
 export type SellResult = CallResult<{ btcOut: bigint }, [OPNetEvent<SellEvent>]>;
 export type ClaimResult = CallResult<{ amount: bigint }, [OPNetEvent<FeeClaimedEventData>]>;
@@ -193,8 +222,10 @@ export type ReserveResult = CallResult<{ expiryBlock: bigint }, []>;
 export type CancelReservationResult = CallResult<{ penalty: bigint }, []>;
 export type GetReservesResult = CallResult<{ virtualBtc: bigint; virtualToken: bigint; realBtc: bigint; k: bigint }, []>;
 export type GetPriceResult = CallResult<{ priceSatsPerToken: bigint }, []>;
-export type GetConfigResult = CallResult<{ creatorBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint }, []>;
+export type GetConfigResult = CallResult<{ creatorBps: bigint; airdropBps: bigint; buyTax: bigint; sellTax: bigint; destination: bigint; threshold: bigint }, []>;
 export type IsGraduatedResult = CallResult<{ isGraduated: boolean }, []>;
+export type IsMigratedResult = CallResult<{ isMigrated: boolean }, []>;
+export type MigrateResult = CallResult<{ tokenAmount: bigint }, [OPNetEvent<MigrationEventData>]>;
 export type GetFeePoolsResult = CallResult<{ platformFees: bigint; creatorFees: bigint }, []>;
 export type GetReservationResult = CallResult<{ amount: bigint; expiryBlock: bigint }, []>;
 
@@ -207,12 +238,14 @@ export interface ILaunchTokenContract extends IOP20Contract {
   reserve(btcAmount: bigint): Promise<ReserveResult>;
   cancelReservation(): Promise<CancelReservationResult>;
   claimCreatorFees(): Promise<ClaimResult>;
+  migrate(recipient: Address): Promise<MigrateResult>;
   // Read
   getReserves(): Promise<GetReservesResult>;
   getPrice(): Promise<GetPriceResult>;
   getConfig(): Promise<GetConfigResult>;
   getFeePools(): Promise<GetFeePoolsResult>;
   isGraduated(): Promise<IsGraduatedResult>;
+  isMigrated(): Promise<IsMigratedResult>;
   getReservation(addr: Address): Promise<GetReservationResult>;
 }
 
@@ -226,6 +259,7 @@ export const OPUMP_FACTORY_ABI: BitcoinInterfaceAbi = [
       { name: 'name', type: ABIDataTypes.STRING },
       { name: 'symbol', type: ABIDataTypes.STRING },
       { name: 'creatorAllocationBps', type: ABIDataTypes.UINT256 },
+      { name: 'airdropBps', type: ABIDataTypes.UINT256 },
       { name: 'buyTaxBps', type: ABIDataTypes.UINT256 },
       { name: 'sellTaxBps', type: ABIDataTypes.UINT256 },
       { name: 'flywheelDestination', type: ABIDataTypes.UINT256 },
@@ -287,6 +321,7 @@ export interface IOPumpFactoryContract extends BaseContractProperties {
     name: string,
     symbol: string,
     creatorAllocationBps: bigint,
+    airdropBps: bigint,
     buyTaxBps: bigint,
     sellTaxBps: bigint,
     flywheelDestination: bigint,

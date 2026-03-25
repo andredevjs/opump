@@ -145,6 +145,7 @@ export type GetPrice = CallResult<
 export type GetConfig = CallResult<
     {
         creatorBps: bigint;
+        airdropBps: bigint;
         buyTax: bigint;
         sellTax: bigint;
         destination: bigint;

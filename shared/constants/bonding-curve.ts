@@ -21,10 +21,10 @@ export const CREATOR_FEE_BPS = 25n; // 0.25%
 export const TOTAL_FEE_BPS = 125n; // 1.25% total
 export const FEE_DENOMINATOR = 10_000n;
 
-// Creator allocation caps
-export const MAX_CREATOR_ALLOCATION_BPS = 1_000n; // 10%
-export const MAX_AIRDROP_BPS = 2_000n; // 20%
-export const MAX_COMBINED_ALLOCATION_BPS = 2_500n; // 25%
+// Creator / airdrop allocation caps
+export const MAX_CREATOR_ALLOCATION_BPS = 7_000n; // 70%
+export const MAX_AIRDROP_BPS = 7_000n; // 70%
+export const MAX_COMBINED_ALLOCATION_BPS = 7_000n; // 70% (creator + airdrop combined)
 
 // Reservation
 export const RESERVATION_TTL_BLOCKS = 3n; // ~30 minutes

@@ -18,6 +18,7 @@ function makeApiToken(overrides: Partial<TokenDetailResponse & { priceChange24hB
     realBtcReserve: '0',
     config: {
       creatorAllocationBps: 500,
+      airdropBps: 0,
       buyTaxBps: 100,
       sellTaxBps: 200,
       flywheelDestination: 'burn',
@@ -107,6 +108,7 @@ describe('mapApiTokenToToken', () => {
     const token = mapApiTokenToToken(makeApiToken({
       config: {
         creatorAllocationBps: 1000,
+        airdropBps: 0,
         buyTaxBps: 300,
         sellTaxBps: 500,
         flywheelDestination: 'burn',
@@ -146,6 +148,7 @@ describe('mapApiTokenToToken', () => {
       realBtcReserve: '3450000',
       config: {
         creatorAllocationBps: 0,
+        airdropBps: 0,
         buyTaxBps: 0,
         sellTaxBps: 0,
         flywheelDestination: 'burn',
@@ -160,6 +163,7 @@ describe('mapApiTokenToToken', () => {
       realBtcReserve: '100000',
       config: {
         creatorAllocationBps: 0,
+        airdropBps: 0,
         buyTaxBps: 0,
         sellTaxBps: 0,
         flywheelDestination: 'burn',

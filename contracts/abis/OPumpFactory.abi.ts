@@ -18,6 +18,7 @@ export const OPumpFactoryAbi = [
             { name: 'name', type: ABIDataTypes.STRING },
             { name: 'symbol', type: ABIDataTypes.STRING },
             { name: 'creatorAllocationBps', type: ABIDataTypes.UINT256 },
+            { name: 'airdropBps', type: ABIDataTypes.UINT256 },
             { name: 'buyTaxBps', type: ABIDataTypes.UINT256 },
             { name: 'sellTaxBps', type: ABIDataTypes.UINT256 },
             { name: 'flywheelDestination', type: ABIDataTypes.UINT256 },

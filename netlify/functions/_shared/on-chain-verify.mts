@@ -15,7 +15,7 @@ export async function verifyTokenOnChain(
   contractAddress: string,
   creatorAddress: string,
   deployTxHash: string,
-  clientConfig: { creatorAllocationBps: number; buyTaxBps: number; sellTaxBps: number },
+  clientConfig: { creatorAllocationBps: number; airdropBps: number; buyTaxBps: number; sellTaxBps: number },
 ): Promise<OnChainVerificationResult> {
   const opnetRpcUrl = process.env.OPNET_RPC_URL || "https://testnet.opnet.org";
   const networkName = process.env.NETWORK || "testnet";
@@ -82,6 +82,7 @@ export async function verifyTokenOnChain(
       inputs: [],
       outputs: [
         { name: "creatorBps", type: ABIDataTypes.UINT256 },
+        { name: "airdropBps", type: ABIDataTypes.UINT256 },
         { name: "buyTax", type: ABIDataTypes.UINT256 },
         { name: "sellTax", type: ABIDataTypes.UINT256 },
         { name: "destination", type: ABIDataTypes.UINT256 },
@@ -116,12 +117,18 @@ export async function verifyTokenOnChain(
       return { valid: false, error: "Failed to read contract config on-chain." };
     }
 
-    const { creatorBps, buyTax, sellTax } = onChainConfig.properties;
+    const { creatorBps, airdropBps, buyTax, sellTax } = onChainConfig.properties;
 
     if (Number(creatorBps) !== clientConfig.creatorAllocationBps) {
       return {
         valid: false,
         error: `Creator allocation mismatch: on-chain=${creatorBps}, submitted=${clientConfig.creatorAllocationBps}`,
+      };
+    }
+    if (Number(airdropBps) !== clientConfig.airdropBps) {
+      return {
+        valid: false,
+        error: `Airdrop mismatch: on-chain=${airdropBps}, submitted=${clientConfig.airdropBps}`,
       };
     }
     if (Number(buyTax) !== clientConfig.buyTaxBps) {

@@ -28,15 +28,17 @@ export interface TokenSocials {
   github?: string;
 }
 
+export type AirdropCommunity = "bitcoin_puppets" | "motocats" | "moto" | "pill";
+
 export interface AirdropConfig {
   enabled: boolean;
-  type: "equal" | "proRata";
+  community: AirdropCommunity;
   percentBps: number;
-  customAddresses?: string[];
 }
 
 export interface TokenConfig {
   creatorAllocationBps: number;
+  airdropBps: number;
   buyTaxBps: number;
   sellTaxBps: number;
   flywheelDestination: "burn" | "creator";
@@ -121,6 +123,7 @@ export interface CreateTokenRequest {
   contractAddress: string;
   config: {
     creatorAllocationBps: number;
+    airdropBps: number;
     buyTaxBps: number;
     sellTaxBps: number;
     flywheelDestination: "burn" | "creator";

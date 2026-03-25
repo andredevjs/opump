@@ -78,6 +78,7 @@ export function StepDeploy() {
         name: formData.name,
         symbol: formData.symbol,
         creatorAllocationBps: BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+        airdropBps: BigInt(Math.round(formData.airdropEnabled ? formData.airdropPercent * 100 : 0)),
         buyTaxBps: BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
         sellTaxBps: BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
         flywheelDestination: BigInt(flywheelDestMap[formData.taxDestination]),
@@ -114,6 +115,7 @@ export function StepDeploy() {
               formData.name,
               formData.symbol,
               BigInt(Math.round(formData.creatorAllocationPercent * 100)),
+              BigInt(Math.round(formData.airdropEnabled ? formData.airdropPercent * 100 : 0)),
               BigInt(Math.round(formData.flywheelEnabled ? formData.buyTaxPercent * 100 : 0)),
               BigInt(Math.round(formData.flywheelEnabled ? formData.sellTaxPercent * 100 : 0)),
               BigInt(flywheelDestMap[formData.taxDestination]),
@@ -166,6 +168,7 @@ export function StepDeploy() {
         contractAddress,
         config: {
           creatorAllocationBps: Math.round(formData.creatorAllocationPercent * 100),
+          airdropBps: formData.airdropEnabled ? Math.round(formData.airdropPercent * 100) : 0,
           buyTaxBps: formData.flywheelEnabled ? Math.round(formData.buyTaxPercent * 100) : 0,
           sellTaxBps: formData.flywheelEnabled ? Math.round(formData.sellTaxPercent * 100) : 0,
           flywheelDestination: flywheelDestNames[flywheelDestMap[formData.taxDestination]],
@@ -212,7 +215,7 @@ export function StepDeploy() {
           <div className="p-2 rounded bg-input">
             <span className="text-text-muted">Airdrop</span>
             <p className="font-mono text-text-primary">
-              None
+              {formData.airdropEnabled ? `${formData.airdropPercent}%` : 'None'}
             </p>
           </div>
           <div className="p-2 rounded bg-input">
