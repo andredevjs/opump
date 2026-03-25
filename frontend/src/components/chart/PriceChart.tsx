@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
 import type { OHLCVCandle } from '@/types/api';
+import type { ChartType } from '@/stores/price-store';
 import { cn } from '@/lib/cn';
 import { CHART_THEME } from '@/config/constants';
 
@@ -9,6 +10,7 @@ interface PriceChartProps {
   loading?: boolean;
   className?: string;
   priceFormatter?: (value: number) => string;
+  chartType?: ChartType;
 }
 
 const defaultFormatter = (price: number) => {
@@ -21,12 +23,41 @@ const defaultFormatter = (price: number) => {
   return price.toFixed(8);
 };
 
-export function PriceChart({ candles, loading, className, priceFormatter }: PriceChartProps) {
+type PriceSeries = ISeriesApi<'Line'> | ISeriesApi<'Candlestick'>;
+
+export function PriceChart({ candles, loading, className, priceFormatter, chartType = 'line' }: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const lineSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const priceSeriesRef = useRef<PriceSeries | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const chartTypeRef = useRef<ChartType>(chartType);
+  const [hoveredOhlcv, setHoveredOhlcv] = useState<OHLCVCandle | null>(null);
 
+  chartTypeRef.current = chartType;
+
+  const formatter = priceFormatter ?? defaultFormatter;
+
+  const autoscaleProvider = (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+    const res = original();
+    if (res !== null) {
+      const range = res.priceRange.maxValue - res.priceRange.minValue;
+      const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
+      if (range < mid * 0.001) {
+        const margin = mid * 0.05 || (priceFormatter ? 1 : 0.00000001);
+        res.priceRange.minValue -= margin;
+        res.priceRange.maxValue += margin;
+      }
+    }
+    return res;
+  };
+
+  const priceFormat = {
+    type: 'custom' as const,
+    formatter,
+    minMove: priceFormatter ? 0.01 : 0.00000001,
+  };
+
+  // Create chart instance + volume series (mount only)
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -66,35 +97,6 @@ export function PriceChart({ candles, loading, className, priceFormatter }: Pric
       handleScroll: { vertTouchDrag: false },
     });
 
-    const lineSeries = chart.addLineSeries({
-      color: CHART_THEME.lineColor,
-      lineWidth: 2,
-      lineType: LineType.Curved,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-      crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
-      lastValueVisible: true,
-      priceLineVisible: false,
-      autoscaleInfoProvider: (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
-        const res = original();
-        if (res !== null) {
-          const range = res.priceRange.maxValue - res.priceRange.minValue;
-          const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
-          if (range < mid * 0.001) {
-            const margin = mid * 0.05 || (priceFormatter ? 1 : 0.00000001);
-            res.priceRange.minValue -= margin;
-            res.priceRange.maxValue += margin;
-          }
-        }
-        return res;
-      },
-      priceFormat: {
-        type: 'custom' as const,
-        formatter: priceFormatter ?? defaultFormatter,
-        minMove: priceFormatter ? 0.01 : 0.00000001,
-      },
-    });
-
     const volumeSeries = chart.addHistogramSeries({
       color: CHART_THEME.volumeColor,
       priceFormat: { type: 'volume' },
@@ -105,46 +107,135 @@ export function PriceChart({ candles, loading, className, priceFormatter }: Pric
     });
 
     chartRef.current = chart;
-    lineSeriesRef.current = lineSeries;
     volumeSeriesRef.current = volumeSeries;
+
+    // Crosshair subscription for OHLCV tooltip in candlestick mode
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !param.seriesData || chartTypeRef.current !== 'candlestick') {
+        setHoveredOhlcv(null);
+        return;
+      }
+      const series = priceSeriesRef.current;
+      if (!series) { setHoveredOhlcv(null); return; }
+
+      const data = param.seriesData.get(series) as
+        | { open: number; high: number; low: number; close: number; time: number }
+        | undefined;
+
+      if (data && 'open' in data) {
+        const volData = param.seriesData.get(volumeSeriesRef.current!) as { value?: number } | undefined;
+        setHoveredOhlcv({
+          time: data.time,
+          open: data.open,
+          high: data.high,
+          low: data.low,
+          close: data.close,
+          volume: volData?.value ?? 0,
+        });
+      } else {
+        setHoveredOhlcv(null);
+      }
+    });
 
     return () => {
       chartRef.current = null;
+      priceSeriesRef.current = null;
       chart.remove();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Create/swap price series when chartType changes (also runs on mount)
   useEffect(() => {
-    if (!lineSeriesRef.current || !volumeSeriesRef.current) return;
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    // Remove existing price series
+    if (priceSeriesRef.current) {
+      chart.removeSeries(priceSeriesRef.current);
+      priceSeriesRef.current = null;
+    }
+
+    if (chartType === 'candlestick') {
+      priceSeriesRef.current = chart.addCandlestickSeries({
+        upColor: CHART_THEME.upColor,
+        downColor: CHART_THEME.downColor,
+        borderUpColor: CHART_THEME.upColor,
+        borderDownColor: CHART_THEME.downColor,
+        wickUpColor: CHART_THEME.upColor,
+        wickDownColor: CHART_THEME.downColor,
+        priceFormat,
+        autoscaleInfoProvider: autoscaleProvider,
+      });
+    } else {
+      priceSeriesRef.current = chart.addLineSeries({
+        color: CHART_THEME.lineColor,
+        lineWidth: 2,
+        lineType: LineType.Curved,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 4,
+        crosshairMarkerBackgroundColor: CHART_THEME.lineColor,
+        lastValueVisible: true,
+        priceLineVisible: false,
+        priceFormat,
+        autoscaleInfoProvider: autoscaleProvider,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartType]);
+
+  // Set data on price + volume series when candles or chartType changes
+  useEffect(() => {
+    const priceSeries = priceSeriesRef.current;
+    const volumeSeries = volumeSeriesRef.current;
+    if (!priceSeries || !volumeSeries) return;
 
     if (candles.length === 0) {
-      lineSeriesRef.current.setData([]);
-      volumeSeriesRef.current.setData([]);
+      priceSeries.setData([]);
+      volumeSeries.setData([]);
       return;
     }
 
-    const lineData = candles.map((c) => ({
-      time: c.time as UTCTimestamp,
-      value: c.close,
-    }));
+    if (chartType === 'candlestick') {
+      const ohlcData = candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+      (priceSeries as ISeriesApi<'Candlestick'>).setData(ohlcData);
+    } else {
+      const lineData = candles.map((c) => ({
+        time: c.time as UTCTimestamp,
+        value: c.close,
+      }));
+      (priceSeries as ISeriesApi<'Line'>).setData(lineData);
+    }
 
     const volumeData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
       color: c.close >= c.open ? `${CHART_THEME.upColor}40` : `${CHART_THEME.downColor}40`,
     }));
+    volumeSeries.setData(volumeData);
 
-    lineSeriesRef.current.setData(lineData);
-    volumeSeriesRef.current.setData(volumeData);
-
-    if (chartRef.current && candles.length > 0) {
+    if (chartRef.current) {
       chartRef.current.timeScale().fitContent();
     }
-  }, [candles]);
+  }, [candles, chartType]);
 
   return (
     <div className={cn('relative w-full h-[500px]', className)}>
       <div ref={containerRef} className="w-full h-full" />
+      {hoveredOhlcv && chartType === 'candlestick' && (
+        <div className="absolute top-2 left-2 z-20 bg-surface/80 backdrop-blur-sm rounded px-2 py-1 font-mono text-[10px] text-text-secondary flex gap-3 pointer-events-none">
+          <span>O: {formatter(hoveredOhlcv.open)}</span>
+          <span>H: {formatter(hoveredOhlcv.high)}</span>
+          <span>L: {formatter(hoveredOhlcv.low)}</span>
+          <span>C: {formatter(hoveredOhlcv.close)}</span>
+        </div>
+      )}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface/60 backdrop-blur-sm z-10">
           <div className="h-6 w-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
