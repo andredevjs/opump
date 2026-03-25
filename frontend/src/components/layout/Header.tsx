@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { WalletButton } from './WalletButton';
+import { FeeTracker } from './FeeTracker';
 import { useUIStore } from '@/stores/ui-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/cn';
@@ -59,6 +60,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
+          <FeeTracker />
           <WalletButton />
           <button
             className="md:hidden text-text-secondary hover:text-text-primary"
