@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Globe, MessageCircle } from 'lucide-react';
+import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { GraduationProgress } from '@/components/shared/GraduationProgress';
 import { useBtcPrice } from '@/stores/btc-price-store';
@@ -49,15 +49,11 @@ export function TrenchTokenRow({ token }: TrenchTokenRowProps) {
         {/* Row 2: age + socials */}
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-text-muted text-xs">{timeAgo(token.createdAt)}</span>
-          {token.website && (
-            <Globe size={12} className="text-text-muted" />
-          )}
-          {token.twitter && (
-            <span className="text-text-muted text-xs">𝕏</span>
-          )}
-          {token.telegram && (
-            <MessageCircle size={12} className="text-text-muted" />
-          )}
+          {token.website && <Globe size={12} className="text-text-muted" />}
+          {token.twitter && <Twitter size={12} className="text-text-muted" />}
+          {token.telegram && <Send size={12} className="text-text-muted" />}
+          {token.discord && <MessageCircle size={12} className="text-text-muted" />}
+          {token.github && <Github size={12} className="text-text-muted" />}
         </div>
 
         {/* Row 3: stats */}
