@@ -36,6 +36,8 @@ export function TokenPage() {
   const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
   const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
+  const chartType = usePriceStore((s) => s.chartType);
+  const setChartType = usePriceStore((s) => s.setChartType);
   const { btcPrice } = useBtcPrice();
 
   const mcapCandles = useMemo(() => {
@@ -124,9 +126,9 @@ export function TokenPage() {
           <Card className="p-0 overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <span className="text-sm font-medium text-text-secondary">Market Cap</span>
-              <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} />
+              <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} chartType={chartType} onChartTypeChange={setChartType} />
             </div>
-            <PriceChart candles={mcapCandles} loading={chartLoading} priceFormatter={formatMcapUsd} />
+            <PriceChart candles={mcapCandles} loading={chartLoading} chartType={chartType} priceFormatter={formatMcapUsd} />
           </Card>
 
           {/* Stats row */}

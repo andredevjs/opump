@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import type { OHLCVCandle, TimeframeKey } from '@/types/api';
 
+export type ChartType = 'line' | 'candlestick';
+
+const CHART_TYPE_KEY = 'opump-chart-type';
+const storedChartType = (typeof window !== 'undefined'
+  ? sessionStorage.getItem(CHART_TYPE_KEY)
+  : null) as ChartType | null;
+
 interface LivePrice {
   currentPriceSats: string;
   virtualBtcReserve: string;
@@ -18,11 +25,14 @@ interface PriceStore {
   livePrices: Record<string, LivePrice>;
   // token address -> active chart timeframe
   activeTimeframes: Record<string, TimeframeKey>;
+  // chart type preference (line or candlestick)
+  chartType: ChartType;
   setCandles: (address: string, candles: OHLCVCandle[]) => void;
   setLoading: (address: string, loading: boolean) => void;
   updateLastCandle: (address: string, candle: OHLCVCandle) => void;
   setLivePrice: (address: string, price: Partial<LivePrice>) => void;
   setActiveTimeframe: (address: string, timeframe: TimeframeKey) => void;
+  setChartType: (type: ChartType) => void;
 }
 
 const MAX_CANDLES = 500;
@@ -32,6 +42,7 @@ export const usePriceStore = create<PriceStore>((set) => ({
   loading: {},
   livePrices: {},
   activeTimeframes: {},
+  chartType: storedChartType === 'candlestick' ? 'candlestick' : 'line',
 
   setCandles: (address, candles) =>
     set((state) => ({
@@ -76,6 +87,11 @@ export const usePriceStore = create<PriceStore>((set) => ({
     set((state) => ({
       activeTimeframes: { ...state.activeTimeframes, [address]: timeframe },
     })),
+
+  setChartType: (type) => {
+    sessionStorage.setItem(CHART_TYPE_KEY, type);
+    set({ chartType: type });
+  },
 }));
 
 const _chartedTxHashes: Record<string, Set<string>> = {};
