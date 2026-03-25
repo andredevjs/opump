@@ -4,7 +4,7 @@ import { WalletButton } from './WalletButton';
 import { useUIStore } from '@/stores/ui-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/cn';
-import cornhubLogo from '@/assets/brand/cornhub-logo-transparent.webp';
+import cornhubFieldsLogo from '@/assets/brand/cornhub-fields-full.webp';
 
 const NAV_LINKS = [
   { label: 'Home', path: '/' },
@@ -24,7 +24,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2" onClick={closeMobileMenu}>
-            <img src={cornhubLogo} alt="CornHub" className="h-8" width={178} height={32} />
+            <img src={cornhubFieldsLogo} alt="CornHub Fields" className="h-10" width={143} height={100} />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
