@@ -29,6 +29,7 @@ export function mapApiTokenToToken(t: TokenDetailResponse & { priceChange24hBps?
     creatorAllocationPercent: (t.config.creatorAllocationBps || 0) / 100,
     buyTaxPercent: (t.config.buyTaxBps || 0) / 100,
     sellTaxPercent: (t.config.sellTaxBps || 0) / 100,
+    flywheelDestination: t.config.flywheelDestination,
     website: t.socials?.website,
     twitter: t.socials?.twitter,
     telegram: t.socials?.telegram,

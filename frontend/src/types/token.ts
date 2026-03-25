@@ -25,6 +25,7 @@ export interface Token {
   creatorAllocationPercent: number;
   buyTaxPercent: number;
   sellTaxPercent: number;
+  flywheelDestination?: 'burn' | 'creator';
 
   // Socials
   website?: string;

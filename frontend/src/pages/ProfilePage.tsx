@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { CreatedTokens } from '@/components/profile/CreatedTokens';
 import { Holdings } from '@/components/profile/Holdings';
+import { CreatorEarnings } from '@/components/profile/CreatorEarnings';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { useWalletStore } from '@/stores/wallet-store';
 import * as api from '@/services/api';
 import type { Token } from '@/types/token';
 import type { CreatorProfile } from '@/types/api';
@@ -16,15 +18,25 @@ const PROFILE_POLL_INTERVAL_MS = 20_000;
 
 export function ProfilePage() {
   const { address } = useParams<{ address: string }>();
+  const { connected, address: walletAddress } = useWalletStore();
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('created');
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
+
+  const isOwnProfile = connected && walletAddress === address;
+  const showEarnings = isOwnProfile && createdTokens.length > 0;
 
   // Reset loading when address changes (render-time adjustment, avoids synchronous setState in effect)
   const [prevAddress, setPrevAddress] = useState(address);
   if (address !== prevAddress) {
     setPrevAddress(address);
     setLoading(true);
+  }
+
+  // Reset to "created" tab if earnings tab becomes unavailable (render-time adjustment)
+  if (activeTab === 'earnings' && !showEarnings) {
+    setActiveTab('created');
   }
 
   const fetchProfile = useCallback(() => {
@@ -84,10 +96,11 @@ export function ProfilePage() {
       <ProfileHeader profile={profile} />
 
       <Card>
-        <TabsRoot defaultValue="created">
+        <TabsRoot value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="created">Created OP20 Tokens ({createdTokens.length})</TabsTrigger>
             <TabsTrigger value="holdings">Holdings</TabsTrigger>
+            {showEarnings && <TabsTrigger value="earnings">Earnings</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="created">
@@ -97,6 +110,12 @@ export function ProfilePage() {
           <TabsContent value="holdings">
             <Holdings />
           </TabsContent>
+
+          {showEarnings && (
+            <TabsContent value="earnings">
+              <CreatorEarnings tokens={createdTokens} />
+            </TabsContent>
+          )}
         </TabsRoot>
       </Card>
     </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useWalletStore } from '@/stores/wallet-store';
+import { useCreatorFees } from '@/hooks/useCreatorFees';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Coins } from 'lucide-react';
@@ -13,65 +13,26 @@ interface CreatorFeeCardProps {
 
 export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardProps) {
   const { connected, address: walletAddress } = useWalletStore();
-  const [claiming, setClaiming] = useState(false);
-  const [claimResult, setClaimResult] = useState<string | null>(null);
-  const [claimableSats, setClaimableSats] = useState<number | null>(null);
-  // W10: error state for data loading failures
-  const [error, setError] = useState<string | null>(null);
-
   const { btcPrice } = useBtcPrice();
   const isCreator = connected && walletAddress === creatorAddress;
 
-  // Fetch on-chain creator fee pool instead of iterating trades
-  useEffect(() => {
-    if (!isCreator) return;
-    let cancelled = false;
-    setError(null);
-    (async () => {
-      try {
-        const { getLaunchTokenContract } = await import('@/services/contract');
-        const contract = getLaunchTokenContract(tokenAddress);
-        const poolResult = await contract.getFeePools();
-        if (cancelled) return;
-        if (poolResult.revert) {
-          setError(`Contract reverted: ${poolResult.revert}`);
-          return;
-        }
-        setClaimableSats(Number(poolResult.properties.creatorFees));
-      } catch (err) {
-        console.warn('[CreatorFeeCard] getFeePools failed:', err);
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load fee data');
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [tokenAddress, isCreator]);
+  const { fees, claim } = useCreatorFees([tokenAddress], isCreator);
+  const feeState = fees.get(tokenAddress);
 
   if (!isCreator) return null;
 
-  const handleClaim = async () => {
-    if (!walletAddress) return;
-    setClaiming(true);
-    setClaimResult(null);
-    try {
-      const { getLaunchTokenContract, sendContractCall } = await import('@/services/contract');
-      const contract = getLaunchTokenContract(tokenAddress);
-      const sim = await contract.claimCreatorFees();
-      const receipt = await sendContractCall(sim, {
-        refundTo: walletAddress,
-      });
-      setClaimResult(`Claimed! Tx: ${receipt.txHash.slice(0, 12)}...`);
-      setClaimableSats(0);
-    } catch (err) {
-      setClaimResult(err instanceof Error ? err.message : 'Claim failed');
-    } finally {
-      setClaiming(false);
-    }
-  };
+  const claimableSats = feeState?.claimableSats ?? null;
+  const error = feeState?.error ?? null;
+  const claiming = feeState?.claiming ?? false;
+  const claimResult = feeState?.claimResult ?? null;
 
   const loaded = claimableSats !== null && !error;
   const nothingToClaim = loaded && claimableSats === 0;
+
+  const handleClaim = () => {
+    if (!walletAddress) return;
+    claim(tokenAddress, walletAddress);
+  };
 
   return (
     <Card>
