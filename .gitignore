@@ -36,3 +36,6 @@ data/db/
 
 # Coverage
 coverage/
+
+# Local Netlify folder
+.netlify

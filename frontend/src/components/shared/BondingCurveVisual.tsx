@@ -50,7 +50,7 @@ export function BondingCurveVisual({
 
   const w = 320;
   const h = 120;
-  const padLeft = 45;
+  const padLeft = 38;
   const padRight = 8;
   const padY = 8;
 
@@ -84,9 +84,9 @@ export function BondingCurveVisual({
           </linearGradient>
         </defs>
         {/* Y-axis labels */}
-        <text x={padLeft - 4} y={h - padY + 1} textAnchor="end" fill="#8888a0" fontSize="8" fontFamily="JetBrains Mono, monospace">$0</text>
-        <text x={padLeft - 4} y={midY + 3} textAnchor="end" fill="#8888a0" fontSize="8" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(midMcap)}</text>
-        <text x={padLeft - 4} y={gradY + 3} textAnchor="end" fill="#22c55e" fontSize="8" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(graduationMcap)}</text>
+        <text x={padLeft - 4} y={h - padY + 1} textAnchor="end" fill="#8888a0" fontSize="6" fontFamily="JetBrains Mono, monospace">$0</text>
+        <text x={padLeft - 4} y={midY + 2} textAnchor="end" fill="#8888a0" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(midMcap)}</text>
+        <text x={padLeft - 4} y={gradY + 2} textAnchor="end" fill="#22c55e" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(graduationMcap)}</text>
         {/* Graduation target line */}
         <line x1={padLeft} y1={gradY} x2={w - padRight} y2={gradY} stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.5" />
         {/* Fill area */}
