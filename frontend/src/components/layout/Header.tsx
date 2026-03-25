@@ -25,7 +25,7 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link to="/" className="flex items-center gap-2" onClick={closeMobileMenu}>
-            <img src={cornhubLogo} alt="CornHub" className="h-10" width={143} height={40} />
+            <img src={cornhubLogo} alt="CornHub" className="h-7 w-auto" />
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
