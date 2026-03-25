@@ -42,7 +42,7 @@ export const usePriceStore = create<PriceStore>((set) => ({
   loading: {},
   livePrices: {},
   activeTimeframes: {},
-  chartType: storedChartType === 'candlestick' ? 'candlestick' : 'line',
+  chartType: storedChartType === 'line' ? 'line' : 'candlestick',
 
   setCandles: (address, candles) =>
     set((state) => ({
