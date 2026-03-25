@@ -11,8 +11,8 @@ export function Hero() {
           src={cornhubFieldsLogo}
           alt="CornHub Fields"
           className="mx-auto mb-6 max-w-lg w-full"
-          width={1206}
-          height={842}
+          width={1280}
+          height={633}
         />
 
         <h1 className="text-4xl sm:text-6xl font-bold text-text-primary mb-4 leading-tight">
