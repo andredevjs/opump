@@ -56,10 +56,15 @@ export function TrenchTokenRow({ token }: TrenchTokenRowProps) {
           {token.github && <Github size={12} className="text-text-muted" />}
         </div>
 
-        {/* Row 3: stats */}
-        <div className="flex items-center gap-2 mt-1 text-xs text-text-secondary">
-          <span className="text-sm font-semibold text-accent">MC {formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}</span>
-          <span className="text-text-muted">·</span>
+        {/* Row 3: mcap */}
+        <div className="mt-1">
+          <span className="text-base font-bold text-accent drop-shadow-[0_0_6px_rgba(245,197,24,0.4)]">
+            MC {formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}
+          </span>
+        </div>
+
+        {/* Row 4: other stats */}
+        <div className="flex items-center gap-2 mt-0.5 text-xs text-text-secondary">
           <span>TX {formatNumber(token.tradeCount24h)}</span>
           <span className="text-text-muted">·</span>
           <span>V {formatUsd(token.volume24hSats, btcPrice)}</span>
