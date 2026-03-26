@@ -29,6 +29,23 @@ const flywheelDestMap: Record<TaxDestination, number> = {
   creator: 1,
 };
 
+function getDeployErrorMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.includes('Method not found')) {
+    return 'Factory contract is unavailable or outdated. Please contact support.';
+  }
+  if (msg.includes('Contract reverted')) {
+    return msg;
+  }
+  if (msg.includes('No UTXOs')) {
+    return 'Insufficient funds. Please add BTC to your wallet.';
+  }
+  if (msg.includes('OPWallet not found')) {
+    return 'OPWallet extension not detected. Please install it and refresh.';
+  }
+  return msg;
+}
+
 function PhaseIcon({ status }: { status: string }) {
   if (status === 'completed') return <Check size={16} className="text-bull" />;
   if (status === 'active') return <Loader2 size={16} className="text-accent animate-spin" />;
@@ -179,7 +196,7 @@ export function StepDeploy() {
       setDeployedAddress(contractAddress);
       toast.success('Token deployed successfully!');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Deployment failed');
+      toast.error(getDeployErrorMessage(err));
       abortDeploy();
     }
   }, [connected, walletAddress, formData, abortDeploy, advanceDeployPhase, setDeployedAddress, startDeploy]);
