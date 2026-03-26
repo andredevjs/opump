@@ -131,11 +131,21 @@ console.log(`[Deploy] Contract address: ${deployment.contractAddress}`);
 console.log('[Deploy] Broadcasting funding TX...');
 
 const fundingResult = await provider.sendRawTransaction(deployment.transaction[0]);
-console.log(`[Deploy] Funding TX ID: ${fundingResult.txid}`);
+if (!fundingResult.success) {
+    console.error(`[Deploy] Funding TX broadcast FAILED: ${fundingResult.error ?? 'unknown error'}`);
+    console.error('[Deploy] Full response:', JSON.stringify(fundingResult));
+    process.exit(1);
+}
+console.log(`[Deploy] Funding TX ID: ${fundingResult.result}`);
 
 console.log('[Deploy] Broadcasting reveal TX...');
 const revealResult = await provider.sendRawTransaction(deployment.transaction[1]);
-console.log(`[Deploy] Reveal TX ID: ${revealResult.txid}`);
+if (!revealResult.success) {
+    console.error(`[Deploy] Reveal TX broadcast FAILED: ${revealResult.error ?? 'unknown error'}`);
+    console.error('[Deploy] Full response:', JSON.stringify(revealResult));
+    process.exit(1);
+}
+console.log(`[Deploy] Reveal TX ID: ${revealResult.result}`);
 
 // --- Done ---
 
@@ -144,11 +154,11 @@ console.log('========================================');
 console.log('  OPumpFactory deployed successfully!');
 console.log('========================================');
 console.log(`  Contract address: ${deployment.contractAddress}`);
-console.log(`  Funding TX:      ${fundingResult.txid}`);
-console.log(`  Reveal TX:       ${revealResult.txid}`);
+console.log(`  Funding TX:      ${fundingResult.result}`);
+console.log(`  Reveal TX:       ${revealResult.result}`);
 console.log('');
 console.log('  Next steps:');
-console.log(`  1. Add to backend/.env: FACTORY_ADDRESS=${deployment.contractAddress}`);
+console.log(`  1. Update frontend/.env: VITE_FACTORY_ADDRESS=${deployment.contractAddress}`);
 console.log('  2. Wait for confirmation (~1 block)');
-console.log('  3. Start the backend: cd ../backend && npm run dev');
+console.log('  3. Start the frontend: cd ../frontend && npm run dev');
 console.log('');
