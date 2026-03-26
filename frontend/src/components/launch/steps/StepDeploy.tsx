@@ -329,7 +329,7 @@ export function StepDeploy() {
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={isDeploying || !connected || !FACTORY_ADDRESS}
+            disabled={isDeploying || !FACTORY_ADDRESS}
             className="flex-1"
             size="lg"
           >
