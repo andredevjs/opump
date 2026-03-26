@@ -43,7 +43,7 @@ export function TokenCard({ token, compact }: TokenCardProps) {
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-text-primary truncate">{token.name}</h3>
             <span className="text-xs text-text-muted font-mono">${token.symbol}</span>
-            <TokenBadge status={token.status} />
+            <TokenBadge status={token.status} deployBlock={token.deployBlock} />
           </div>
           <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} btcPrice={btcPrice} size="sm" />
         </div>

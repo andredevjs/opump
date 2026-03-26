@@ -134,7 +134,14 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
                   if (data && data.length >= 64) {
                     const tokenAddr = readAddressFromEventData(data, 32);
                     knownTokenAddresses.add(tokenAddr);
-                    console.log(`[Indexer] Discovered new token ${tokenAddr} at block ${blockNum}`);
+                    // Confirm deployment: update deployBlock for optimistically saved tokens
+                    const existingToken = await getToken(tokenAddr);
+                    if (existingToken && (!existingToken.deployBlock || existingToken.deployBlock === 0)) {
+                      await updateToken(tokenAddr, { deployBlock: Number(blockNum) });
+                      console.log(`[Indexer] Confirmed token ${tokenAddr} at block ${blockNum}`);
+                    } else {
+                      console.log(`[Indexer] Discovered new token ${tokenAddr} at block ${blockNum}`);
+                    }
                   }
                 }
               }
@@ -202,7 +209,13 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
               if (data && data.length >= 64) {
                 const tokenAddr = readAddressFromEventData(data, 32);
                 knownTokenAddresses.add(tokenAddr);
-                console.log(`[Indexer] Discovered new token ${tokenAddr} from factory at block ${blockNum}`);
+                const existingToken = await getToken(tokenAddr);
+                if (existingToken && (!existingToken.deployBlock || existingToken.deployBlock === 0)) {
+                  await updateToken(tokenAddr, { deployBlock: Number(blockNum) });
+                  console.log(`[Indexer] Confirmed token ${tokenAddr} at block ${blockNum}`);
+                } else {
+                  console.log(`[Indexer] Discovered new token ${tokenAddr} from factory at block ${blockNum}`);
+                }
               }
             }
           } catch (err) {

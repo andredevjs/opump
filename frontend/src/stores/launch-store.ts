@@ -42,6 +42,7 @@ const DEPLOY_PHASES: DeployPhase[] = [
   { label: 'Deploying contract...', status: 'pending' },
   { label: 'Registering token with factory...', status: 'pending' },
   { label: 'Saving token metadata...', status: 'pending' },
+  { label: 'Waiting for on-chain confirmation...', status: 'pending' },
 ];
 
 const STEPS: LaunchStep[] = [1, 2, 3, 4, 5, 6];

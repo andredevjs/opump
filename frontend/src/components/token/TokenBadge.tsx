@@ -1,7 +1,15 @@
 import type { TokenStatus } from '@/types/token';
 import { Badge } from '@/components/ui/Badge';
 
-export function TokenBadge({ status }: { status: TokenStatus }) {
+export function isTokenPending(token: { deployBlock?: number }): boolean {
+  return !token.deployBlock;
+}
+
+export function TokenBadge({ status, deployBlock }: { status: TokenStatus; deployBlock?: number }) {
+  if (isTokenPending({ deployBlock })) {
+    return <Badge variant="warning">Pending</Badge>;
+  }
+
   switch (status) {
     case 'migrated':
       return <Badge variant="bull">On DEX</Badge>;

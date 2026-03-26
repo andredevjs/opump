@@ -190,7 +190,7 @@ export async function fetchBalanceOf(
 export async function waitForConfirmation(
   txHash: string,
   pollIntervalMs = 10_000,
-  timeoutMs = 900_000,
+  timeoutMs = Infinity,
   signal?: AbortSignal,
 ): Promise<void> {
   const provider = getProvider();
