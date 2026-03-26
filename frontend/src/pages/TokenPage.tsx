@@ -5,7 +5,7 @@ import { ChartControls } from '@/components/chart/ChartControls';
 import { TradePanel } from '@/components/trade/TradePanel';
 import { TradeHistory } from '@/components/trade/TradeHistory';
 import { TokenPrice } from '@/components/token/TokenPrice';
-import { TokenBadge } from '@/components/token/TokenBadge';
+import { TokenBadge, isTokenPending } from '@/components/token/TokenBadge';
 import { CreatorFeeCard } from '@/components/token/CreatorFeeCard';
 import { MigrationCard } from '@/components/token/MigrationCard';
 import { useMigration } from '@/hooks/use-migration';
@@ -23,7 +23,7 @@ import { usePriceFeed } from '@/hooks/use-price-feed';
 import { formatUsd, formatNumber, timeAgo, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
 import type { TimeframeKey } from '@/types/api';
-import { Globe, Twitter, Send, MessageCircle, Github } from 'lucide-react';
+import { Globe, Twitter, Send, MessageCircle, Github, Loader2 } from 'lucide-react';
 
 import type { OHLCVCandle } from '@/types/api';
 
@@ -60,6 +60,20 @@ export function TokenPage() {
       fetchToken(address);
     }
   }, [address, fetchToken, token]);
+
+  // Poll for confirmation while token is pending (deployBlock === 0).
+  // Each tick tries to re-verify on-chain, then re-fetches the token.
+  useEffect(() => {
+    if (!token || !address || !isTokenPending(token)) return;
+    const id = setInterval(async () => {
+      try {
+        const { confirmToken } = await import('@/services/api');
+        await confirmToken(address);
+      } catch { /* best-effort */ }
+      fetchToken(address);
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [token?.deployBlock, address, fetchToken, token]);
 
   usePriceFeed(token, timeframe);
 
@@ -98,7 +112,7 @@ export function TokenPage() {
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-text-primary">{token.name}</h1>
               <span className="text-text-muted font-mono">${token.symbol}</span>
-              <TokenBadge status={token.status} />
+              <TokenBadge status={token.status} deployBlock={token.deployBlock} />
             </div>
             <TokenPrice priceSats={token.currentPriceSats} change24h={token.priceChange24h} btcPrice={btcPrice} size="md" isOptimistic={livePrice?.isOptimistic} />
           </div>
@@ -228,7 +242,14 @@ export function TokenPage() {
 
         {/* Trade panel sidebar */}
         <div className="space-y-6">
-          {token.status === 'graduated' || token.status === 'migrating' || token.status === 'migrated' ? (
+          {isTokenPending(token) ? (
+            <Card className="p-6 text-center space-y-3">
+              <Loader2 size={32} className="mx-auto text-accent animate-spin" />
+              <p className="text-sm text-text-secondary">
+                This token is waiting for on-chain confirmation. Trading will be available once the deployment transaction is confirmed.
+              </p>
+            </Card>
+          ) : token.status === 'graduated' || token.status === 'migrating' || token.status === 'migrated' ? (
             <MigrationCard
               token={token}
               walletAddress={walletAddress}
@@ -251,7 +272,9 @@ export function TokenPage() {
             />
           </Card>
 
-          <CreatorFeeCard tokenAddress={token.address} creatorAddress={token.creatorAddress} />
+          {!isTokenPending(token) && (
+            <CreatorFeeCard tokenAddress={token.address} creatorAddress={token.creatorAddress} />
+          )}
         </div>
       </div>
     </div>

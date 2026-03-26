@@ -17,8 +17,12 @@ export function CreatorEarnings({ tokens }: CreatorEarningsProps) {
   const navigate = useNavigate();
   const { address: walletAddress } = useWalletStore();
   const { btcPrice } = useBtcPrice();
+
+  // Only show confirmed tokens — unconfirmed ones have no on-chain fee pools yet
+  const confirmedTokens = tokens.filter((t) => t.deployBlock > 0);
+
   const { fees, totalClaimableSats, loading, claim } = useCreatorFees(
-    tokens.map((t) => t.address),
+    confirmedTokens.map((t) => t.address),
     true,
   );
 
@@ -33,7 +37,7 @@ export function CreatorEarnings({ tokens }: CreatorEarningsProps) {
   }
 
   // Sort tokens: claimable fees descending, then by name
-  const sorted = [...tokens].sort((a, b) => {
+  const sorted = [...confirmedTokens].sort((a, b) => {
     const aFee = fees.get(a.address)?.claimableSats ?? 0;
     const bFee = fees.get(b.address)?.claimableSats ?? 0;
     if (bFee !== aFee) return bFee - aFee;
@@ -59,7 +63,7 @@ export function CreatorEarnings({ tokens }: CreatorEarningsProps) {
           </div>
         </div>
         <p className="text-xs text-text-muted">
-          {tokensWithFees.length} of {tokens.length} token{tokens.length !== 1 ? 's' : ''} with fees
+          {tokensWithFees.length} of {confirmedTokens.length} token{confirmedTokens.length !== 1 ? 's' : ''} with fees
         </p>
       </div>
 

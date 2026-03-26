@@ -37,6 +37,7 @@ export interface Token {
   // Status
   status: TokenStatus;
   graduationProgress: number; // 0-100
+  deployBlock: number; // 0 = unconfirmed, >0 = confirmed at block N
 }
 
 export type TokenStatus = 'active' | 'graduated' | 'migrating' | 'migrated' | 'new';

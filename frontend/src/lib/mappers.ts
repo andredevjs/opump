@@ -39,5 +39,6 @@ export function mapApiTokenToToken(t: TokenDetailResponse & { priceChange24hBps?
     graduationProgress: threshold > 0
       ? (parseFloat(t.realBtcReserve) / threshold) * 100
       : 0,
+    deployBlock: t.deployBlock ?? 0,
   };
 }

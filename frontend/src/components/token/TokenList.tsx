@@ -67,7 +67,7 @@ export function TokenList({ tokens }: TokenListProps) {
                 {token.holderCount.toLocaleString()}
               </td>
               <td className="text-right py-3 px-2 hidden md:table-cell">
-                <TokenBadge status={token.status} />
+                <TokenBadge status={token.status} deployBlock={token.deployBlock} />
               </td>
             </tr>
           ))}

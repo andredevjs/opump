@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { useLaunchStore } from '@/stores/launch-store';
 import { useWalletStore } from '@/stores/wallet-store';
 import { cn } from '@/lib/cn';
-import { Check, Loader2, Circle, Rocket, ExternalLink } from 'lucide-react';
+import { Check, Loader2, Circle, Rocket, ExternalLink, Clock } from 'lucide-react';
 import { createToken, uploadImage } from '@/services/api';
 import toast from 'react-hot-toast';
 import type { TaxDestination } from '@/types/launch';
@@ -66,6 +66,10 @@ export function StepDeploy() {
     setDeployedAddress,
     abortDeploy,
   } = useLaunchStore();
+
+  // Track the contract address during Phase 4 (before confirmation)
+  const [pendingContractAddress, setPendingContractAddress] = useState<string | null>(null);
+  const isWaitingForConfirmation = deployPhases[3]?.status === 'active' && !deployedAddress;
 
   const previewUrl = useMemo(
     () => (formData.imageFile ? URL.createObjectURL(formData.imageFile) : null),
@@ -193,8 +197,19 @@ export function StepDeploy() {
         deployTxHash,
       });
 
+      // Phase 4: Wait for on-chain confirmation
+      advanceDeployPhase(3);
+      setPendingContractAddress(contractAddress);
+
+      const { waitForConfirmation } = await import('@/services/contract');
+      await waitForConfirmation(deployTxHash);
+
+      // Update deployBlock in backend now that the TX is confirmed
+      const { confirmToken } = await import('@/services/api');
+      await confirmToken(contractAddress).catch(() => {});
+
       setDeployedAddress(contractAddress);
-      toast.success('Token deployed successfully!');
+      toast.success('Token deployed and confirmed on-chain!');
     } catch (err) {
       toast.error(getDeployErrorMessage(err));
       abortDeploy();
@@ -274,6 +289,25 @@ export function StepDeploy() {
         </div>
       )}
 
+      {/* Phase 4: Waiting for confirmation */}
+      {isWaitingForConfirmation && pendingContractAddress && (
+        <div className="text-center space-y-3 p-4 rounded-lg bg-accent/5 border border-accent/20">
+          <Clock size={32} className="mx-auto text-accent animate-pulse" />
+          <p className="text-sm text-text-secondary">
+            Bitcoin blocks take ~10 minutes. You can wait here or view your pending token.
+          </p>
+          <Button
+            variant="secondary"
+            onClick={() => navigate(`/token/${pendingContractAddress}`)}
+            className="w-full"
+            size="lg"
+          >
+            <ExternalLink size={16} className="mr-2" />
+            View Token (Pending)
+          </Button>
+        </div>
+      )}
+
       {/* Success */}
       {deployedAddress && (
         <div className="text-center space-y-3 p-4 rounded-lg bg-bull/5 border border-bull/20">
@@ -299,7 +333,7 @@ export function StepDeploy() {
           </Button>
           <Button
             onClick={handleDeploy}
-            disabled={isDeploying || !connected || !FACTORY_ADDRESS}
+            disabled={isDeploying || !FACTORY_ADDRESS}
             className="flex-1"
             size="lg"
           >

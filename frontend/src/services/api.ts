@@ -134,6 +134,16 @@ export function getProfileTokens(address: string): Promise<ProfileTokensResponse
 }
 
 /**
+ * Re-verify a token on-chain and update its deployBlock if confirmed.
+ * Returns { deployBlock: number } — 0 means still pending.
+ */
+export function confirmToken(address: string): Promise<{ deployBlock: number }> {
+  return request<{ deployBlock: number }>(`/v1/tokens/${encodeURIComponent(address)}/confirm`, {
+    method: 'POST',
+  });
+}
+
+/**
  * Trigger the on-chain indexer to process new blocks.
  * Fire-and-forget — used after trade confirmations to ensure trades appear quickly.
  */

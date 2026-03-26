@@ -63,6 +63,10 @@ export default async (req: Request, _context: Context) => {
   if (preCheck && (preCheck.status === "graduated" || preCheck.status === "migrating" || preCheck.status === "migrated")) {
     return error("Token has graduated — bonding curve trading is closed", 400, "TokenGraduated");
   }
+  // Reject trades for tokens not yet confirmed on-chain
+  if (preCheck && (!preCheck.deployBlock || preCheck.deployBlock === 0)) {
+    return error("Token not yet confirmed on-chain. Trading opens after confirmation.", 400, "NotConfirmed");
+  }
 
   try {
     const trade: TradeDocument = {

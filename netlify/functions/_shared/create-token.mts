@@ -105,8 +105,13 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     return error("deployTxHash is required and must be a valid transaction hash (64+ hex chars)", 400);
   }
 
-  // On-chain verification
+  // On-chain verification — best-effort, non-blocking.
+  // The user already deployed the contract and registered with the factory
+  // (which validated params on-chain). The RPC may not have indexed the TX
+  // yet (mempool-first), so we save the token regardless and let the indexer
+  // confirm it when the block lands.
   let verifiedDeployBlock = 0;
+
   try {
     const verification = await verifyTokenOnChain(
       body.contractAddress,
@@ -120,14 +125,18 @@ export async function handleCreateToken(req: Request): Promise<Response> {
       },
     );
 
-    if (!verification.valid) {
-      return error(verification.error || "On-chain verification failed.", 400);
+    if (verification.valid) {
+      verifiedDeployBlock = verification.deployBlock ?? 0;
+    } else if (verification.error && !verification.error.includes("not found")) {
+      // Permanent validation failure (e.g. config mismatch) — reject immediately
+      return error(verification.error, 400);
+    } else {
+      // TX not indexed yet — save anyway, indexer will verify later
+      console.info("[Tokens] On-chain verification deferred (TX not indexed yet):", verification.error);
     }
-
-    verifiedDeployBlock = verification.deployBlock ?? 0;
   } catch (verifyErr) {
-    console.warn("[Tokens] On-chain verification failed:", verifyErr instanceof Error ? verifyErr.message : verifyErr);
-    return error("On-chain verification unavailable. Try again later.", 503, "ServiceUnavailable");
+    // RPC unreachable or threw — save anyway, indexer will verify later
+    console.warn("[Tokens] On-chain verification unavailable, saving optimistically:", verifyErr instanceof Error ? verifyErr.message : verifyErr);
   }
 
   // Rate-limit token creation per wallet (3 per hour)
