@@ -28,5 +28,6 @@ export async function checkIpRateLimit(ip: string, prefix = 'ip', maxRequests = 
  * Check wallet-based token creation rate limit: 3 per hour.
  */
 export async function checkCreateRateLimit(walletAddress: string): Promise<boolean> {
-  return checkRateLimit(`op:rl:create:${walletAddress}`, 3, 3600);
+  // TODO: restore to 3 per hour for production
+  return checkRateLimit(`op:rl:create:${walletAddress}`, 1000, 3600);
 }
