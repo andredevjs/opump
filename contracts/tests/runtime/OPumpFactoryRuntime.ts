@@ -3,7 +3,7 @@ import { BytecodeManager, CallResponse, ContractRuntime } from '@btc-vision/unit
 
 export class OPumpFactoryRuntime extends ContractRuntime {
     private readonly registerTokenSelector = this.getSelector(
-        'registerToken(string,string,uint256,uint256,uint256,uint256)',
+        'registerToken(string,string,uint256,uint256,uint256,uint256,uint256)',
     );
     private readonly getTokenCountSelector = this.getSelector('getTokenCount()');
     private readonly getTokenAtIndexSelector = this.getSelector('getTokenAtIndex(uint256)');
@@ -22,6 +22,7 @@ export class OPumpFactoryRuntime extends ContractRuntime {
         name: string,
         symbol: string,
         creatorAllocationBps: bigint,
+        airdropBps: bigint,
         buyTaxBps: bigint,
         sellTaxBps: bigint,
         flywheelDestination: bigint,
@@ -32,6 +33,7 @@ export class OPumpFactoryRuntime extends ContractRuntime {
         calldata.writeStringWithLength(name);
         calldata.writeStringWithLength(symbol);
         calldata.writeU256(creatorAllocationBps);
+        calldata.writeU256(airdropBps);
         calldata.writeU256(buyTaxBps);
         calldata.writeU256(sellTaxBps);
         calldata.writeU256(flywheelDestination);
