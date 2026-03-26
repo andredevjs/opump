@@ -91,7 +91,7 @@ export function StepDetails() {
             id="token-symbol"
             placeholder="e.g. PIZZA"
             value={formData.symbol}
-            onChange={(e) => { touch('symbol'); updateForm({ symbol: e.target.value.toUpperCase() }); }}
+            onChange={(e) => { touch('symbol'); updateForm({ symbol: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() }); }}
             onBlur={() => touch('symbol')}
             maxLength={8}
             error={touched.symbol && formData.symbol.length > 0 && formData.symbol.length < 2 ? 'At least 2 characters' : undefined}
