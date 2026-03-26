@@ -61,10 +61,17 @@ export function TokenPage() {
     }
   }, [address, fetchToken, token]);
 
-  // Poll for confirmation while token is pending (deployBlock === 0)
+  // Poll for confirmation while token is pending (deployBlock === 0).
+  // Each tick tries to re-verify on-chain, then re-fetches the token.
   useEffect(() => {
     if (!token || !address || !isTokenPending(token)) return;
-    const id = setInterval(() => fetchToken(address), 10_000);
+    const id = setInterval(async () => {
+      try {
+        const { confirmToken } = await import('@/services/api');
+        await confirmToken(address);
+      } catch { /* best-effort */ }
+      fetchToken(address);
+    }, 10_000);
     return () => clearInterval(id);
   }, [token?.deployBlock, address, fetchToken, token]);
 

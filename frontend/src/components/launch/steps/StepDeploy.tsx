@@ -204,6 +204,10 @@ export function StepDeploy() {
       const { waitForConfirmation } = await import('@/services/contract');
       await waitForConfirmation(deployTxHash);
 
+      // Update deployBlock in backend now that the TX is confirmed
+      const { confirmToken } = await import('@/services/api');
+      await confirmToken(contractAddress).catch(() => {});
+
       setDeployedAddress(contractAddress);
       toast.success('Token deployed and confirmed on-chain!');
     } catch (err) {

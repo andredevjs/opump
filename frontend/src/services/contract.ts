@@ -184,8 +184,13 @@ export async function fetchBalanceOf(
 }
 
 /**
- * Poll the RPC provider until a transaction receipt is found, indicating on-chain confirmation.
- * Rejects after `timeoutMs` if no receipt appears.
+ * Poll the RPC provider until a transaction is confirmed in a block.
+ *
+ * Uses `getTransaction` (not `getTransactionReceipt`) because deployment
+ * transactions don't produce interaction receipts — `getTransactionReceipt`
+ * will return null/empty forever for deployment tx hashes.
+ *
+ * Rejects after `timeoutMs` if no confirmation appears.
  */
 export async function waitForConfirmation(
   txHash: string,
@@ -202,8 +207,8 @@ export async function waitForConfirmation(
   while (Date.now() - start < timeoutMs) {
     if (signal?.aborted) return;
     try {
-      const receipt = await provider.getTransactionReceipt(txHash);
-      if (receipt) return;
+      const tx = await provider.getTransaction(txHash);
+      if (tx && tx.blockNumber && tx.blockNumber > 0n) return;
     } catch {
       // "transaction not found" is expected until the next block is mined (~10 min on testnet)
     }
