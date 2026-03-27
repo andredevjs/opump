@@ -212,19 +212,20 @@ export async function updateToken(contractAddress: string, fields: Partial<Recor
   // Execute hset first before refreshing indexes
   await pipe.exec();
 
-  // Refresh sort indexes if relevant fields changed
-  if (fields.volume24h !== undefined || fields.marketCapSats !== undefined || fields.currentPriceSats !== undefined) {
-    const status = (fields.status as string) || null;
-    // We need the current status to know which indexes to update
-    const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
-    await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
-  }
+  // Always refresh sort indexes — "newest" depends on createdAt which must stay in sync
+  const status = (fields.status as string) || null;
+  const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
+  await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
 }
 
 async function refreshTokenIndexes(contractAddress: string, status: string, fields: Partial<Record<string, string | number>>): Promise<void> {
   const redis = getRedis();
   const pipe = redis.pipeline();
   const statuses = [status, "all"];
+
+  // Read createdAt from token hash so "newest" index always reflects creation time
+  const createdAtRaw = await redis.hget(TOKEN_KEY(contractAddress), "createdAt") as string | null;
+  const createdAtMs = createdAtRaw ? new Date(createdAtRaw).getTime() : Date.now();
 
   for (const s of statuses) {
     if (fields.volume24h !== undefined) {
@@ -236,6 +237,7 @@ async function refreshTokenIndexes(contractAddress: string, status: string, fiel
     if (fields.currentPriceSats !== undefined) {
       pipe.zadd(TOKEN_INDEX(s, "price"), { score: parseFloat(String(fields.currentPriceSats)), member: contractAddress });
     }
+    pipe.zadd(TOKEN_INDEX(s, "newest"), { score: createdAtMs, member: contractAddress });
   }
 
   await pipe.exec();
