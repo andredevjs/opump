@@ -54,12 +54,13 @@ export function TokenPage() {
     }));
   }, [candles, btcPrice]);
 
-  // S24: Fetch token from API if not in store — depend on address and fetchToken
+  // Always fetch fresh data on mount / address change so stale store entries
+  // (e.g. token cached with deployBlock: 0 by the global feed) get overwritten.
   useEffect(() => {
-    if (!token && address) {
+    if (address) {
       fetchToken(address);
     }
-  }, [address, fetchToken, token]);
+  }, [address, fetchToken]);
 
   // Poll for confirmation while token is pending (deployBlock === 0).
   // Each tick tries to re-verify on-chain, then re-fetches the token.
