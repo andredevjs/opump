@@ -29,7 +29,7 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const priceSeriesRef = useRef<PriceSeries | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+
   const chartTypeRef = useRef<ChartType>(chartType);
   const [hoveredOhlcv, setHoveredOhlcv] = useState<OHLCVCandle | null>(null);
 
@@ -97,26 +97,7 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
       handleScroll: { vertTouchDrag: false },
     });
 
-    const volumeSeries = chart.addHistogramSeries({
-      color: CHART_THEME.volumeColor,
-      priceFormat: {
-        type: 'custom' as const,
-        formatter: (value: number) => {
-          if (value === 0) return '0 BTC';
-          if (value >= 1) return value.toFixed(2) + ' BTC';
-          if (value >= 0.01) return value.toFixed(4) + ' BTC';
-          return value.toFixed(6) + ' BTC';
-        },
-        minMove: 0.00000001,
-      },
-      priceScaleId: '',
-    });
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.85, bottom: 0 },
-    });
-
     chartRef.current = chart;
-    volumeSeriesRef.current = volumeSeries;
 
     // Crosshair subscription for OHLCV tooltip in candlestick mode
     chart.subscribeCrosshairMove((param) => {
@@ -132,14 +113,13 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
         | undefined;
 
       if (data && 'open' in data) {
-        const volData = param.seriesData.get(volumeSeriesRef.current!) as { value?: number } | undefined;
         setHoveredOhlcv({
           time: data.time,
           open: data.open,
           high: data.high,
           low: data.low,
           close: data.close,
-          volume: volData?.value ?? 0,
+          volume: 0,
         });
       } else {
         setHoveredOhlcv(null);
@@ -192,15 +172,13 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartType]);
 
-  // Set data on price + volume series when candles or chartType changes
+  // Set data on price series when candles or chartType changes
   useEffect(() => {
     const priceSeries = priceSeriesRef.current;
-    const volumeSeries = volumeSeriesRef.current;
-    if (!priceSeries || !volumeSeries) return;
+    if (!priceSeries) return;
 
     if (candles.length === 0) {
       priceSeries.setData([]);
-      volumeSeries.setData([]);
       return;
     }
 
@@ -220,13 +198,6 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
       }));
       (priceSeries as ISeriesApi<'Line'>).setData(lineData);
     }
-
-    const volumeData = candles.map((c) => ({
-      time: c.time as UTCTimestamp,
-      value: c.volume / 1e8,
-      color: `${CHART_THEME.volumeColor}40`,
-    }));
-    volumeSeries.setData(volumeData);
 
     if (chartRef.current) {
       chartRef.current.timeScale().fitContent();
