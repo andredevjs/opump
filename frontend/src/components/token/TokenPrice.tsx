@@ -22,7 +22,7 @@ export function TokenPrice({ priceSats, change24h, btcPrice, size = 'md', showCh
           'text-xl': size === 'lg',
         })}
       >
-        {isOptimistic ? '~' : ''}{formatMcapUsd(priceSatsToMcapUsd(priceSats, btcPrice))} <span className="text-text-muted font-normal">MCAP</span>
+        <span className="text-accent">{isOptimistic ? '~' : ''}{formatMcapUsd(priceSatsToMcapUsd(priceSats, btcPrice))}</span> <span className="text-text-muted font-normal">MCAP</span>
       </span>
       {showChange && (
         <span
