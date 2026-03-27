@@ -44,7 +44,7 @@ export const useTrenchesStore = create<TrenchesStore>((set, get) => {
         search: search || undefined,
       });
       const all = result.tokens.map(mapApiTokenToToken);
-      const filtered = all.filter((t) => t.graduationProgress < 75);
+      const filtered = all.filter((t) => t.graduationProgress < 75 && t.deployBlock > 0);
       return { tokens: filtered, hasMore: page < result.pagination.totalPages };
     }
 

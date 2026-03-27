@@ -51,7 +51,7 @@ export async function saveToken(token: TokenDocument): Promise<void> {
     pipe.zadd(TOKEN_INDEX(status, "volume24h"), { score: parseFloat(token.volume24h || "0"), member: token.contractAddress });
     pipe.zadd(TOKEN_INDEX(status, "marketCap"), { score: parseFloat(token.marketCapSats || "0"), member: token.contractAddress });
     pipe.zadd(TOKEN_INDEX(status, "price"), { score: parseFloat(token.currentPriceSats || "0"), member: token.contractAddress });
-    pipe.zadd(TOKEN_INDEX(status, "newest"), { score: token.deployBlock || 0, member: token.contractAddress });
+    pipe.zadd(TOKEN_INDEX(status, "newest"), { score: token.createdAt instanceof Date ? token.createdAt.getTime() : Date.now(), member: token.contractAddress });
   }
 
   // Creator index
