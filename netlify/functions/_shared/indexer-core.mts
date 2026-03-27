@@ -9,7 +9,6 @@ import {
   getToken,
   getTokensBatch,
   saveTrade,
-  findAndRemoveOrphanedPendingTrade,
   updateToken,
   updateOHLCV,
   getStats,
@@ -39,6 +38,22 @@ import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 /** Convert a PRICE_PRECISION-scaled bigint to "sats per whole token" string */
 function toDisplayPrice(scaled: bigint): string {
   return (Number(scaled) / PRICE_DISPLAY_DIVISOR).toString();
+}
+
+/**
+ * Resolve a TXID from a WTXID via the RPC provider.
+ * Block transactions only expose `hash` (WTXID); we need `id` (TXID) for canonical keying.
+ * Falls back to the WTXID if the RPC call fails.
+ */
+export async function resolveTxId(provider: { getTransaction: (hash: string) => Promise<{ id?: string } | null> }, wtxid: string): Promise<string> {
+  try {
+    const tx = await provider.getTransaction(wtxid);
+    if (tx?.id) return tx.id;
+  } catch (err) {
+    console.warn(`[Indexer] Failed to resolve TXID for ${wtxid}:`, err instanceof Error ? err.message : err);
+  }
+  console.warn(`[Indexer] Could not resolve TXID for ${wtxid}, falling back to WTXID`);
+  return wtxid;
 }
 
 export interface IndexerResult {
@@ -121,6 +136,7 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
       }
 
       const affectedTokens = new Set<string>();
+      const resolvedWtxids = new Set<string>(); // WTXIDs already processed by event parsing
 
       for (const tx of block.transactions) {
         if (tx.OPNetType !== OPNetTransactionTypes.Interaction) {
@@ -173,14 +189,18 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
             if (eventType === "Buy" && isKnownToken) {
               const buyData = decodeBuyEvent(evt);
               if (buyData) {
-                await processBuyEvent(contractAddr, tx.hash, Number(blockNum), block.time, buyData, network);
+                const txId = await resolveTxId(provider, tx.hash);
+                resolvedWtxids.add(tx.hash);
+                await processBuyEvent(contractAddr, txId, tx.hash, Number(blockNum), block.time, buyData, network);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
             } else if (eventType === "Sell" && isKnownToken) {
               const sellData = decodeSellEvent(evt);
               if (sellData) {
-                await processSellEvent(contractAddr, tx.hash, Number(blockNum), block.time, sellData, network);
+                const txId = await resolveTxId(provider, tx.hash);
+                resolvedWtxids.add(tx.hash);
+                await processSellEvent(contractAddr, txId, tx.hash, Number(blockNum), block.time, sellData, network);
                 affectedTokens.add(contractAddr);
                 totalTradesFound++;
               }
@@ -224,23 +244,34 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
         }
       }
 
-      // Bulk-confirm any pending trades whose txHash appears in this block.
+      // Bulk-confirm any pending trades whose TXID appears in this block.
       // Safety net: even if event parsing misses a trade, its inclusion in a
       // block proves it was confirmed on-chain.
-      const blockTxHashes = block.transactions.map((tx: { hash: string }) => tx.hash).filter(Boolean);
-      if (blockTxHashes.length > 0) {
+      // Skip WTXIDs already processed by event parsing above.
+      const unprocessedTxs = block.transactions
+        .map((tx: { hash: string }) => tx.hash)
+        .filter((h: string) => h && !resolvedWtxids.has(h));
+      if (unprocessedTxs.length > 0) {
+        // Resolve TXIDs for unprocessed transactions
+        const txIdPairs: Array<{ txId: string; wtxid: string }> = [];
+        for (const wtxid of unprocessedTxs) {
+          const txId = await resolveTxId(provider, wtxid);
+          txIdPairs.push({ txId, wtxid });
+        }
+
         const statusPipe = redis.pipeline();
-        for (const txHash of blockTxHashes) {
-          statusPipe.hget(TRADE_KEY(txHash), "status");
+        for (const { txId } of txIdPairs) {
+          statusPipe.hget(TRADE_KEY(txId), "status");
         }
         const statuses = await statusPipe.exec();
 
         const confirmPipe = redis.pipeline();
         let needConfirm = false;
-        for (let i = 0; i < blockTxHashes.length; i++) {
+        for (let i = 0; i < txIdPairs.length; i++) {
           if (statuses[i] === "pending") {
-            confirmPipe.hset(TRADE_KEY(blockTxHashes[i]), {
+            confirmPipe.hset(TRADE_KEY(txIdPairs[i].txId), {
               status: "confirmed",
+              txHash: txIdPairs[i].wtxid,
               blockNumber: String(blockNum),
               blockTimestamp: normalizeBlockTime(block.time).toISOString(),
             });
@@ -283,7 +314,8 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
 
 async function processBuyEvent(
   tokenAddress: string,
-  txHash: string,
+  txId: string,
+  wtxid: string,
   blockNumber: number,
   blockTime: number,
   data: BuyEventData,
@@ -297,7 +329,8 @@ async function processBuyEvent(
     : "0";
 
   const trade: TradeDocument = {
-    _id: txHash,
+    _id: txId,
+    txHash: wtxid,
     tokenAddress,
     type: "buy",
     traderAddress: hexAddressToBech32m(data.buyer, network),
@@ -318,26 +351,21 @@ async function processBuyEvent(
 
   const { isNew } = await saveTrade(trade);
 
+  // Only write OHLCV if this is a brand-new trade (no pending version existed).
+  // When isNew=false, the pending trade from trades-submit already wrote OHLCV.
   if (isNew) {
-    // New trade (no pending version with same txHash existed).
-    // Check for an orphaned pending trade with a different hash but same trade params.
-    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "buy", trade.traderAddress);
-
-    // Only write OHLCV if no orphan was found — an orphan means trades-submit
-    // already wrote OHLCV for this trade under the old hash.
-    if (!orphan) {
-      const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-      const priceSats = Number(spotPrice);
-      const volumeSats = Number(data.btcIn);
-      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
-    }
+    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const priceSats = Number(spotPrice);
+    const volumeSats = Number(data.btcIn);
+    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
   }
 }
 
 async function processSellEvent(
   tokenAddress: string,
-  txHash: string,
+  txId: string,
+  wtxid: string,
   blockNumber: number,
   blockTime: number,
   data: SellEventData,
@@ -350,7 +378,8 @@ async function processSellEvent(
     : "0";
 
   const trade: TradeDocument = {
-    _id: txHash,
+    _id: txId,
+    txHash: wtxid,
     tokenAddress,
     type: "sell",
     traderAddress: hexAddressToBech32m(data.seller, network),
@@ -372,15 +401,11 @@ async function processSellEvent(
   const { isNew } = await saveTrade(trade);
 
   if (isNew) {
-    const orphan = await findAndRemoveOrphanedPendingTrade(txHash, tokenAddress, "sell", trade.traderAddress);
-
-    if (!orphan) {
-      const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
-      const priceSats = Number(spotPrice);
-      const volumeSats = Number(data.btcOut);
-      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
-    }
+    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const priceSats = Number(spotPrice);
+    const volumeSats = Number(data.btcOut);
+    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
   }
 }
 

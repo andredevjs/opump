@@ -384,67 +384,6 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
 }
 
 /**
- * Find and remove an orphaned pending trade that matches a confirmed trade.
- *
- * When the indexer confirms a trade from a block, the on-chain txHash may differ
- * from the broadcast hash stored by trades-submit. This finds a pending trade
- * with matching tokenAddress + type + tokenAmount and removes it so we don't
- * double-count volume/trades.
- *
- * Returns the orphan's txHash if one was found and removed, or null.
- */
-export async function findAndRemoveOrphanedPendingTrade(
-  confirmedTxHash: string,
-  tokenAddress: string,
-  type: "buy" | "sell",
-  traderAddress: string,
-): Promise<string | null> {
-  const redis = getRedis();
-  const indexKey = TRADE_TOKEN_INDEX(tokenAddress);
-
-  // Fetch the 50 most recent txHashes (newest first) — orphans are recent
-  const recentHashes: string[] = await redis.zrange(indexKey, 0, 49, { rev: true });
-  if (recentHashes.length === 0) return null;
-
-  // Pipeline-fetch status, type, and traderAddress for each
-  const pipe = redis.pipeline();
-  for (const hash of recentHashes) {
-    pipe.hmget(TRADE_KEY(hash), "status", "type", "traderAddress");
-  }
-  const results = await pipe.exec();
-
-  // Find the first pending trade that matches type + traderAddress but has a different hash.
-  // We match on traderAddress instead of tokenAmount because the frontend simulation
-  // amount can differ from the on-chain amount due to slippage.
-  let orphanHash: string | null = null;
-  for (let i = 0; i < recentHashes.length; i++) {
-    const hash = recentHashes[i];
-    if (hash === confirmedTxHash) continue;
-
-    const fields = results[i] as [string | null, string | null, string | null] | null;
-    if (!fields) continue;
-
-    const [status, tradeType, tradeTrader] = fields;
-    if (status === "pending" && tradeType === type && tradeTrader === traderAddress) {
-      orphanHash = hash;
-      break;
-    }
-  }
-
-  if (!orphanHash) return null;
-
-  // Remove the orphan: delete hash, remove from token index and trader index
-  const deletePipe = redis.pipeline();
-  deletePipe.del(TRADE_KEY(orphanHash));
-  deletePipe.zrem(indexKey, orphanHash);
-  deletePipe.zrem(TRADE_TRADER_INDEX(traderAddress), orphanHash);
-  await deletePipe.exec();
-
-  console.log(`[Dedup] Removed orphaned pending trade ${orphanHash} (confirmed as ${confirmedTxHash})`);
-  return orphanHash;
-}
-
-/**
  * Get the number of unique holders for a token.
  */
 export async function getHolderCount(tokenAddress: string): Promise<number> {
@@ -537,6 +476,93 @@ export async function listTradesForToken(tokenAddress: string, page: number, lim
 // ─── OHLCV operations (extracted to redis-ohlcv.mts) ────────
 
 export { updateOHLCV, getOHLCV, TIMEFRAME_SECONDS } from "./redis-ohlcv.mts";
+
+// ─── Rebuild helpers (for migration) ────────────────────────
+
+/**
+ * Rebuild OHLCV candles for a token from its trade history.
+ * Wipes all existing candles and replays trades in chronological order.
+ * Returns the number of trades replayed.
+ */
+export async function rebuildOHLCV(tokenAddress: string): Promise<number> {
+  const redis = getRedis();
+  const { updateOHLCV: writeOHLCV, TIMEFRAME_SECONDS: tfs } = await import("./redis-ohlcv.mts");
+
+  // Delete all existing OHLCV keys for this token
+  for (const tf of Object.keys(tfs)) {
+    const indexKey = `op:ohlcv:idx:${tokenAddress}:${tf}`;
+    const buckets: string[] = await redis.zrange(indexKey, 0, -1);
+    if (buckets.length > 0) {
+      const pipe = redis.pipeline();
+      for (const bucket of buckets) {
+        pipe.del(`op:ohlcv:${tokenAddress}:${tf}:${bucket}`);
+      }
+      pipe.del(indexKey);
+      await pipe.exec();
+    }
+  }
+
+  // Fetch all trades sorted by time (oldest first)
+  const indexKey = TRADE_TOKEN_INDEX(tokenAddress);
+  const allHashes: string[] = await redis.zrange(indexKey, 0, -1);
+  if (allHashes.length === 0) return 0;
+
+  const pipe = redis.pipeline();
+  for (const hash of allHashes) {
+    pipe.hgetall(TRADE_KEY(hash));
+  }
+  const results = await pipe.exec();
+
+  let count = 0;
+  for (const raw of results) {
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) continue;
+    const r = raw as Record<string, string>;
+    const price = parseFloat(r.pricePerToken || "0");
+    const volume = parseInt(r.btcAmount || "0");
+    const createdAt = r.createdAt ? new Date(r.createdAt) : new Date();
+    const timestampSec = Math.floor(createdAt.getTime() / 1000);
+    if (price > 0 && volume > 0) {
+      await writeOHLCV(tokenAddress, price, volume, timestampSec);
+      count++;
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Rebuild holder balances for a token from its trade history.
+ * Wipes existing balances and replays all trades in chronological order.
+ * Returns the number of unique holders.
+ */
+export async function rebuildHolderBalances(tokenAddress: string): Promise<number> {
+  const redis = getRedis();
+
+  // Wipe existing holder data
+  await redis.del(TOKEN_HOLDER_BALANCES(tokenAddress));
+  await redis.del(TOKEN_HOLDERS_SET(tokenAddress));
+
+  // Fetch all trades sorted by time (oldest first)
+  const indexKey = TRADE_TOKEN_INDEX(tokenAddress);
+  const allHashes: string[] = await redis.zrange(indexKey, 0, -1);
+  if (allHashes.length === 0) return 0;
+
+  const pipe = redis.pipeline();
+  for (const hash of allHashes) {
+    pipe.hgetall(TRADE_KEY(hash));
+  }
+  const results = await pipe.exec();
+
+  for (const raw of results) {
+    if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) continue;
+    const r = raw as Record<string, string>;
+    if (r.traderAddress && r.tokenAmount && r.type) {
+      await updateHolderBalance(tokenAddress, r.traderAddress, r.tokenAmount, r.type as "buy" | "sell");
+    }
+  }
+
+  return redis.scard(TOKEN_HOLDERS_SET(tokenAddress));
+}
 
 // ─── Stats operations ───────────────────────────────────────
 
@@ -668,6 +694,7 @@ function unflattenToken(raw: Record<string, unknown>): TokenDocument {
 function flattenTrade(trade: TradeDocument): Record<string, string> {
   return {
     _id: trade._id,
+    ...(trade.txHash ? { txHash: trade.txHash } : {}),
     tokenAddress: trade.tokenAddress,
     type: trade.type,
     traderAddress: trade.traderAddress,
@@ -686,6 +713,7 @@ function flattenTrade(trade: TradeDocument): Record<string, string> {
 function unflattenTrade(raw: Record<string, string>): TradeDocument {
   return {
     _id: raw._id,
+    ...(raw.txHash ? { txHash: raw.txHash } : {}),
     tokenAddress: raw.tokenAddress,
     type: raw.type as "buy" | "sell",
     traderAddress: raw.traderAddress,

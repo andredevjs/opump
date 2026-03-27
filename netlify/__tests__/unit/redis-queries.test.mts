@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { resetMockRedis } from '../mocks/redis-mock.js';
 import {
   saveToken, getToken, listTokens, getTokensByCreator, updateToken, graduateToken,
-  saveTrade, listTradesForToken, findAndRemoveOrphanedPendingTrade,
+  saveTrade, listTradesForToken,
   updateHolderBalance, getTopHolders, getHolderCount,
+  rebuildOHLCV, rebuildHolderBalances,
   getStats, updateStats, getLastBlockIndexed, setLastBlockIndexed,
   acquireIndexerLock, releaseIndexerLock,
 } from '../../functions/_shared/redis-queries.mts';
@@ -169,42 +170,42 @@ describe('trade operations', () => {
     expect(page2.total).toBe(3);
   });
 
-  it('findAndRemoveOrphanedPendingTrade removes matching orphan', async () => {
-    const orphanHash = 'd'.repeat(64);
-    const confirmedHash = 'e'.repeat(64);
+  it('saveTrade overwrites pending with confirmed, preserves createdAt, stores txHash', async () => {
+    const txId = 'd'.repeat(64);
+    const wtxid = 'e'.repeat(64);
+    const originalCreatedAt = new Date('2026-01-15T10:00:00Z');
 
-    await saveTrade(makeTrade({
-      _id: orphanHash,
+    // Step 1: Save pending trade (simulating frontend submission)
+    const { isNew: isNew1 } = await saveTrade(makeTrade({
+      _id: txId,
       status: 'pending',
-      type: 'buy',
-      tokenAmount: '5000',
-      tokenAddress: VALID_TOKEN_ADDRESS,
-      traderAddress: VALID_TRADER_ADDRESS,
+      createdAt: originalCreatedAt,
     }));
+    expect(isNew1).toBe(true);
 
-    const result = await findAndRemoveOrphanedPendingTrade(
-      confirmedHash,
-      VALID_TOKEN_ADDRESS,
-      'buy',
-      '5000',
-    );
+    // Step 2: Save confirmed trade with same _id (simulating indexer confirmation)
+    const { isNew: isNew2 } = await saveTrade(makeTrade({
+      _id: txId,
+      txHash: wtxid,
+      status: 'confirmed',
+      blockNumber: 500,
+      blockTimestamp: new Date('2026-01-15T10:05:00Z'),
+      createdAt: new Date('2026-01-15T10:05:00Z'), // indexer sets its own, but saveTrade should preserve original
+    }));
+    expect(isNew2).toBe(false);
 
-    expect(result).toBe(orphanHash);
+    // Step 3: Verify the final state
+    const result = await listTradesForToken(VALID_TOKEN_ADDRESS, 1, 10);
+    expect(result.trades.length).toBe(1);
 
-    // Verify orphan is deleted
-    const trades = await listTradesForToken(VALID_TOKEN_ADDRESS, 1, 10);
-    expect(trades.trades.length).toBe(0);
+    const trade = result.trades[0];
+    expect(trade._id).toBe(txId);
+    expect(trade.txHash).toBe(wtxid);
+    expect(trade.status).toBe('confirmed');
+    expect(trade.blockNumber).toBe(500);
+    expect(trade.createdAt.toISOString()).toBe(originalCreatedAt.toISOString());
   });
 
-  it('findAndRemoveOrphanedPendingTrade returns null when no match', async () => {
-    const result = await findAndRemoveOrphanedPendingTrade(
-      'f'.repeat(64),
-      VALID_TOKEN_ADDRESS,
-      'buy',
-      '5000',
-    );
-    expect(result).toBeNull();
-  });
 });
 
 // ─── Holder tracking ────────────────────────────────────────────
@@ -287,5 +288,71 @@ describe('stats & indexer', () => {
 
     const acquired = await acquireIndexerLock();
     expect(acquired).toBe(true);
+  });
+});
+
+// ─── Rebuild helpers ────────────────────────────────────────────
+
+describe('rebuild helpers', () => {
+  beforeEach(() => resetMockRedis());
+
+  const TRADER_2 = 'bc1ptesteeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+
+  it('rebuildHolderBalances recomputes from trade history', async () => {
+    // Create trades
+    await saveTrade(makeTrade({
+      _id: 'a'.repeat(64),
+      type: 'buy',
+      traderAddress: VALID_TRADER_ADDRESS,
+      tokenAmount: '5000',
+      createdAt: new Date('2026-01-01T00:01:00Z'),
+    }));
+    await saveTrade(makeTrade({
+      _id: 'b'.repeat(64),
+      type: 'buy',
+      traderAddress: TRADER_2,
+      tokenAmount: '3000',
+      createdAt: new Date('2026-01-01T00:02:00Z'),
+    }));
+    await saveTrade(makeTrade({
+      _id: 'c'.repeat(64),
+      type: 'sell',
+      traderAddress: VALID_TRADER_ADDRESS,
+      tokenAmount: '2000',
+      createdAt: new Date('2026-01-01T00:03:00Z'),
+    }));
+
+    // Rebuild
+    const holderCount = await rebuildHolderBalances(VALID_TOKEN_ADDRESS);
+    expect(holderCount).toBe(2);
+
+    // Verify balances
+    const holders = await getTopHolders(VALID_TOKEN_ADDRESS, 10);
+    expect(holders.length).toBe(2);
+
+    const trader1 = holders.find(h => h.address === VALID_TRADER_ADDRESS);
+    const trader2 = holders.find(h => h.address === TRADER_2);
+    expect(trader1).toBeDefined();
+    expect(trader2).toBeDefined();
+    expect(Number(trader1!.balance)).toBe(3000); // 5000 - 2000
+    expect(Number(trader2!.balance)).toBe(3000);
+  });
+
+  it('rebuildOHLCV replays trades', async () => {
+    await saveTrade(makeTrade({
+      _id: 'a'.repeat(64),
+      btcAmount: '50000',
+      pricePerToken: '100',
+      createdAt: new Date('2026-01-01T00:01:00Z'),
+    }));
+    await saveTrade(makeTrade({
+      _id: 'b'.repeat(64),
+      btcAmount: '30000',
+      pricePerToken: '120',
+      createdAt: new Date('2026-01-01T00:02:00Z'),
+    }));
+
+    const count = await rebuildOHLCV(VALID_TOKEN_ADDRESS);
+    expect(count).toBe(2);
   });
 });

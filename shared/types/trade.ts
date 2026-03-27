@@ -12,7 +12,8 @@ export interface TradeFees {
 }
 
 export interface TradeDocument {
-  _id: string; // tx hash (primary key)
+  _id: string; // tx id (TXID — primary key)
+  txHash?: string; // tx hash (WTXID — block explorer reference)
   tokenAddress: string;
   type: TradeType;
   traderAddress: string;
