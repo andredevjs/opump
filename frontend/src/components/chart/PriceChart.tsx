@@ -99,7 +99,16 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
 
     const volumeSeries = chart.addHistogramSeries({
       color: CHART_THEME.volumeColor,
-      priceFormat: { type: 'volume' },
+      priceFormat: {
+        type: 'custom' as const,
+        formatter: (value: number) => {
+          if (value === 0) return '0 BTC';
+          if (value >= 1) return value.toFixed(2) + ' BTC';
+          if (value >= 0.01) return value.toFixed(4) + ' BTC';
+          return value.toFixed(6) + ' BTC';
+        },
+        minMove: 0.00000001,
+      },
       priceScaleId: '',
     });
     volumeSeries.priceScale().applyOptions({
@@ -214,7 +223,7 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
 
     const volumeData = candles.map((c) => ({
       time: c.time as UTCTimestamp,
-      value: c.volume,
+      value: c.volume / 1e8,
       color: c.close >= c.open ? `${CHART_THEME.upColor}40` : `${CHART_THEME.downColor}40`,
     }));
     volumeSeries.setData(volumeData);
@@ -233,6 +242,7 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
           <span>H: {formatter(hoveredOhlcv.high)}</span>
           <span>L: {formatter(hoveredOhlcv.low)}</span>
           <span>C: {formatter(hoveredOhlcv.close)}</span>
+          <span>V: {(hoveredOhlcv.volume / 1e8).toFixed(6)} BTC</span>
         </div>
       )}
       {loading && (
