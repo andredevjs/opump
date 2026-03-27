@@ -60,7 +60,7 @@ export function TrenchTokenRow({ token }: TrenchTokenRowProps) {
           {/* Row 3: mcap */}
           <div className="mt-1">
             <span className="text-xs text-text-muted font-medium">Market Cap </span>
-            <span className="text-base font-bold text-accent drop-shadow-[0_0_6px_rgba(245,197,24,0.4)]">
+            <span className="text-sm font-bold text-accent">
               {formatMcapUsd(priceSatsToMcapUsd(token.currentPriceSats, btcPrice))}
             </span>
           </div>
