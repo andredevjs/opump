@@ -6,6 +6,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { saveKnownAddress } from '@/lib/known-tokens';
 import { VAULT_ADDRESS } from '@/config/constants';
 import { submitTrade, triggerIndexer } from '@/services/api';
+import { hexAddressToBech32m } from '@/utils/address';
 import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
@@ -72,11 +73,17 @@ export function useTradeSimulation(token: Token | null) {
           extraOutputs: [{ address: VAULT_ADDRESS, value: btcSatsBigInt }],
         });
 
+        // Derive canonical traderAddress from hashedMLDSAKey to match indexer's on-chain derivation
+        const { networks } = await import('@btc-vision/bitcoin');
+        const net = import.meta.env.VITE_OPNET_NETWORK || 'testnet';
+        const network = net === 'mainnet' ? networks.bitcoin : net === 'regtest' ? networks.regtest : networks.opnetTestnet;
+        const traderAddr = hashedMLDSAKey ? hexAddressToBech32m(hashedMLDSAKey, network) : walletAddress;
+
         await submitTrade({
           txHash: result.txHash,
           tokenAddress,
           type: 'buy',
-          traderAddress: walletAddress,
+          traderAddress: traderAddr,
           btcAmount: btcSats,
           tokenAmount: sim.outputAmount,
           pricePerToken: String(sim.newPriceSats),
@@ -131,11 +138,17 @@ export function useTradeSimulation(token: Token | null) {
           refundTo: walletAddress,
         });
 
+        // Derive canonical traderAddress from hashedMLDSAKey to match indexer's on-chain derivation
+        const { networks } = await import('@btc-vision/bitcoin');
+        const net = import.meta.env.VITE_OPNET_NETWORK || 'testnet';
+        const network = net === 'mainnet' ? networks.bitcoin : net === 'regtest' ? networks.regtest : networks.opnetTestnet;
+        const traderAddr = hashedMLDSAKey ? hexAddressToBech32m(hashedMLDSAKey, network) : walletAddress;
+
         await submitTrade({
           txHash: result.txHash,
           tokenAddress,
           type: 'sell',
-          traderAddress: walletAddress,
+          traderAddress: traderAddr,
           btcAmount: sim.outputAmount,
           tokenAmount: tokenUnits,
           pricePerToken: String(sim.newPriceSats),
