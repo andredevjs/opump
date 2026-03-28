@@ -44,30 +44,23 @@ export function TradeHistory({ token }: TradeHistoryProps) {
         };
       });
 
-      // Deduplicate: when a pending trade and its confirmed counterpart both
-      // exist (broadcast hash != on-chain hash), drop the pending one.
-      // Group by (type, traderAddress) and within a 30-min window keep only
-      // the confirmed version.
+      // Deduplicate: when a pending trade gets confirmed, both the optimistic
+      // (pending) entry and the on-chain (confirmed) entry may coexist with
+      // different TXIDs. Match duplicates by (type, trader, btcAmount) within
+      // a time window and keep the confirmed version.
       const deduped: Trade[] = [];
       const seen = new Map<string, Trade>();
       for (const trade of mapped) {
-        const key = `${trade.type}:${trade.traderAddress}`;
+        const key = `${trade.type}:${trade.traderAddress}:${trade.btcAmount}`;
         const existing = seen.get(key);
         if (existing && Math.abs(trade.timestamp - existing.timestamp) < PENDING_AGE_THRESHOLD_MS) {
-          // Two trades from same trader+type within the window — keep confirmed, drop pending
           if (trade.status === 'confirmed' && existing.status === 'mempool') {
-            // Replace the pending one with this confirmed one
             const idx = deduped.indexOf(existing);
             if (idx !== -1) deduped[idx] = trade;
             seen.set(key, trade);
-          }
-          // If existing is confirmed and this is mempool, skip this one
-          // If both same status, keep both (genuine separate trades)
-          else if (trade.status === 'mempool' && existing.status === 'confirmed') {
+          } else if (trade.status === 'mempool' && existing.status === 'confirmed') {
             continue;
           } else {
-            // Both same status — likely separate trades, keep both and reset tracker
-            seen.set(key, trade);
             deduped.push(trade);
           }
         } else {
