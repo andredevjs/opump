@@ -4,95 +4,9 @@ import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { useUIStore } from '@/stores/ui-store';
 import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
-import type { TimeframeKey, OHLCVCandle } from '@/types/api';
-import type { TradeDocument } from '@shared/types/trade';
+import type { TimeframeKey } from '@/types/api';
 import * as api from '@/services/api';
 import { computeOptimistic24hChange } from '@/lib/price-utils';
-
-const TIMEFRAME_SECONDS: Record<TimeframeKey, number> = {
-  '1m': 60,
-  '5m': 300,
-  '15m': 900,
-  '1h': 3600,
-  '4h': 14400,
-  '1d': 86400,
-};
-
-/** Build OHLCV candles from raw trade documents (fallback when OHLCV endpoint returns empty) */
-function buildCandlesFromTrades(trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
-  const bucketSeconds = TIMEFRAME_SECONDS[tf];
-  const buckets = new Map<number, OHLCVCandle>();
-
-  // Deduplicate: when a pending trade gets confirmed, both versions appear in the
-  // trade list. Build a set of confirmed trade signatures so we can skip the stale
-  // pending duplicate (which has a no-fee price that conflicts with the real price).
-  const confirmedKeys = new Set<string>();
-  for (const t of trades) {
-    if (t.status === 'confirmed') {
-      confirmedKeys.add(`${t.tokenAddress}:${t.btcAmount}:${t.tokenAmount}`);
-    }
-  }
-
-  // trades are newest-first from API, reverse for chronological order
-  const sorted = [...trades].reverse();
-
-  for (const t of sorted) {
-    // Skip pending trades that have a confirmed counterpart
-    if (t.status === 'pending' && confirmedKeys.has(`${t.tokenAddress}:${t.btcAmount}:${t.tokenAmount}`)) {
-      continue;
-    }
-    const price = Number(t.pricePerToken);
-    const volume = Number(t.btcAmount);
-    if (!price || isNaN(price)) continue;
-
-    const tsSec = Math.floor(new Date(t.createdAt).getTime() / 1000);
-    const bucket = Math.floor(tsSec / bucketSeconds) * bucketSeconds;
-
-    const existing = buckets.get(bucket);
-    if (existing) {
-      existing.high = Math.max(existing.high, price);
-      existing.low = Math.min(existing.low, price);
-      existing.close = price;
-      existing.volume += volume;
-    } else {
-      buckets.set(bucket, { time: bucket, open: price, high: price, low: price, close: price, volume });
-    }
-  }
-
-  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
-}
-
-/**
- * Merge trade-built candles into OHLCV candles.
- * For non-overlapping buckets, trade candles fill gaps not yet covered
- * by the indexer. For overlapping buckets, trade data is merged in
- * (expand high/low, prefer trade close which may include pending trades).
- */
-function mergeTradeCandles(ohlcv: OHLCVCandle[], trades: TradeDocument[], tf: TimeframeKey): OHLCVCandle[] {
-  if (trades.length === 0) return ohlcv;
-  const tradeCandles = buildCandlesFromTrades(trades, tf);
-  if (tradeCandles.length === 0) return ohlcv;
-  if (ohlcv.length === 0) return tradeCandles;
-
-  const resultMap = new Map<number, OHLCVCandle>();
-  for (const c of ohlcv) {
-    resultMap.set(c.time, { ...c });
-  }
-
-  for (const tc of tradeCandles) {
-    const existing = resultMap.get(tc.time);
-    if (existing) {
-      existing.high = Math.max(existing.high, tc.high);
-      existing.low = Math.min(existing.low, tc.low);
-      existing.close = tc.close;
-      existing.volume = Math.max(existing.volume, tc.volume);
-    } else {
-      resultMap.set(tc.time, { ...tc });
-    }
-  }
-
-  return Array.from(resultMap.values()).sort((a, b) => a.time - b.time);
-}
 
 export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m') {
   const tradeVersion = useUIStore((s) => s.tradeVersion);
@@ -126,13 +40,11 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       const addr = token.address;
       Promise.all([
         api.getOHLCV(addr, timeframeRef.current),
-        api.getTrades(addr, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
         api.getTokenPrice(addr).catch(() => null),
-      ]).then(([ohlcvResp, tradesResp, priceResp]) => {
+      ]).then(([ohlcvResp, priceResp]) => {
         if (cancelled) return;
-        const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
-        if (merged.length > 0) {
-          setCandles(addr, merged);
+        if (ohlcvResp.candles.length > 0) {
+          setCandles(addr, ohlcvResp.candles);
         }
         if (priceResp) {
           setLivePrice(addr, {
@@ -218,14 +130,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         }
       });
 
-      Promise.all([
-        api.getOHLCV(token.address, timeframeRef.current),
-        api.getTrades(token.address, 1, 200).catch(() => ({ trades: [] as TradeDocument[] })),
-      ]).then(([ohlcvResp, tradesResp]) => {
+      api.getOHLCV(token.address, timeframeRef.current).then((ohlcvResp) => {
         if (cancelled) return;
-        const merged = mergeTradeCandles(ohlcvResp.candles, tradesResp.trades, timeframeRef.current);
-        if (merged.length > 0) {
-          setCandles(token.address, merged);
+        if (ohlcvResp.candles.length > 0) {
+          setCandles(token.address, ohlcvResp.candles);
         }
       }).catch(() => { /* best-effort */ });
     }, PRICE_UPDATE_INTERVAL_MS);
