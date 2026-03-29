@@ -359,11 +359,19 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
   const redis = getRedis();
   const key = TRADE_KEY(trade._id);
 
-  // Preserve the original createdAt if this trade was already submitted
-  const existingCreatedAt = await redis.hget(key, "createdAt") as string | null;
+  // Preserve original fields from the pending version when the indexer confirms
+  const existing = await redis.hmget<Record<string, string | null>>(key, "createdAt", "traderAddress");
+  const existingCreatedAt = existing?.createdAt ?? null;
+  const existingTraderAddress = existing?.traderAddress ?? null;
   const isNew = !existingCreatedAt;
   if (existingCreatedAt) {
-    trade = { ...trade, createdAt: new Date(existingCreatedAt) };
+    trade = {
+      ...trade,
+      createdAt: new Date(existingCreatedAt),
+      // Keep the wallet address submitted by the frontend (opt1p...) rather than
+      // overwriting with the hashed ML-DSA key address (opt1s...) from on-chain events
+      ...(existingTraderAddress ? { traderAddress: existingTraderAddress } : {}),
+    };
   }
 
   const flat = flattenTrade(trade);
