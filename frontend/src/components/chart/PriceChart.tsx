@@ -47,6 +47,10 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
         res.priceRange.minValue -= margin;
         res.priceRange.maxValue += margin;
       }
+      // Prices and market caps can never be negative
+      if (res.priceRange.minValue < 0) {
+        res.priceRange.minValue = 0;
+      }
     }
     return res;
   };
@@ -183,13 +187,19 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
     }
 
     if (chartType === 'candlestick') {
-      const ohlcData = candles.map((c) => ({
-        time: c.time as UTCTimestamp,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }));
+      const ohlcData = candles.map((c, i) => {
+        // Use previous candle's close as this candle's open so that
+        // single-trade candles still render a visible body instead of
+        // collapsing to a flat doji line.
+        const open = i > 0 ? candles[i - 1].close : c.open;
+        return {
+          time: c.time as UTCTimestamp,
+          open,
+          high: Math.max(c.high, open),
+          low: Math.min(c.low, open),
+          close: c.close,
+        };
+      });
       (priceSeries as ISeriesApi<'Candlestick'>).setData(ohlcData);
     } else {
       const lineData = candles.map((c) => ({
