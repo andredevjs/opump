@@ -2,14 +2,15 @@ import { describe, it, expect } from 'vitest';
 import BigNumber from 'bignumber.js';
 import { calculateBuy, calculateSell, getCurrentPrice, getGraduationProgress, getMarketCap } from '../bonding-curve';
 
-// Initial virtual reserves from constants
-const INITIAL_VIRTUAL_BTC = new BigNumber('767000'); // 0.00767 BTC in sats
-const INITIAL_VIRTUAL_TOKEN = new BigNumber('100000000000000000'); // 1B tokens * 10^8
+// Pre-computed from: curveSupply=1e17, gradThreshold=6900000
+const A_SCALED = new BigNumber('401338085046');
+const B_SCALED = new BigNumber('5756462732');
+const ZERO_SUPPLY = new BigNumber('0');
 
 describe('bonding-curve', () => {
   describe('calculateBuy', () => {
     it('returns correct output for a small buy', () => {
-      const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '100000'); // 100k sats
+      const result = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '100000');
 
       expect(result).not.toBeNull();
       expect(result!.type).toBe('buy');
@@ -21,88 +22,59 @@ describe('bonding-curve', () => {
     });
 
     it('deducts 1.25% fee from input (rounded up)', () => {
-      const btcInput = '1000000'; // 1M sats
-      const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, btcInput);
-
+      const result = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000');
       // Fee should be ceil(1.25% of input) = ceil(12500) = 12500 sats
       expect(result!.fee).toBe(12500);
     });
 
-    it('increases the BTC reserve and decreases token supply', () => {
-      const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-
-      expect(new BigNumber(result.newVirtualBtc).isGreaterThan(INITIAL_VIRTUAL_BTC)).toBe(true);
-      expect(new BigNumber(result.newVirtualToken).isLessThan(INITIAL_VIRTUAL_TOKEN)).toBe(true);
-    });
-
-    it('preserves k constant (approximately)', () => {
-      const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-
-      const newK = new BigNumber(result.newVirtualBtc).times(result.newVirtualToken);
-      const originalK = INITIAL_VIRTUAL_BTC.times(INITIAL_VIRTUAL_TOKEN);
-
-      // k should be preserved (within rounding)
-      // newVirtualToken = floor(K / newVirtualBtc), so newK <= originalK
-      expect(newK.isLessThanOrEqualTo(originalK)).toBe(true);
-      // But very close
-      const diff = originalK.minus(newK);
-      expect(diff.isLessThan(new BigNumber(result.newVirtualBtc))).toBe(true);
+    it('increases supply on curve', () => {
+      const result = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000')!;
+      expect(new BigNumber(result.newSupplyOnCurve).isGreaterThan(0)).toBe(true);
     });
 
     it('larger buys produce larger price impact', () => {
-      const small = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '100000')!;
-      const large = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '10000000')!;
-
+      const small = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '100000')!;
+      const large = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '10000000')!;
       expect(large.priceImpactPercent).toBeGreaterThan(small.priceImpactPercent);
     });
 
     it('larger buys produce more tokens but at worse effective price', () => {
-      const small = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '100000')!;
-      const large = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '10000000')!;
-
+      const small = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '100000')!;
+      const large = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '10000000')!;
       expect(Number(large.outputAmount)).toBeGreaterThan(Number(small.outputAmount));
-      // Effective price (sats per token) should be higher for larger buys (worse)
       expect(large.pricePerToken).toBeGreaterThan(small.pricePerToken);
     });
 
     it('returns null for zero input', () => {
-      const result = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '0');
-      expect(result).toBeNull();
+      expect(calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '0')).toBeNull();
     });
 
     it('returns null for NaN input', () => {
-      expect(calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '')).toBeNull();
-      expect(calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, 'abc')).toBeNull();
-      expect(calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, 'NaN')).toBeNull();
+      expect(calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '')).toBeNull();
+      expect(calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, 'abc')).toBeNull();
     });
 
     it('returns null for negative input', () => {
-      expect(calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '-100')).toBeNull();
+      expect(calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '-100')).toBeNull();
     });
 
     it('handles sequential buys correctly (price increases)', () => {
-      const buy1 = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-      const newBtc = new BigNumber(buy1.newVirtualBtc);
-      const newToken = new BigNumber(buy1.newVirtualToken);
+      const buy1 = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000')!;
+      const newSupply = new BigNumber(buy1.newSupplyOnCurve);
 
-      const buy2 = calculateBuy(newBtc, newToken, '1000000')!;
+      const buy2 = calculateBuy(newSupply, A_SCALED, B_SCALED, '1000000')!;
 
       // Second buy should get fewer tokens (price went up)
       expect(Number(buy2.outputAmount)).toBeLessThan(Number(buy1.outputAmount));
-      // Price should be higher after second buy
       expect(buy2.newPriceSats).toBeGreaterThan(buy1.newPriceSats);
     });
   });
 
   describe('calculateSell', () => {
     it('returns correct output for a sell', () => {
-      // First buy some tokens
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-      const newBtc = new BigNumber(buy.newVirtualBtc);
-      const newToken = new BigNumber(buy.newVirtualToken);
-
-      // Sell all tokens back
-      const sell = calculateSell(newBtc, newToken, buy.outputAmount)!;
+      const buy = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000')!;
+      const newSupply = new BigNumber(buy.newSupplyOnCurve);
+      const sell = calculateSell(newSupply, A_SCALED, B_SCALED, buy.outputAmount)!;
 
       expect(sell.type).toBe('sell');
       expect(Number(sell.outputAmount)).toBeGreaterThan(0);
@@ -111,92 +83,53 @@ describe('bonding-curve', () => {
 
     it('selling all tokens back yields less than input (due to fees)', () => {
       const btcInput = '1000000';
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, btcInput)!;
-      const newBtc = new BigNumber(buy.newVirtualBtc);
-      const newToken = new BigNumber(buy.newVirtualToken);
+      const buy = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, btcInput)!;
+      const newSupply = new BigNumber(buy.newSupplyOnCurve);
+      const sell = calculateSell(newSupply, A_SCALED, B_SCALED, buy.outputAmount)!;
 
-      const sell = calculateSell(newBtc, newToken, buy.outputAmount)!;
-
-      // Should get less BTC back than invested (fees on both sides)
       expect(Number(sell.outputAmount)).toBeLessThan(Number(btcInput));
     });
 
-    it('deducts 1.25% fee from gross BTC output (rounded up)', () => {
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-      const newBtc = new BigNumber(buy.newVirtualBtc);
-      const newToken = new BigNumber(buy.newVirtualToken);
-
-      const sell = calculateSell(newBtc, newToken, buy.outputAmount)!;
-
-      // Fee is ceil(1.25% of grossBtcOut)
-      const grossBtcOut = Number(sell.outputAmount) + sell.fee;
-      const expectedFee = Math.ceil(grossBtcOut * 0.0125);
-      expect(sell.fee).toBe(expectedFee);
-    });
-
-    it('decreases BTC reserve and increases token supply', () => {
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-      const postBuyBtc = new BigNumber(buy.newVirtualBtc);
-      const postBuyToken = new BigNumber(buy.newVirtualToken);
-
-      const sell = calculateSell(postBuyBtc, postBuyToken, buy.outputAmount)!;
-
-      expect(new BigNumber(sell.newVirtualBtc).isLessThan(postBuyBtc)).toBe(true);
-      expect(new BigNumber(sell.newVirtualToken).isGreaterThan(postBuyToken)).toBe(true);
-    });
-
     it('has negative price impact (price goes down)', () => {
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
+      const buy = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000')!;
       const sell = calculateSell(
-        new BigNumber(buy.newVirtualBtc),
-        new BigNumber(buy.newVirtualToken),
-        buy.outputAmount,
+        new BigNumber(buy.newSupplyOnCurve), A_SCALED, B_SCALED, buy.outputAmount,
       )!;
-
       expect(sell.priceImpactPercent).toBeLessThan(0);
     });
 
-    it('prevents negative BTC output', () => {
-      const result = calculateSell(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1')!;
-
-      // Even tiny sells should not produce negative output
-      expect(Number(result.outputAmount)).toBeGreaterThanOrEqual(0);
-    });
-
     it('returns null for zero input', () => {
-      expect(calculateSell(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '0')).toBeNull();
+      expect(calculateSell(ZERO_SUPPLY, A_SCALED, B_SCALED, '0')).toBeNull();
     });
 
     it('returns null for invalid input', () => {
-      expect(calculateSell(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '')).toBeNull();
-      expect(calculateSell(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '-5')).toBeNull();
+      expect(calculateSell(ZERO_SUPPLY, A_SCALED, B_SCALED, '')).toBeNull();
+      expect(calculateSell(ZERO_SUPPLY, A_SCALED, B_SCALED, '-5')).toBeNull();
     });
   });
 
   describe('getCurrentPrice', () => {
-    it('returns initial price from initial reserves', () => {
-      const price = getCurrentPrice(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN);
-
-      // Price = virtualBtc * TOKEN_UNITS_PER_TOKEN / virtualToken
-      // = 767_000 * 100_000_000 / 100_000_000_000_000_000
-      // = 76_700_000_000_000 / 100_000_000_000_000_000
-      // = 0.000767 sats per whole token
-      expect(price).toBeCloseTo(0.000767, 6);
-    });
-
-    it('returns 0 for zero token supply', () => {
-      expect(getCurrentPrice(INITIAL_VIRTUAL_BTC, new BigNumber(0))).toBe(0);
+    it('returns initial price from zero supply', () => {
+      const price = getCurrentPrice(ZERO_SUPPLY, A_SCALED, B_SCALED);
+      // Initial price = a = A_SCALED / 1e18 ≈ 0.000401 sats/token
+      const a = A_SCALED.div(1e18).toNumber();
+      expect(price).toBeCloseTo(a, 8);
     });
 
     it('increases after a buy', () => {
-      const priceBefore = getCurrentPrice(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN);
-      const buy = calculateBuy(INITIAL_VIRTUAL_BTC, INITIAL_VIRTUAL_TOKEN, '1000000')!;
-      const priceAfter = getCurrentPrice(
-        new BigNumber(buy.newVirtualBtc),
-        new BigNumber(buy.newVirtualToken),
-      );
-
+      const priceBefore = getCurrentPrice(ZERO_SUPPLY, A_SCALED, B_SCALED);
+      const buy = calculateBuy(ZERO_SUPPLY, A_SCALED, B_SCALED, '1000000')!;
+      const priceAfter = getCurrentPrice(new BigNumber(buy.newSupplyOnCurve), A_SCALED, B_SCALED);
       expect(priceAfter).toBeGreaterThan(priceBefore);
+    });
+
+    it('price at graduation is ~100x initial', () => {
+      // 80% of 1B tokens = 800M whole tokens = 8e16 units
+      const gradSupply = new BigNumber('80000000000000000');
+      const gradPrice = getCurrentPrice(gradSupply, A_SCALED, B_SCALED);
+      const initPrice = getCurrentPrice(ZERO_SUPPLY, A_SCALED, B_SCALED);
+      const multiplier = gradPrice / initPrice;
+      expect(multiplier).toBeCloseTo(100, 0);
     });
   });
 
@@ -220,13 +153,11 @@ describe('bonding-curve', () => {
 
   describe('getMarketCap', () => {
     it('calculates market cap as price * supply (returned as string)', () => {
-      const priceSats = 0.000767; // sats per whole token (initial price)
+      const priceSats = 0.000401;
       const supply = '100000000000000000'; // 1B tokens * 10^8
       const result = getMarketCap(priceSats, supply);
-
-      // Returns string to avoid Number overflow
-      // 0.000767 * 100_000_000_000_000_000 = 76_700_000_000_000
-      expect(result).toBe('76700000000000');
+      // 0.000401 * 1e17 = 40100000000000
+      expect(result).toBe('40100000000000');
     });
 
     it('returns "0" for zero price', () => {

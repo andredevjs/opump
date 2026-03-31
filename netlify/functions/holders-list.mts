@@ -1,7 +1,7 @@
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { getToken, getTopHolders, getHolderCount } from "./_shared/redis-queries.mts";
-import { INITIAL_VIRTUAL_TOKEN_SUPPLY } from "./_shared/constants.mts";
+import { DEFAULT_MAX_SUPPLY } from "./_shared/constants.mts";
 
 export default async (req: Request, context: Context) => {
   if (req.method === "OPTIONS") {
@@ -29,9 +29,9 @@ export default async (req: Request, context: Context) => {
     ]);
 
     const creatorAllocationTokens =
-      (INITIAL_VIRTUAL_TOKEN_SUPPLY * BigInt(token.config.creatorAllocationBps || 0)) / 10000n;
+      (DEFAULT_MAX_SUPPLY * BigInt(token.config.creatorAllocationBps || 0)) / 10000n;
     const circulatingSupply =
-      INITIAL_VIRTUAL_TOKEN_SUPPLY - BigInt(token.virtualTokenSupply) + creatorAllocationTokens;
+      BigInt(token.currentSupplyOnCurve) + creatorAllocationTokens;
 
     const holdersWithPercent = circulatingSupply > 0n
       ? holders.map((h) => ({

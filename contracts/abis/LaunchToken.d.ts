@@ -121,10 +121,10 @@ export type IsMigrated = CallResult<
  */
 export type GetReserves = CallResult<
     {
-        virtualBtc: bigint;
-        virtualToken: bigint;
+        currentSupplyOnCurve: bigint;
         realBtc: bigint;
-        k: bigint;
+        aScaled: bigint;
+        bScaled: bigint;
     },
     OPNetEvent<never>[]
 >;

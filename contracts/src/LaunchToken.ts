@@ -19,8 +19,6 @@ import {
 
 import { BondingCurve } from './lib/BondingCurve';
 import {
-  INITIAL_VIRTUAL_BTC,
-  INITIAL_VIRTUAL_TOKEN,
   DEFAULT_MAX_SUPPLY,
   DEFAULT_GRADUATION_THRESHOLD,
   MIN_TRADE_AMOUNT,
@@ -37,10 +35,11 @@ import { BuyEvent, SellEvent, GraduationEvent, ReservationEvent, FeeClaimedEvent
 
 @final
 export class LaunchToken extends OP20 {
-  // Bonding curve state
-  private readonly virtualBtcReservePtr: u16 = Blockchain.nextPointer;
-  private readonly virtualTokenSupplyPtr: u16 = Blockchain.nextPointer;
-  private readonly kConstantPtr: u16 = Blockchain.nextPointer;
+  // Exponential bonding curve state
+  private readonly currentSupplyOnCurvePtr: u16 = Blockchain.nextPointer;
+  private readonly aScaledPtr: u16 = Blockchain.nextPointer;
+  private readonly bScaledPtr: u16 = Blockchain.nextPointer;
+  private readonly curveSupplyPtr: u16 = Blockchain.nextPointer;
   private readonly realBtcReservePtr: u16 = Blockchain.nextPointer;
   private readonly totalVolumeSatsPtr: u16 = Blockchain.nextPointer;
   private readonly graduatedPtr: u16 = Blockchain.nextPointer;
@@ -67,9 +66,10 @@ export class LaunchToken extends OP20 {
   private readonly graduationThresholdPtr: u16 = Blockchain.nextPointer;
   private readonly minTradeAmountPtr: u16 = Blockchain.nextPointer;
 
-  private readonly virtualBtcReserve: StoredU256 = new StoredU256(this.virtualBtcReservePtr, EMPTY_POINTER);
-  private readonly virtualTokenSupply: StoredU256 = new StoredU256(this.virtualTokenSupplyPtr, EMPTY_POINTER);
-  private readonly kConstant: StoredU256 = new StoredU256(this.kConstantPtr, EMPTY_POINTER);
+  private readonly currentSupplyOnCurve: StoredU256 = new StoredU256(this.currentSupplyOnCurvePtr, EMPTY_POINTER);
+  private readonly aScaled: StoredU256 = new StoredU256(this.aScaledPtr, EMPTY_POINTER);
+  private readonly bScaled: StoredU256 = new StoredU256(this.bScaledPtr, EMPTY_POINTER);
+  private readonly curveSupply: StoredU256 = new StoredU256(this.curveSupplyPtr, EMPTY_POINTER);
   private readonly realBtcReserve: StoredU256 = new StoredU256(this.realBtcReservePtr, EMPTY_POINTER);
   private readonly totalVolumeSats: StoredU256 = new StoredU256(this.totalVolumeSatsPtr, EMPTY_POINTER);
   private readonly graduated: StoredBoolean = new StoredBoolean(this.graduatedPtr, false);
@@ -148,10 +148,6 @@ export class LaunchToken extends OP20 {
     const finalSupply = maxSupply == u256.Zero ? DEFAULT_MAX_SUPPLY : maxSupply;
     const finalThreshold = gradThreshold == u256.Zero ? DEFAULT_GRADUATION_THRESHOLD : gradThreshold;
 
-    if (finalSupply < INITIAL_VIRTUAL_TOKEN) {
-      throw new Revert('Max supply must be >= initial virtual token supply');
-    }
-
     // Initialize OP20
     this.instantiate(new OP20InitParameters(finalSupply, 8, name, symbol));
 
@@ -165,14 +161,16 @@ export class LaunchToken extends OP20 {
     this.minTradeAmount.set(MIN_TRADE_AMOUNT);
     this.vaultAddress.value = vaultAddr;
 
-    // Initialize bonding curve — reduce virtualTokenSupply by off-curve allocation
-    // so that totalMinted (allocation + curve trades + migration) never exceeds maxSupply.
+    // Calculate curve supply (tokens available on bonding curve)
     const curveBps = SafeMath.sub(FEE_DENOMINATOR, totalOffCurve);
-    const curveSupply = SafeMath.div(SafeMath.mul(finalSupply, curveBps), FEE_DENOMINATOR);
+    const curveSupplyVal = SafeMath.div(SafeMath.mul(finalSupply, curveBps), FEE_DENOMINATOR);
 
-    this.virtualBtcReserve.set(INITIAL_VIRTUAL_BTC);
-    this.virtualTokenSupply.set(curveSupply);
-    this.kConstant.set(SafeMath.mul(INITIAL_VIRTUAL_BTC, curveSupply));
+    // Derive exponential curve parameters: a, b
+    const params = BondingCurve.deriveParams(curveSupplyVal, finalThreshold);
+    this.aScaled.set(params[0]);
+    this.bScaled.set(params[1]);
+    this.curveSupply.set(curveSupplyVal);
+    this.currentSupplyOnCurve.set(u256.Zero);
 
     // Store deploy block
     this.deployBlock.set(0, Blockchain.block.number);
@@ -223,10 +221,6 @@ export class LaunchToken extends OP20 {
 
     const sender = Blockchain.tx.sender;
 
-    // NOTE: Reservation is for the gross btcAmount. After fees, netBtc enters
-    // the curve, so tokens received will be slightly less than a pure-AMM
-    // estimate at reservation time. This is by design — fees are always applied.
-
     // Consume reservation if active (two-transaction model)
     this._consumeReservation(sender, btcAmount);
 
@@ -250,16 +244,26 @@ export class LaunchToken extends OP20 {
       throw new Revert('Exceeds graduation threshold');
     }
 
-    // Calculate tokens out
-    const vBtc = this.virtualBtcReserve.value;
-    const vToken = this.virtualTokenSupply.value;
-    const k = this.kConstant.value;
-    const tokensOut = BondingCurve.calculateBuy(vBtc, vToken, k, netBtc);
+    // Load curve state
+    const a = this.aScaled.value;
+    const b = this.bScaled.value;
+    const supply = this.currentSupplyOnCurve.value;
+    const maxCurveSupply = this.curveSupply.value;
+    const maxDelta = SafeMath.sub(maxCurveSupply, supply);
 
-    // Update reserves — use already-loaded values to avoid redundant storage reads
-    this.virtualBtcReserve.set(SafeMath.add(vBtc, netBtc));
-    this.virtualTokenSupply.set(SafeMath.sub(vToken, tokensOut));
-    this.realBtcReserve.set(SafeMath.add(currentRealBtc, netBtc));
+    // Calculate max tokens for the budget via binary search
+    const tokensOut = BondingCurve.maxTokensForBudget(a, b, supply, netBtc, maxDelta);
+
+    if (tokensOut.isZero()) {
+      throw new Revert('Insufficient BTC for any tokens');
+    }
+
+    // Actual cost (may be slightly less than netBtc due to integer rounding)
+    const actualCost = BondingCurve.calculateBuyCost(a, b, supply, tokensOut);
+
+    // Update state
+    this.currentSupplyOnCurve.set(SafeMath.add(supply, tokensOut));
+    this.realBtcReserve.set(SafeMath.add(currentRealBtc, actualCost));
     this.totalVolumeSats.set(SafeMath.add(currentVolume, btcAmount));
 
     // Accumulate fee pools
@@ -276,10 +280,8 @@ export class LaunchToken extends OP20 {
     this._checkGraduation();
 
     // Emit event
-    const newPrice = BondingCurve.calculatePrice(
-      this.virtualBtcReserve.value,
-      this.virtualTokenSupply.value,
-    );
+    const newSupply = this.currentSupplyOnCurve.value;
+    const newPrice = BondingCurve.calculatePrice(a, b, newSupply);
     this.emitEvent(new BuyEvent(sender, btcAmount, tokensOut, newPrice));
 
     const writer = new BytesWriter(32);
@@ -307,11 +309,13 @@ export class LaunchToken extends OP20 {
 
     const sender = Blockchain.tx.sender;
 
+    // Load curve state
+    const a = this.aScaled.value;
+    const b = this.bScaled.value;
+    const supply = this.currentSupplyOnCurve.value;
+
     // Calculate BTC out before fees
-    const vBtc = this.virtualBtcReserve.value;
-    const vToken = this.virtualTokenSupply.value;
-    const k = this.kConstant.value;
-    const grossBtcOut = BondingCurve.calculateSell(vBtc, vToken, k, tokenAmount);
+    const grossBtcOut = BondingCurve.calculateSellPayout(a, b, supply, tokenAmount);
 
     if (grossBtcOut > this.realBtcReserve.value) {
       throw new Revert('Insufficient liquidity');
@@ -336,9 +340,8 @@ export class LaunchToken extends OP20 {
     // Burn tokens first
     this._burn(sender, tokenAmount);
 
-    // Update reserves
-    this.virtualBtcReserve.set(SafeMath.sub(vBtc, grossBtcOut));
-    this.virtualTokenSupply.set(SafeMath.add(vToken, tokenAmount));
+    // Update state
+    this.currentSupplyOnCurve.set(SafeMath.sub(supply, tokenAmount));
     this.realBtcReserve.set(SafeMath.sub(this.realBtcReserve.value, grossBtcOut));
     this.totalVolumeSats.set(SafeMath.add(this.totalVolumeSats.value, grossBtcOut));
 
@@ -350,10 +353,8 @@ export class LaunchToken extends OP20 {
     this._applyFlywheel(flywheelFee, sender);
 
     // Emit event
-    const newPrice = BondingCurve.calculatePrice(
-      this.virtualBtcReserve.value,
-      this.virtualTokenSupply.value,
-    );
+    const newSupply = this.currentSupplyOnCurve.value;
+    const newPrice = BondingCurve.calculatePrice(a, b, newSupply);
     this.emitEvent(new SellEvent(sender, tokenAmount, btcOut, newPrice));
 
     const writer = new BytesWriter(32);
@@ -420,25 +421,12 @@ export class LaunchToken extends OP20 {
 
   /**
    * Claims accumulated platform fees.
-   *
-   * NOTE: This method records the claim and zeros the pool, but does NOT
-   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
-   * outputs constructed by the caller. The claim emits an event that an
-   * off-chain settlement process monitors to fulfill the BTC transfer.
-   *
-   * The caller must construct the appropriate BTC outputs in their transaction.
-   *
-   * Only the deployer (platform/factory) can claim platform fees. When deployed
-   * through a factory, the factory address IS the deployer and acts as the platform.
    */
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
   @emit('FeeClaimed')
   public claimPlatformFees(calldata: Calldata): BytesWriter {
     const sender = Blockchain.tx.sender;
-
-    // Only deployer (platform owner) can claim platform fees.
-    // When deployed via factory, the factory IS the deployer/platform.
     this.onlyDeployer(sender);
 
     const amount = this.platformFeePool.value;
@@ -446,10 +434,7 @@ export class LaunchToken extends OP20 {
       throw new Revert('No fees to claim');
     }
 
-    // Zero out pool before returning
     this.platformFeePool.set(u256.Zero);
-
-    // feeType 2 = platform
     this.emitEvent(new FeeClaimedEvent(sender, amount, u256.fromU32(2)));
 
     const writer = new BytesWriter(32);
@@ -459,17 +444,6 @@ export class LaunchToken extends OP20 {
 
   /**
    * Claims accumulated creator fees.
-   *
-   * NOTE: This method records the claim and zeros the pool, but does NOT
-   * transfer BTC directly. On OPNet, BTC transfers happen via transaction
-   * outputs constructed by the caller. The claim emits an event that an
-   * off-chain settlement process monitors to fulfill the BTC transfer.
-   *
-   * The caller must construct the appropriate BTC outputs in their transaction.
-   *
-   * Only the original creator (tx.origin at deployment time) can claim.
-   * This is distinct from onlyDeployer — when deployed through a factory,
-   * the deployer is the factory, but the creator is the human signer.
    */
   @method()
   @returns({ name: 'amount', type: ABIDataTypes.UINT256 })
@@ -477,8 +451,6 @@ export class LaunchToken extends OP20 {
   public claimCreatorFees(calldata: Calldata): BytesWriter {
     const sender = Blockchain.tx.sender;
 
-    // Check against stored creator address (set during onDeployment)
-    // This ensures the actual creator can claim even when deployed via factory
     if (sender !== this.creatorAddress.value) {
       throw new Revert('Only creator can claim creator fees');
     }
@@ -488,10 +460,7 @@ export class LaunchToken extends OP20 {
       throw new Revert('No fees to claim');
     }
 
-    // Zero out pool before returning
     this.creatorFeePool.set(u256.Zero);
-
-    // feeType 0 = creator
     this.emitEvent(new FeeClaimedEvent(sender, amount, u256.Zero));
 
     const writer = new BytesWriter(32);
@@ -515,8 +484,11 @@ export class LaunchToken extends OP20 {
 
     this.onlyDeployer(sender);
 
-    // Remaining tokens on the curve that were never minted
-    const liquidityTokens = this.virtualTokenSupply.value;
+    // Remaining tokens on the curve that were never sold
+    const liquidityTokens = SafeMath.sub(
+      this.curveSupply.value,
+      this.currentSupplyOnCurve.value,
+    );
 
     // Mint liquidity tokens to the recipient address
     this._mint(recipient, liquidityTokens);
@@ -543,17 +515,17 @@ export class LaunchToken extends OP20 {
   @view
   @method()
   @returns(
-    { name: 'virtualBtc', type: ABIDataTypes.UINT256 },
-    { name: 'virtualToken', type: ABIDataTypes.UINT256 },
+    { name: 'currentSupplyOnCurve', type: ABIDataTypes.UINT256 },
     { name: 'realBtc', type: ABIDataTypes.UINT256 },
-    { name: 'k', type: ABIDataTypes.UINT256 },
+    { name: 'aScaled', type: ABIDataTypes.UINT256 },
+    { name: 'bScaled', type: ABIDataTypes.UINT256 },
   )
   public getReserves(calldata: Calldata): BytesWriter {
     const writer = new BytesWriter(32 * 4);
-    writer.writeU256(this.virtualBtcReserve.value);
-    writer.writeU256(this.virtualTokenSupply.value);
+    writer.writeU256(this.currentSupplyOnCurve.value);
     writer.writeU256(this.realBtcReserve.value);
-    writer.writeU256(this.kConstant.value);
+    writer.writeU256(this.aScaled.value);
+    writer.writeU256(this.bScaled.value);
     return writer;
   }
 
@@ -562,8 +534,9 @@ export class LaunchToken extends OP20 {
   @returns({ name: 'priceSatsPerToken', type: ABIDataTypes.UINT256 })
   public getPrice(calldata: Calldata): BytesWriter {
     const price = BondingCurve.calculatePrice(
-      this.virtualBtcReserve.value,
-      this.virtualTokenSupply.value,
+      this.aScaled.value,
+      this.bScaled.value,
+      this.currentSupplyOnCurve.value,
     );
     const writer = new BytesWriter(32);
     writer.writeU256(price);

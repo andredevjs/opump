@@ -1,52 +1,67 @@
 import { useMemo } from 'react';
 import BigNumber from 'bignumber.js';
 import { cn } from '@/lib/cn';
-import { K, INITIAL_VIRTUAL_BTC_SATS, GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS, SATS_PER_BTC } from '@/config/constants';
+import { GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS, SATS_PER_BTC } from '@/config/constants';
 import { formatMcapUsd } from '@/lib/format';
+import { safeExp } from '@/lib/exp-math';
 
 interface BondingCurveVisualProps {
-  virtualBtcReserve: string;
-  virtualTokenSupply: string;
+  currentSupplyOnCurve: string;
+  aScaled: string;
+  bScaled: string;
   realBtcReserve: string;
   btcPrice: number;
   className?: string;
 }
 
 export function BondingCurveVisual({
-  virtualBtcReserve,
-  virtualTokenSupply: _virtualTokenSupply,
+  currentSupplyOnCurve,
+  aScaled: aScaledStr,
+  bScaled: bScaledStr,
   realBtcReserve: _realBtcReserve,
   btcPrice,
   className,
 }: BondingCurveVisualProps) {
+  const a = useMemo(() => new BigNumber(aScaledStr).div(1e18).toNumber(), [aScaledStr]);
+  const b = useMemo(() => new BigNumber(bScaledStr).div(1e18).toNumber(), [bScaledStr]);
+
   const { points, maxMcap, graduationMcap } = useMemo(() => {
     const pts: { x: number; y: number }[] = [];
-    const minBtc = INITIAL_VIRTUAL_BTC_SATS.toNumber();
-    const maxBtc = minBtc + GRADUATION_THRESHOLD_SATS * 1.2;
+
+    if (a <= 0 || b <= 0) {
+      return { points: pts, maxMcap: 0, graduationMcap: 0 };
+    }
+
+    // The curve goes from supply=0 to the graduation supply.
+    // Graduation supply: where accumulated cost = GRADUATION_THRESHOLD_SATS.
+    // cost(0, S) = (a/b)*(e^(b*S) - 1) = threshold
+    // => S = ln(b*threshold/a + 1) / b
+    const gradSupplyWhole = Math.log((b * GRADUATION_THRESHOLD_SATS) / a + 1) / b;
+    const maxSupplyWhole = gradSupplyWhole * 1.2; // Show 20% beyond graduation
     const steps = 60;
 
     for (let i = 0; i <= steps; i++) {
-      const btc = minBtc + (maxBtc - minBtc) * (i / steps);
-      const pricePerToken = new BigNumber(btc).times(TOKEN_UNITS_PER_TOKEN).div(K.div(btc)).toNumber();
-      const mcapUsd = pricePerToken * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
+      const supplyWhole = maxSupplyWhole * (i / steps);
+      const pricePerToken = a * safeExp(b * supplyWhole);
+      const mcapUsd = (pricePerToken * TOTAL_SUPPLY_WHOLE_TOKENS) / SATS_PER_BTC * btcPrice;
       pts.push({ x: i / steps, y: mcapUsd });
     }
 
     // Graduation price
-    const gradBtc = minBtc + GRADUATION_THRESHOLD_SATS;
-    const gradPrice = new BigNumber(gradBtc).times(TOKEN_UNITS_PER_TOKEN).div(K.div(gradBtc)).toNumber();
-    const gradMcap = gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
+    const gradPrice = a * safeExp(b * gradSupplyWhole);
+    const gradMcap = (gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS) / SATS_PER_BTC * btcPrice;
 
     const max = Math.max(...pts.map((p) => p.y));
     return { points: pts, maxMcap: max, graduationMcap: gradMcap };
-  }, [btcPrice]);
+  }, [a, b, btcPrice]);
 
   const currentX = useMemo(() => {
-    const btc = new BigNumber(virtualBtcReserve).toNumber();
-    const minBtc = INITIAL_VIRTUAL_BTC_SATS.toNumber();
-    const maxBtc = minBtc + GRADUATION_THRESHOLD_SATS * 1.2;
-    return (btc - minBtc) / (maxBtc - minBtc);
-  }, [virtualBtcReserve]);
+    if (a <= 0 || b <= 0) return 0;
+    const currentWhole = new BigNumber(currentSupplyOnCurve).div(TOKEN_UNITS_PER_TOKEN).toNumber();
+    const gradSupplyWhole = Math.log((b * GRADUATION_THRESHOLD_SATS) / a + 1) / b;
+    const maxSupplyWhole = gradSupplyWhole * 1.2;
+    return maxSupplyWhole > 0 ? currentWhole / maxSupplyWhole : 0;
+  }, [currentSupplyOnCurve, a, b]);
 
   const w = 320;
   const h = 120;
@@ -67,7 +82,9 @@ export function BondingCurveVisual({
 
   const dotX = padLeft + currentX * chartW;
   const currentPoint = points.find((p) => Math.abs(p.x - currentX) < 0.02) ?? points[0];
-  const dotY = h - padY - (maxMcap > 0 ? (currentPoint.y / maxMcap) * chartH : 0);
+  const dotY = currentPoint
+    ? h - padY - (maxMcap > 0 ? (currentPoint.y / maxMcap) * chartH : 0)
+    : h - padY;
 
   const gradY = maxMcap > 0 ? h - padY - (graduationMcap / maxMcap) * chartH : h - padY;
 

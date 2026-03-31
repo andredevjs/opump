@@ -22,6 +22,5 @@ export interface TradeSimulation {
   priceImpactPercent: number;
   fee: number;
   newPriceSats: number;
-  newVirtualBtc: string;
-  newVirtualToken: string;
+  newSupplyOnCurve: string;
 }

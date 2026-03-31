@@ -9,13 +9,12 @@ import { checkCreateRateLimit } from "./rate-limit.mts";
 import { verifyTokenOnChain } from "./on-chain-verify.mts";
 import type { CreateTokenRequest, TokenDocument } from "./constants.mts";
 import {
-  INITIAL_VIRTUAL_BTC_SATS,
-  INITIAL_VIRTUAL_TOKEN_SUPPLY,
-  K_CONSTANT,
+  DEFAULT_MAX_SUPPLY,
+  FEE_DENOMINATOR,
   GRADUATION_THRESHOLD_SATS,
-  PRICE_PRECISION,
   PRICE_DISPLAY_DIVISOR,
 } from "./constants.mts";
+import { deriveParams, calculatePrice } from "./bonding-curve.mts";
 
 export async function handleCreateToken(req: Request): Promise<Response> {
   let body: CreateTokenRequest;
@@ -156,14 +155,11 @@ export async function handleCreateToken(req: Request): Promise<Response> {
 
   // Calculate curve supply: reduce by off-curve allocation (creator + airdrop)
   const totalOffCurveBps = BigInt((bpsConfig.creatorAllocationBps ?? 0) + (bpsConfig.airdropBps ?? 0));
-  const curveBps = 10_000n - totalOffCurveBps;
-  const curveSupply = (INITIAL_VIRTUAL_TOKEN_SUPPLY * curveBps) / 10_000n;
-  const kConstant = INITIAL_VIRTUAL_BTC_SATS * curveSupply;
+  const curveBps = FEE_DENOMINATOR - totalOffCurveBps;
+  const curveSupply = (DEFAULT_MAX_SUPPLY * curveBps) / FEE_DENOMINATOR;
+  const { aScaled, bScaled } = deriveParams(curveSupply, GRADUATION_THRESHOLD_SATS);
 
-  const initialPriceScaled = curveSupply > 0n
-    ? (INITIAL_VIRTUAL_BTC_SATS * PRICE_PRECISION) / curveSupply
-    : 0n;
-  const initialPrice = (Number(initialPriceScaled) / PRICE_DISPLAY_DIVISOR).toString();
+  const initialPrice = (Number(calculatePrice(aScaled, bScaled, 0n)) / PRICE_DISPLAY_DIVISOR).toString();
 
   const tokenDoc: TokenDocument = {
     _id: body.contractAddress,
@@ -174,10 +170,10 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     socials: body.socials || {},
     creatorAddress: body.creatorAddress,
     contractAddress: body.contractAddress,
-    virtualBtcReserve: INITIAL_VIRTUAL_BTC_SATS.toString(),
-    virtualTokenSupply: curveSupply.toString(),
-    kConstant: kConstant.toString(),
+    currentSupplyOnCurve: "0",
     realBtcReserve: "0",
+    aScaled: aScaled.toString(),
+    bScaled: bScaled.toString(),
     config: {
       creatorAllocationBps: body.config?.creatorAllocationBps ?? 0,
       airdropBps: body.config?.airdropBps ?? 0,
@@ -204,7 +200,7 @@ export async function handleCreateToken(req: Request): Promise<Response> {
   // Seed creator + airdrop allocation balance if configured
   const totalMintedBps = tokenDoc.config.creatorAllocationBps + (tokenDoc.config.airdropBps ?? 0);
   if (totalMintedBps > 0) {
-    const creatorTokens = (INITIAL_VIRTUAL_TOKEN_SUPPLY * BigInt(totalMintedBps)) / 10000n;
+    const creatorTokens = (DEFAULT_MAX_SUPPLY * BigInt(totalMintedBps)) / 10000n;
     const redis = getRedis();
     const pipe = redis.pipeline();
     pipe.zadd(TOKEN_HOLDER_BALANCES(tokenDoc.contractAddress), {

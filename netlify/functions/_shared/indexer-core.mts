@@ -25,11 +25,13 @@ import {
 import {
   PRICE_PRECISION,
   PRICE_DISPLAY_DIVISOR,
-  INITIAL_VIRTUAL_TOKEN_SUPPLY,
+  DEFAULT_MAX_SUPPLY,
+  TOKEN_UNITS_PER_TOKEN,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
   FEE_DENOMINATOR,
 } from "./constants.mts";
+import { calculatePrice } from "./bonding-curve.mts";
 import type { TradeDocument } from "./constants.mts";
 import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
 import { decodeBuyEvent, decodeSellEvent, decodeMigrationEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
@@ -446,10 +448,10 @@ async function syncTokenReserves(
         constant: true,
         inputs: [],
         outputs: [
-          { name: "virtualBtc", type: ABIDataTypes.UINT256 },
-          { name: "virtualToken", type: ABIDataTypes.UINT256 },
+          { name: "currentSupplyOnCurve", type: ABIDataTypes.UINT256 },
           { name: "realBtc", type: ABIDataTypes.UINT256 },
-          { name: "k", type: ABIDataTypes.UINT256 },
+          { name: "aScaled", type: ABIDataTypes.UINT256 },
+          { name: "bScaled", type: ABIDataTypes.UINT256 },
         ],
       },
     ];
@@ -458,14 +460,14 @@ async function syncTokenReserves(
     const result = await (contract as unknown as LaunchTokenContract).getReserves();
 
     if (result && result.properties) {
-      const { virtualBtc, virtualToken, realBtc, k } = result.properties;
-      const currentPriceScaled = virtualToken > 0n ? (virtualBtc * PRICE_PRECISION) / virtualToken : 0n;
-      const marketCap = virtualToken > 0n ? virtualBtc * INITIAL_VIRTUAL_TOKEN_SUPPLY / virtualToken : 0n;
+      const { currentSupplyOnCurve, realBtc, aScaled, bScaled } = result.properties;
+      const currentPriceScaled = calculatePrice(aScaled, bScaled, currentSupplyOnCurve);
+      const marketCap = currentPriceScaled * DEFAULT_MAX_SUPPLY / (PRICE_PRECISION * TOKEN_UNITS_PER_TOKEN);
 
       await updateToken(tokenAddress, {
-        virtualBtcReserve: virtualBtc.toString(),
-        virtualTokenSupply: virtualToken.toString(),
-        kConstant: k.toString(),
+        currentSupplyOnCurve: currentSupplyOnCurve.toString(),
+        aScaled: aScaled.toString(),
+        bScaled: bScaled.toString(),
         realBtcReserve: realBtc.toString(),
         currentPriceSats: toDisplayPrice(currentPriceScaled),
         marketCapSats: marketCap.toString(),

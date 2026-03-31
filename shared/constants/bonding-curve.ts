@@ -1,13 +1,10 @@
 /**
  * Bonding curve constants shared across contracts, backend, and frontend.
  * All values match the on-chain LaunchToken contract.
+ *
+ * Exponential bonding curve: Price(x) = a * e^(b*x)
+ * Parameters a, b are derived at deployment from curveSupply and graduationThreshold.
  */
-
-// Virtual reserves (initial state of the bonding curve)
-// virtualBtc is small relative to graduation threshold to create ~100x price curve
-export const INITIAL_VIRTUAL_BTC_SATS = 767_000n; // 0.00767 BTC — gives ~100x at graduation
-export const INITIAL_VIRTUAL_TOKEN_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8 decimals
-export const K_CONSTANT = INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY;
 
 // Graduation
 export const GRADUATION_THRESHOLD_SATS = 6_900_000n; // 0.069 BTC
@@ -32,11 +29,22 @@ export const RESERVATION_TTL_BLOCKS = 3n; // ~30 minutes
 // Token defaults
 export const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8 decimals
 export const TOKEN_DECIMALS = 8;
+export const TOKEN_UNITS_PER_TOKEN = 10n ** BigInt(TOKEN_DECIMALS); // 10^8
 
 // Price precision factor for on-chain calculations (10^18)
-// Needed because initial price is sub-sat with small virtualBtc
 export const PRICE_PRECISION = 10n ** 18n;
 
 // Divisor to convert PRICE_PRECISION-scaled values to sats per whole token
 // = PRICE_PRECISION / 10^TOKEN_DECIMALS = 10^10
 export const PRICE_DISPLAY_DIVISOR = 1e10;
+
+// ── Exponential curve constants ─────────────────────────
+
+// ln(100) * 10^18 — hardcoded for precision
+export const LN_100_SCALED = 4_605_170_185_988_091_368n;
+
+// Graduation at 80% of curve supply sold (basis points)
+export const GRAD_SUPPLY_FRACTION_BPS = 8_000n;
+
+// Price multiplier target (100x from initial to graduation)
+export const PRICE_MULTIPLIER = 100n;

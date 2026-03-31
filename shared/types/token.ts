@@ -42,10 +42,10 @@ export interface TokenDocument {
   contractAddress: string;
 
   // Bonding curve state (synced from chain, stored as strings for BigInt precision)
-  virtualBtcReserve: string;
-  virtualTokenSupply: string;
-  kConstant: string;
+  currentSupplyOnCurve: string;
   realBtcReserve: string;
+  aScaled: string;
+  bScaled: string;
 
   // Configuration
   config: TokenConfig;

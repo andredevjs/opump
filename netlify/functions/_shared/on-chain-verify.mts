@@ -69,10 +69,10 @@ export async function verifyTokenOnChain(
       constant: true,
       inputs: [],
       outputs: [
-        { name: "virtualBtc", type: ABIDataTypes.UINT256 },
-        { name: "virtualToken", type: ABIDataTypes.UINT256 },
+        { name: "currentSupplyOnCurve", type: ABIDataTypes.UINT256 },
         { name: "realBtc", type: ABIDataTypes.UINT256 },
-        { name: "k", type: ABIDataTypes.UINT256 },
+        { name: "aScaled", type: ABIDataTypes.UINT256 },
+        { name: "bScaled", type: ABIDataTypes.UINT256 },
       ],
     },
     {

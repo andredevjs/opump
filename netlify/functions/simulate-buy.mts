@@ -49,10 +49,10 @@ export default async (req: Request, _context: Context) => {
     }
 
     const reserves = {
-      virtualBtcReserve: BigInt(token.virtualBtcReserve),
-      virtualTokenSupply: BigInt(token.virtualTokenSupply),
-      kConstant: BigInt(token.kConstant),
+      currentSupplyOnCurve: BigInt(token.currentSupplyOnCurve),
       realBtcReserve: BigInt(token.realBtcReserve),
+      aScaled: BigInt(token.aScaled),
+      bScaled: BigInt(token.bScaled),
     };
 
     const result = simulator.simulateBuy(reserves, btcAmount, BigInt(token.config.buyTaxBps));

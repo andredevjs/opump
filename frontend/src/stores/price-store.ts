@@ -10,8 +10,9 @@ const storedChartType = (typeof window !== 'undefined'
 
 interface LivePrice {
   currentPriceSats: string;
-  virtualBtcReserve: string;
-  virtualTokenSupply: string;
+  currentSupplyOnCurve: string;
+  aScaled: string;
+  bScaled: string;
   realBtcReserve: string;
   isOptimistic: boolean;
 }
@@ -74,8 +75,9 @@ export const usePriceStore = create<PriceStore>((set) => ({
           ...state.livePrices,
           [address]: {
             currentPriceSats: price.currentPriceSats ?? existing?.currentPriceSats ?? '0',
-            virtualBtcReserve: price.virtualBtcReserve ?? existing?.virtualBtcReserve ?? '0',
-            virtualTokenSupply: price.virtualTokenSupply ?? existing?.virtualTokenSupply ?? '0',
+            currentSupplyOnCurve: price.currentSupplyOnCurve ?? existing?.currentSupplyOnCurve ?? '0',
+            aScaled: price.aScaled ?? existing?.aScaled ?? '0',
+            bScaled: price.bScaled ?? existing?.bScaled ?? '0',
             realBtcReserve: price.realBtcReserve ?? existing?.realBtcReserve ?? '0',
             isOptimistic: price.isOptimistic ?? existing?.isOptimistic ?? false,
           },

@@ -223,8 +223,9 @@ export function TokenPage() {
               <TabsContent value="curve">
                 <div className="space-y-4">
                   <BondingCurveVisual
-                    virtualBtcReserve={token.virtualBtcReserve}
-                    virtualTokenSupply={token.virtualTokenSupply}
+                    currentSupplyOnCurve={token.currentSupplyOnCurve}
+                    aScaled={token.aScaled}
+                    bScaled={token.bScaled}
                     realBtcReserve={token.realBtcReserve}
                     btcPrice={btcPrice}
                   />

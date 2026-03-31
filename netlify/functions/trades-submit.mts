@@ -12,7 +12,8 @@ import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
 import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount, graduateToken } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
-import { INITIAL_VIRTUAL_TOKEN_SUPPLY, PRICE_PRECISION, PRICE_DISPLAY_DIVISOR, TOTAL_FEE_BPS, FEE_DENOMINATOR, GRADUATION_THRESHOLD_SATS } from "./_shared/constants.mts";
+import { PRICE_PRECISION, TOTAL_FEE_BPS, FEE_DENOMINATOR, GRADUATION_THRESHOLD_SATS, DEFAULT_MAX_SUPPLY, TOKEN_UNITS_PER_TOKEN } from "./_shared/constants.mts";
+import { calculatePrice } from "./_shared/bonding-curve.mts";
 
 interface TradeSubmitBody {
   txHash: string;
@@ -102,35 +103,34 @@ export default async (req: Request, _context: Context) => {
     if (token) {
       const btcAmountBig = BigInt(body.btcAmount);
 
-      // Approximate marketCap from optimistic price
-      const scaledPrice = BigInt(Math.round(Number(body.pricePerToken) * PRICE_DISPLAY_DIVISOR));
-      const marketCapSats = (scaledPrice * INITIAL_VIRTUAL_TOKEN_SUPPLY / PRICE_PRECISION).toString();
-
       // --- Optimistic reserve updates (mempool-first) ---
-      // Compute new reserves using the bonding curve AMM formula so the
+      // Compute new supply using the exponential bonding curve so the
       // graduation progress bar and bonding curve visual update immediately.
-      const curVBtc = BigInt(token.virtualBtcReserve);
-      const curVToken = BigInt(token.virtualTokenSupply);
+      const curSupply = BigInt(token.currentSupplyOnCurve);
       const curRealBtc = BigInt(token.realBtcReserve);
-      const k = BigInt(token.kConstant);
+      const aScaled = BigInt(token.aScaled);
+      const bScaled = BigInt(token.bScaled);
 
-      let newVBtc: bigint;
-      let newVToken: bigint;
+      let newSupply: bigint;
       let newRealBtc: bigint;
 
       if (body.type === "buy") {
         const fee = (btcAmountBig * TOTAL_FEE_BPS) / FEE_DENOMINATOR;
         const btcAfterFee = btcAmountBig - fee;
-        newVBtc = curVBtc + btcAfterFee;
-        newVToken = k / newVBtc;
+        const tokensOut = BigInt(body.tokenAmount);
+        newSupply = curSupply + tokensOut;
         newRealBtc = curRealBtc + btcAfterFee;
       } else {
         const tokensIn = BigInt(body.tokenAmount);
-        newVToken = curVToken + tokensIn;
-        newVBtc = k / newVToken;
-        const btcOutBeforeFee = curVBtc - newVBtc;
-        newRealBtc = curRealBtc - btcOutBeforeFee;
+        newSupply = curSupply - tokensIn;
+        // Approximate gross payout: net / (1 - feeRate)
+        const grossBtcOut = (btcAmountBig * FEE_DENOMINATOR) / (FEE_DENOMINATOR - TOTAL_FEE_BPS);
+        newRealBtc = curRealBtc - grossBtcOut;
       }
+
+      // Compute new price and market cap from the exponential curve
+      const newPriceScaled = calculatePrice(aScaled, bScaled, newSupply);
+      const marketCapSats = (newPriceScaled * DEFAULT_MAX_SUPPLY / (PRICE_PRECISION * TOKEN_UNITS_PER_TOKEN)).toString();
 
       // Check if this buy caused graduation (mempool-first)
       let newStatus = token.status;
@@ -146,8 +146,7 @@ export default async (req: Request, _context: Context) => {
         volumeTotal: (BigInt(token.volumeTotal || "0") + btcAmountBig).toString(),
         holderCount: await getHolderCount(trade.tokenAddress),
         marketCapSats,
-        virtualBtcReserve: newVBtc.toString(),
-        virtualTokenSupply: newVToken.toString(),
+        currentSupplyOnCurve: newSupply.toString(),
         realBtcReserve: newRealBtc.toString(),
         status: newStatus,
       });

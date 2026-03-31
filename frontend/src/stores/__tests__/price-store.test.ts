@@ -19,8 +19,9 @@ describe('price-store', () => {
     it('merges partial updates without overwriting unset fields', () => {
       usePriceStore.getState().setLivePrice(TOKEN, {
         currentPriceSats: '0.5',
-        virtualBtcReserve: '3000000000',
-        virtualTokenSupply: '10000000000',
+        currentSupplyOnCurve: '10000000000',
+        aScaled: '1000000000000000000',
+        bScaled: '2000000000000000000',
         realBtcReserve: '500000',
         isOptimistic: false,
       });
@@ -31,7 +32,7 @@ describe('price-store', () => {
 
       const lp = usePriceStore.getState().livePrices[TOKEN];
       expect(lp.currentPriceSats).toBe('0.6');
-      expect(lp.virtualBtcReserve).toBe('3000000000');
+      expect(lp.currentSupplyOnCurve).toBe('10000000000');
       expect(lp.isOptimistic).toBe(true);
     });
   });

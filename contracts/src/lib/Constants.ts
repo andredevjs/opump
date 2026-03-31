@@ -1,12 +1,10 @@
 import { u256 } from '@btc-vision/as-bignum/assembly';
 
-// Virtual reserves (initial bonding curve state)
-// virtualBtc is small relative to graduation threshold to create ~100x price curve
-export const INITIAL_VIRTUAL_BTC: u256 = u256.fromString('767000'); // 0.00767 BTC — ~100x at graduation
-export const INITIAL_VIRTUAL_TOKEN: u256 = u256.fromString('100000000000000000'); // 1B * 10^8
+// ── Exponential bonding curve ───────────────────────────
+// Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
 
-// Default max supply
-export const DEFAULT_MAX_SUPPLY: u256 = u256.fromString('100000000000000000'); // 1B * 10^8
+// Default max supply: 1B tokens * 10^8 decimals
+export const DEFAULT_MAX_SUPPLY: u256 = u256.fromString('100000000000000000');
 
 // Graduation threshold
 export const DEFAULT_GRADUATION_THRESHOLD: u256 = u256.fromString('6900000'); // 0.069 BTC
@@ -32,9 +30,22 @@ export const RESERVATION_TTL_BLOCKS: u256 = u256.fromU32(3);
 export const MAX_BUY_TAX_BPS: u256 = u256.fromU32(300); // 3%
 export const MAX_SELL_TAX_BPS: u256 = u256.fromU32(500); // 5%
 
-// Reserved for future cancellation refund mechanism — not yet implemented
+// Reserved for future cancellation refund mechanism
 export const CANCEL_PENALTY_BPS: u256 = u256.fromU32(5000); // 50%
 
 // Price precision factor for on-chain price calculation (10^18)
-// Needed because initial price is sub-sat with small virtualBtc
 export const PRICE_PRECISION: u256 = u256.fromString('1000000000000000000');
+
+// ── Exponential curve constants ─────────────────────────
+
+// Token units per whole token (10^8 for 8 decimals)
+export const TOKEN_UNITS_PER_TOKEN: u256 = u256.fromString('100000000');
+
+// ln(100) * 10^18 — hardcoded for precision
+export const LN_100_SCALED: u256 = u256.fromString('4605170185988091368');
+
+// Graduation at 80% of curve supply sold (basis points)
+export const GRAD_SUPPLY_FRACTION_BPS: u256 = u256.fromU32(8000);
+
+// Price multiplier - 1 = 99 (used in parameter derivation)
+export const PRICE_MULTIPLIER_MINUS_1: u256 = u256.fromU32(99);

@@ -79,8 +79,9 @@ export interface SimulateSellResponse {
 // Price endpoint
 export interface PriceResponse {
   currentPriceSats: string;
-  virtualBtcReserve: string;
-  virtualTokenSupply: string;
+  currentSupplyOnCurve: string;
+  aScaled: string;
+  bScaled: string;
   realBtcReserve: string;
   isOptimistic: boolean;
   change24hBps: number;

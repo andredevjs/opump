@@ -8,9 +8,10 @@ export interface Token {
   creatorAddress: string;
   createdAt: number; // timestamp ms
 
-  // Reserves (in sats / token-units)
-  virtualBtcReserve: string; // BigNumber string
-  virtualTokenSupply: string;
+  // Bonding curve state (BigNumber strings)
+  currentSupplyOnCurve: string;
+  aScaled: string;
+  bScaled: string;
   realBtcReserve: string;
 
   // Derived

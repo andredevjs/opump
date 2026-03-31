@@ -5,17 +5,16 @@ BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_DOWN });
 export const SATS_PER_BTC = 100_000_000;
 export const TOKEN_UNITS_PER_TOKEN = 10 ** 8; // 100_000_000
 
-// Bonding curve initial virtual reserves
-// virtualBtc is small relative to graduation threshold for ~100x price curve
-export const INITIAL_VIRTUAL_BTC_SATS = new BigNumber('767000'); // 0.00767 BTC
-export const INITIAL_VIRTUAL_TOKEN_SUPPLY = new BigNumber('100000000000000000'); // 1B tokens * 10^8 decimals
-export const K = INITIAL_VIRTUAL_BTC_SATS.times(INITIAL_VIRTUAL_TOKEN_SUPPLY);
+// ── Exponential bonding curve ───────────────────────────
+// Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
+// Default supply: 1B tokens * 10^8 decimals
+export const DEFAULT_MAX_SUPPLY = new BigNumber('100000000000000000');
 
 // Graduation threshold
 export const GRADUATION_THRESHOLD_SATS = 6_900_000; // 6.9M sats
 
 // Total supply in whole tokens (for price → mcap conversion)
-export const TOTAL_SUPPLY_WHOLE_TOKENS = 1_000_000_000; // 1B tokens (INITIAL_VIRTUAL_TOKEN_SUPPLY / TOKEN_UNITS_PER_TOKEN)
+export const TOTAL_SUPPLY_WHOLE_TOKENS = 1_000_000_000; // 1B tokens
 
 // Fee structure (percentages — matches shared TOTAL_FEE_BPS=125, i.e. 1.25%)
 export const TOTAL_FEE_PERCENT = 1.25;      // 125 bps

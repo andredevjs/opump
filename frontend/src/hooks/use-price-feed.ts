@@ -3,7 +3,9 @@ import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
 import { usePriceStore } from '@/stores/price-store';
 import { useUIStore } from '@/stores/ui-store';
-import { PRICE_UPDATE_INTERVAL_MS, INITIAL_VIRTUAL_TOKEN_SUPPLY, GRADUATION_THRESHOLD_SATS } from '@/config/constants';
+import { PRICE_UPDATE_INTERVAL_MS, GRADUATION_THRESHOLD_SATS, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
+import { getCurrentPrice } from '@/lib/bonding-curve';
+import BigNumber from 'bignumber.js';
 import type { TimeframeKey } from '@/types/api';
 import * as api from '@/services/api';
 import { computeOptimistic24hChange } from '@/lib/price-utils';
@@ -49,19 +51,22 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         if (priceResp) {
           setLivePrice(addr, {
             currentPriceSats: priceResp.currentPriceSats,
-            virtualBtcReserve: priceResp.virtualBtcReserve,
-            virtualTokenSupply: priceResp.virtualTokenSupply,
+            currentSupplyOnCurve: priceResp.currentSupplyOnCurve,
+            aScaled: priceResp.aScaled,
+            bScaled: priceResp.bScaled,
             realBtcReserve: priceResp.realBtcReserve,
             isOptimistic: priceResp.isOptimistic,
           });
           updateTokenPrice(addr, Number(priceResp.currentPriceSats), priceResp.change24hBps / 100);
 
           // Update market cap and graduation progress from price data
-          if (priceResp.virtualBtcReserve != null && priceResp.virtualTokenSupply != null) {
-            const vBtc = Number(priceResp.virtualBtcReserve);
-            const vToken = Number(priceResp.virtualTokenSupply);
-            const initSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
-            const marketCapSats = vToken > 0 ? (vBtc / vToken) * initSupply : 0;
+          if (priceResp.currentSupplyOnCurve != null && priceResp.aScaled != null && priceResp.bScaled != null) {
+            const spotPrice = getCurrentPrice(
+              new BigNumber(priceResp.currentSupplyOnCurve),
+              new BigNumber(priceResp.aScaled),
+              new BigNumber(priceResp.bScaled),
+            );
+            const marketCapSats = spotPrice * TOTAL_SUPPLY_WHOLE_TOKENS;
             const statsUpdate: { marketCapSats: number; realBtcReserve?: string; graduationProgress?: number } = { marketCapSats };
             if (priceResp.realBtcReserve != null) {
               statsUpdate.realBtcReserve = priceResp.realBtcReserve;
@@ -94,8 +99,9 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         const newPrice = Number(price.currentPriceSats);
         setLivePrice(token.address, {
           currentPriceSats: price.currentPriceSats,
-          virtualBtcReserve: price.virtualBtcReserve,
-          virtualTokenSupply: price.virtualTokenSupply,
+          currentSupplyOnCurve: price.currentSupplyOnCurve,
+          aScaled: price.aScaled,
+          bScaled: price.bScaled,
           realBtcReserve: price.realBtcReserve,
           isOptimistic: price.isOptimistic,
         });
@@ -108,11 +114,13 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         updateTokenPrice(token.address, newPrice, newChange);
 
         // Update market cap and graduation progress
-        if (price.virtualBtcReserve != null && price.virtualTokenSupply != null) {
-          const vBtc = Number(price.virtualBtcReserve);
-          const vToken = Number(price.virtualTokenSupply);
-          const initSupply = INITIAL_VIRTUAL_TOKEN_SUPPLY.toNumber();
-          const marketCapSats = vToken > 0 ? (vBtc / vToken) * initSupply : 0;
+        if (price.currentSupplyOnCurve != null && price.aScaled != null && price.bScaled != null) {
+          const spotPrice = getCurrentPrice(
+            new BigNumber(price.currentSupplyOnCurve),
+            new BigNumber(price.aScaled),
+            new BigNumber(price.bScaled),
+          );
+          const marketCapSats = spotPrice * TOTAL_SUPPLY_WHOLE_TOKENS;
           const statsUpdate: { marketCapSats: number; realBtcReserve?: string; graduationProgress?: number } = { marketCapSats };
           if (price.realBtcReserve != null) {
             statsUpdate.realBtcReserve = price.realBtcReserve;

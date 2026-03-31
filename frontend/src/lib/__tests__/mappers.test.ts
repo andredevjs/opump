@@ -12,10 +12,10 @@ function makeApiToken(overrides: Partial<TokenDetailResponse & { priceChange24hB
     socials: {},
     creatorAddress: 'bcrt1qcreator',
     contractAddress: 'bcrt1qtest123',
-    virtualBtcReserve: '767000',
-    virtualTokenSupply: '100000000000000000',
-    kConstant: '76700000000000000000000',
+    currentSupplyOnCurve: '0',
     realBtcReserve: '0',
+    aScaled: '69696969696969',
+    bScaled: '46046046046046046',
     config: {
       creatorAllocationBps: 500,
       airdropBps: 0,

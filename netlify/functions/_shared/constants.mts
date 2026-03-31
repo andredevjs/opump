@@ -4,9 +4,9 @@
  * Keep in sync with shared/constants/bonding-curve.ts.
  */
 
-export const INITIAL_VIRTUAL_BTC_SATS = 767_000n; // 0.00767 BTC — ~100x at graduation
-export const INITIAL_VIRTUAL_TOKEN_SUPPLY = 100_000_000_000_000_000n;
-export const K_CONSTANT = INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY;
+// ── Exponential bonding curve ───────────────────────────
+// Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
+
 export const GRADUATION_THRESHOLD_SATS = 6_900_000n;
 export const MIN_TRADE_SATS = 10_000n;
 export const PLATFORM_FEE_BPS = 100n;
@@ -14,8 +14,13 @@ export const CREATOR_FEE_BPS = 25n;
 export const TOTAL_FEE_BPS = 125n;
 export const FEE_DENOMINATOR = 10_000n;
 export const TOKEN_DECIMALS = 8;
+export const TOKEN_UNITS_PER_TOKEN = 10n ** BigInt(TOKEN_DECIMALS); // 10^8
 export const PRICE_PRECISION = 10n ** 18n;
 export const PRICE_DISPLAY_DIVISOR = 1e10; // PRICE_PRECISION / 10^TOKEN_DECIMALS
+export const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8
+
+// Graduation at 80% of curve supply sold (basis points)
+export const GRAD_SUPPLY_FRACTION_BPS = 8_000n;
 
 // IMPORTANT: Keep in sync with shared/types/ and shared/constants/
 // Shared type definitions (mirrored from shared/types/)
@@ -57,10 +62,10 @@ export interface TokenDocument {
   socials: TokenSocials;
   creatorAddress: string;
   contractAddress: string;
-  virtualBtcReserve: string;
-  virtualTokenSupply: string;
-  kConstant: string;
+  currentSupplyOnCurve: string;
   realBtcReserve: string;
+  aScaled: string;
+  bScaled: string;
   config: TokenConfig;
   status: TokenStatus;
   currentPriceSats: string;

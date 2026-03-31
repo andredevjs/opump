@@ -33,8 +33,9 @@ export default async (req: Request, context: Context) => {
 
     return json({
       currentPriceSats: token.currentPriceSats,
-      virtualBtcReserve: token.virtualBtcReserve,
-      virtualTokenSupply: token.virtualTokenSupply,
+      currentSupplyOnCurve: token.currentSupplyOnCurve,
+      aScaled: token.aScaled,
+      bScaled: token.bScaled,
       realBtcReserve: token.realBtcReserve,
       isOptimistic: false,
       change24hBps,

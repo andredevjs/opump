@@ -1,7 +1,7 @@
 import * as Progress from '@radix-ui/react-progress';
 import { cn } from '@/lib/cn';
 import { formatBtc, formatMcapUsd, priceSatsToMcapUsd } from '@/lib/format';
-import { GRADUATION_THRESHOLD_SATS, SATS_PER_BTC, INITIAL_VIRTUAL_BTC_SATS, K, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
+import { GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TokenStatus } from '@/types/token';
 
 interface GraduationProgressProps {
@@ -21,13 +21,6 @@ function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): 
   return 'Graduation Progress';
 }
 
-function computeGraduationMcapUsd(btcPrice: number): number {
-  const gradVBtc = INITIAL_VIRTUAL_BTC_SATS.toNumber() + GRADUATION_THRESHOLD_SATS;
-  const gradVToken = K.div(gradVBtc).toNumber();
-  const gradPrice = gradVBtc * TOKEN_UNITS_PER_TOKEN / gradVToken;
-  return gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS / SATS_PER_BTC * btcPrice;
-}
-
 export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice, currentPriceSats }: GraduationProgressProps) {
   const isGraduated = progress >= 100;
   const isMigrating = status === 'migrating';
@@ -35,7 +28,6 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
 
   const showUsd = btcPrice != null && btcPrice > 0;
   const currentMcapUsd = showUsd ? priceSatsToMcapUsd(currentPriceSats ?? 0, btcPrice!) : 0;
-  const gradMcapUsd = showUsd ? computeGraduationMcapUsd(btcPrice!) : 0;
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -64,7 +56,7 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
       {!compact && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>{showUsd ? formatMcapUsd(currentMcapUsd) : formatBtc(realBtcSats)}</span>
-          <span>{showUsd ? formatMcapUsd(gradMcapUsd) : formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
+          <span>{formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
         </div>
       )}
     </div>

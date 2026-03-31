@@ -132,11 +132,7 @@
             "inputs": [],
             "outputs": [
                 {
-                    "name": "virtualBtc",
-                    "type": "UINT256"
-                },
-                {
-                    "name": "virtualToken",
+                    "name": "currentSupplyOnCurve",
                     "type": "UINT256"
                 },
                 {
@@ -144,7 +140,11 @@
                     "type": "UINT256"
                 },
                 {
-                    "name": "k",
+                    "name": "aScaled",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "bScaled",
                     "type": "UINT256"
                 }
             ]
