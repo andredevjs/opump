@@ -22,7 +22,7 @@ export const opnetMockState = {
       buyTax: 0n,
       sellTax: 0n,
       destination: 0n,
-      threshold: 6_900_000n,
+      threshold: 69_000_000n,
     },
   },
   blocks: new Map<number, Record<string, unknown>>(),
@@ -49,7 +49,7 @@ export function resetOpnetMock(): void {
       buyTax: 0n,
       sellTax: 0n,
       destination: 0n,
-      threshold: 6_900_000n,
+      threshold: 69_000_000n,
     },
   };
   opnetMockState.blocks.clear();

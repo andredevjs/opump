@@ -12,7 +12,7 @@ import { LaunchTokenRuntime, LaunchTokenConfig, DEFAULT_CONFIG } from './runtime
 const INITIAL_VIRTUAL_BTC = 767_000n; // 0.00767 BTC
 const INITIAL_VIRTUAL_TOKEN = 100_000_000_000_000_000n; // 1B * 10^8
 const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n;
-const DEFAULT_GRADUATION_THRESHOLD = 6_900_000n; // 0.069 BTC
+const DEFAULT_GRADUATION_THRESHOLD = 69_000_000n; // 0.69 BTC
 const MIN_TRADE_AMOUNT = 10_000n;
 const FEE_DENOMINATOR = 10_000n;
 
@@ -702,8 +702,8 @@ await opnet('LaunchToken', async (vm: OPNetUnit) => {
 
     await vm.it('should revert buy that exceeds graduation threshold', async () => {
         const buyer = Blockchain.generateRandomAddress();
-        // DEFAULT_GRADUATION_THRESHOLD is 6_900_000 sats. Try to buy more than that.
-        const hugeAmount = 10_000_000n;
+        // DEFAULT_GRADUATION_THRESHOLD is 69_000_000 sats. Try to buy more than that.
+        const hugeAmount = 100_000_000n;
         setTxWithOutput(vaultAddress, hugeAmount);
         await Assert.expect(async () => {
             await token.buy(hugeAmount, buyer);

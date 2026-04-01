@@ -1,6 +1,6 @@
 import * as Progress from '@radix-ui/react-progress';
 import { cn } from '@/lib/cn';
-import { formatBtc, formatMcapUsd, priceSatsToMcapUsd } from '@/lib/format';
+import { formatBtc, formatMcapUsd, formatUsd, priceSatsToMcapUsd } from '@/lib/format';
 import { GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TokenStatus } from '@/types/token';
 
@@ -56,7 +56,7 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
       {!compact && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>{showUsd ? formatMcapUsd(currentMcapUsd) : formatBtc(realBtcSats)}</span>
-          <span>{formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
+          <span>{showUsd ? formatUsd(GRADUATION_THRESHOLD_SATS, btcPrice!) : formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
         </div>
       )}
     </div>

@@ -12,7 +12,7 @@ import {
   DEFAULT_MAX_SUPPLY,
   FEE_DENOMINATOR,
   GRADUATION_THRESHOLD_SATS,
-  PRICE_DISPLAY_DIVISOR,
+  PRICE_PRECISION,
 } from "./constants.mts";
 import { deriveParams, calculatePrice } from "./bonding-curve.mts";
 
@@ -159,7 +159,7 @@ export async function handleCreateToken(req: Request): Promise<Response> {
   const curveSupply = (DEFAULT_MAX_SUPPLY * curveBps) / FEE_DENOMINATOR;
   const { aScaled, bScaled } = deriveParams(curveSupply, GRADUATION_THRESHOLD_SATS);
 
-  const initialPrice = (Number(calculatePrice(aScaled, bScaled, 0n)) / PRICE_DISPLAY_DIVISOR).toString();
+  const initialPrice = (Number(calculatePrice(aScaled, bScaled, 0n)) / Number(PRICE_PRECISION)).toString();
 
   const tokenDoc: TokenDocument = {
     _id: body.contractAddress,

@@ -7,7 +7,7 @@
  */
 
 // Graduation
-export const GRADUATION_THRESHOLD_SATS = 6_900_000n; // 0.069 BTC
+export const GRADUATION_THRESHOLD_SATS = 69_000_000n; // 0.69 BTC
 
 // Trade limits
 export const MIN_TRADE_SATS = 10_000n; // ~$1

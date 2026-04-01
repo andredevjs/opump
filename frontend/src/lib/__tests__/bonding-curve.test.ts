@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import BigNumber from 'bignumber.js';
 import { calculateBuy, calculateSell, getCurrentPrice, getGraduationProgress, getMarketCap } from '../bonding-curve';
 
-// Pre-computed from: curveSupply=1e17, gradThreshold=6900000
-const A_SCALED = new BigNumber('401338085046');
+// Pre-computed from: curveSupply=1e17, gradThreshold=69000000
+const A_SCALED = new BigNumber('4013380850460');
 const B_SCALED = new BigNumber('5756462732');
 const ZERO_SUPPLY = new BigNumber('0');
 
@@ -139,15 +139,15 @@ describe('bonding-curve', () => {
     });
 
     it('returns 50 for half the threshold', () => {
-      expect(getGraduationProgress(3_450_000)).toBe(50);
+      expect(getGraduationProgress(34_500_000)).toBe(50);
     });
 
     it('caps at 100', () => {
-      expect(getGraduationProgress(10_000_000)).toBe(100);
+      expect(getGraduationProgress(100_000_000)).toBe(100);
     });
 
     it('returns exact 100 at threshold', () => {
-      expect(getGraduationProgress(6_900_000)).toBe(100);
+      expect(getGraduationProgress(69_000_000)).toBe(100);
     });
   });
 

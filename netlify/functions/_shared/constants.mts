@@ -7,7 +7,7 @@
 // ── Exponential bonding curve ───────────────────────────
 // Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
 
-export const GRADUATION_THRESHOLD_SATS = 6_900_000n;
+export const GRADUATION_THRESHOLD_SATS = 69_000_000n;
 export const MIN_TRADE_SATS = 10_000n;
 export const PLATFORM_FEE_BPS = 100n;
 export const CREATOR_FEE_BPS = 25n;

@@ -37,9 +37,20 @@ import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
 import { decodeBuyEvent, decodeSellEvent, decodeMigrationEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
 import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 
-/** Convert a PRICE_PRECISION-scaled bigint to "sats per whole token" string */
+/**
+ * Convert an effective-price-per-unit value (btcSats * PRICE_PRECISION / tokenUnits)
+ * to "sats per whole token" string.
+ */
 function toDisplayPrice(scaled: bigint): string {
   return (Number(scaled) / PRICE_DISPLAY_DIVISOR).toString();
+}
+
+/**
+ * Convert a calculatePrice() result (sats-per-whole-token × PRICE_PRECISION)
+ * to "sats per whole token" string.
+ */
+function spotPriceToDisplay(scaled: bigint): string {
+  return (Number(scaled) / Number(PRICE_PRECISION)).toString();
 }
 
 /**
@@ -356,7 +367,7 @@ async function processBuyEvent(
   // Only write OHLCV if this is a brand-new trade (no pending version existed).
   // When isNew=false, the pending trade from trades-submit already wrote OHLCV.
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
     const priceSats = Number(spotPrice);
     const volumeSats = Number(data.btcIn);
     const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
@@ -403,7 +414,7 @@ async function processSellEvent(
   const { isNew } = await saveTrade(trade);
 
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? toDisplayPrice(data.newPrice) : pricePerToken;
+    const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
     const priceSats = Number(spotPrice);
     const volumeSats = Number(data.btcOut);
     const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
@@ -469,7 +480,7 @@ async function syncTokenReserves(
         aScaled: aScaled.toString(),
         bScaled: bScaled.toString(),
         realBtcReserve: realBtc.toString(),
-        currentPriceSats: toDisplayPrice(currentPriceScaled),
+        currentPriceSats: spotPriceToDisplay(currentPriceScaled),
         marketCapSats: marketCap.toString(),
       });
     }

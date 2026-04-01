@@ -29,7 +29,7 @@ export function makeToken(overrides?: Partial<TokenDocument>): TokenDocument {
       buyTaxBps: 0,
       sellTaxBps: 0,
       flywheelDestination: 'burn',
-      graduationThreshold: '6900000',
+      graduationThreshold: '69000000',
     },
     status: 'active',
     currentPriceSats: '7670',

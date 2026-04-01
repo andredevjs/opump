@@ -22,7 +22,7 @@ function makeApiToken(overrides: Partial<TokenDetailResponse & { priceChange24hB
       buyTaxBps: 100,
       sellTaxBps: 200,
       flywheelDestination: 'burn',
-      graduationThreshold: '6900000',
+      graduationThreshold: '69000000',
     },
     status: 'active',
     currentPriceSats: '7.67',
@@ -112,7 +112,7 @@ describe('mapApiTokenToToken', () => {
         buyTaxBps: 300,
         sellTaxBps: 500,
         flywheelDestination: 'burn',
-        graduationThreshold: '6900000',
+        graduationThreshold: '69000000',
       },
     }));
     expect(token.creatorAllocationPercent).toBe(10); // 1000 bps = 10%
@@ -143,16 +143,16 @@ describe('mapApiTokenToToken', () => {
   });
 
   it('calculates graduation progress as percentage', () => {
-    // realBtcReserve = 3450000, threshold = 6900000 → 50%
+    // realBtcReserve = 34500000, threshold = 69000000 → 50%
     const token = mapApiTokenToToken(makeApiToken({
-      realBtcReserve: '3450000',
+      realBtcReserve: '34500000',
       config: {
         creatorAllocationBps: 0,
         airdropBps: 0,
         buyTaxBps: 0,
         sellTaxBps: 0,
         flywheelDestination: 'burn',
-        graduationThreshold: '6900000',
+        graduationThreshold: '69000000',
       },
     }));
     expect(token.graduationProgress).toBe(50);

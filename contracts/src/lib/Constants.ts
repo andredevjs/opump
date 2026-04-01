@@ -7,7 +7,7 @@ import { u256 } from '@btc-vision/as-bignum/assembly';
 export const DEFAULT_MAX_SUPPLY: u256 = u256.fromString('100000000000000000');
 
 // Graduation threshold
-export const DEFAULT_GRADUATION_THRESHOLD: u256 = u256.fromString('6900000'); // 0.069 BTC
+export const DEFAULT_GRADUATION_THRESHOLD: u256 = u256.fromString('69000000'); // 0.69 BTC
 
 // Trade limits
 export const MIN_TRADE_AMOUNT: u256 = u256.fromString('10000'); // 10,000 sats

@@ -267,13 +267,13 @@ describe('simulateBuy', () => {
   });
 
   it('throws when buy exceeds graduation threshold', () => {
-    expect(() => sim.simulateBuy(freshReserves(), 7_100_000n)).toThrow('Exceeds graduation');
+    expect(() => sim.simulateBuy(freshReserves(), 71_000_000n)).toThrow('Exceeds graduation');
   });
 
   it('succeeds right at graduation threshold', () => {
-    // netBtc = btcAmount * (10000 - 125) / 10000 <= 6_900_000
-    // btcAmount <= 6_900_000 * 10000 / 9875 = 6_987_341
-    const maxBuy = 6_987_341n;
+    // netBtc = btcAmount * (10000 - 125) / 10000 <= 69_000_000
+    // btcAmount <= 69_000_000 * 10000 / 9875 = 69_873_417
+    const maxBuy = 69_873_417n;
     expect(() => sim.simulateBuy(freshReserves(), maxBuy)).not.toThrow();
   });
 
@@ -410,7 +410,7 @@ describe('sequential buys', () => {
 describe('graduation scenario', () => {
   it('many small buys eventually reach graduation', () => {
     let reserves = freshReserves();
-    const buyAmount = 500_000n; // 500k sats per trade
+    const buyAmount = 5_000_000n; // 5M sats per trade
     let totalBtcIn = 0n;
     let tradeCount = 0;
 

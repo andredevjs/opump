@@ -65,8 +65,8 @@ describe('shared constants', () => {
   });
 
   describe('graduation', () => {
-    it('graduation threshold = 6.9M sats', () => {
-      expect(GRADUATION_THRESHOLD_SATS).toBe(6_900_000n);
+    it('graduation threshold = 69M sats (0.69 BTC)', () => {
+      expect(GRADUATION_THRESHOLD_SATS).toBe(69_000_000n);
     });
   });
 

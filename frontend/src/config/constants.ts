@@ -11,7 +11,7 @@ export const TOKEN_UNITS_PER_TOKEN = 10 ** 8; // 100_000_000
 export const DEFAULT_MAX_SUPPLY = new BigNumber('100000000000000000');
 
 // Graduation threshold
-export const GRADUATION_THRESHOLD_SATS = 6_900_000; // 6.9M sats
+export const GRADUATION_THRESHOLD_SATS = 69_000_000; // 69M sats (0.69 BTC)
 
 // Total supply in whole tokens (for price → mcap conversion)
 export const TOTAL_SUPPLY_WHOLE_TOKENS = 1_000_000_000; // 1B tokens
