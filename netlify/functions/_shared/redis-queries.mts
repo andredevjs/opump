@@ -22,6 +22,8 @@ const TRADE_TRADER_INDEX = (traderAddr: string) => `op:idx:trade:trader:${trader
 const TOKEN_HOLDERS_SET = (tokenAddr: string) => `op:holders:${tokenAddr}`;
 const TOKEN_HOLDER_BALANCES = (tokenAddr: string) => `op:holders:bal:${tokenAddr}`;
 
+const STAGED_TRADE_KEY = (txHash: string) => `op:staged-trade:${txHash}`;
+
 const STATS_KEY = "op:stats";
 const INDEXER_LAST_BLOCK = "op:indexer:lastBlock";
 const INDEXER_LOCK = "op:indexer:lock";
@@ -218,6 +220,113 @@ export async function updateToken(contractAddress: string, fields: Partial<Recor
   await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
 }
 
+/**
+ * Atomically update token reserves if:
+ *   (a) reserveVersion hasn't changed since we read, AND
+ *   (b) this txHash hasn't already been applied to reserves.
+ *
+ * Uses a Lua script that checks both conditions in one round trip.
+ * A per-token set (op:applied-trades:{addr}) tracks which txHashes
+ * have had their reserve impact applied, preventing double-counting
+ * even when the full trade record hasn't been written yet.
+ *
+ * After the atomic write, indexes are refreshed from the canonical
+ * hash state (not precomputed values) so a slower CAS winner can't
+ * overwrite indexes that a later winner already set correctly.
+ */
+
+/**
+ * Stage trade data before CAS so it can be recovered if the function
+ * crashes between CAS (reserves applied) and side effects (saveTrade,
+ * OHLCV, stats, referral). Uses NX so only the first computation is
+ * kept — retries with stale reserves won't overwrite it.
+ * TTL of 1 hour provides automatic cleanup for orphaned entries.
+ */
+export async function stageTrade(txHash: string, data: string): Promise<boolean> {
+  const redis = getRedis();
+  const result = await redis.set(STAGED_TRADE_KEY(txHash), data, { nx: true, ex: 3600 });
+  return result === "OK";
+}
+
+export async function getStagedTrade(txHash: string): Promise<string | null> {
+  const redis = getRedis();
+  return redis.get<string>(STAGED_TRADE_KEY(txHash));
+}
+
+export async function clearStagedTrade(txHash: string): Promise<void> {
+  const redis = getRedis();
+  await redis.del(STAGED_TRADE_KEY(txHash));
+}
+
+export async function compareAndSwapReserves(
+  contractAddress: string,
+  expectedVersion: number,
+  txHash: string,
+  fields: Record<string, string | number>,
+): Promise<"ok" | "version_mismatch" | "trade_already_applied"> {
+  const redis = getRedis();
+  const tokenKey = TOKEN_KEY(contractAddress);
+  const appliedKey = `op:applied-trades:${contractAddress}`;
+
+  const luaScript = `
+    -- Gate 1: dedup — has this trade already mutated reserves?
+    if redis.call('SISMEMBER', KEYS[2], ARGV[2]) == 1 then
+      return -1
+    end
+    -- Gate 2: optimistic lock on reserveVersion
+    local current = tonumber(redis.call('HGET', KEYS[1], 'reserveVersion') or '0')
+    if current ~= tonumber(ARGV[1]) then
+      return 0
+    end
+    -- Write reserves + bump version
+    local newVersion = current + 1
+    -- ARGV layout: [expectedVersion, txHash, field1, val1, ..., updatedAt]
+    local args = {}
+    for i = 3, #ARGV - 1, 2 do
+      args[#args + 1] = ARGV[i]
+      args[#args + 1] = ARGV[i + 1]
+    end
+    args[#args + 1] = 'reserveVersion'
+    args[#args + 1] = tostring(newVersion)
+    args[#args + 1] = 'updatedAt'
+    args[#args + 1] = ARGV[#ARGV]
+    redis.call('HSET', KEYS[1], unpack(args))
+    -- Record this trade as applied so no concurrent request can re-apply
+    redis.call('SADD', KEYS[2], ARGV[2])
+    return 1
+  `;
+
+  // Build flat ARGV: [expectedVersion, txHash, field1, val1, ..., updatedAt]
+  const argv: (string | number)[] = [expectedVersion, txHash];
+  for (const [k, v] of Object.entries(fields)) {
+    argv.push(k, String(v));
+  }
+  argv.push(new Date().toISOString());
+
+  const result = await redis.eval(luaScript, [tokenKey, appliedKey], argv);
+  if (result === -1) return "trade_already_applied";
+  if (result !== 1) return "version_mismatch";
+
+  // Refresh sort indexes from the canonical hash (what's in Redis NOW),
+  // not our precomputed values. A faster concurrent request may have
+  // already written newer state — reading the hash guarantees we never
+  // regress indexes to stale values.
+  const [canonicalStatus, canonicalPrice, canonicalVolume, canonicalMarketCap] = await Promise.all([
+    redis.hget<string>(tokenKey, "status"),
+    redis.hget<string>(tokenKey, "currentPriceSats"),
+    redis.hget<string>(tokenKey, "volume24h"),
+    redis.hget<string>(tokenKey, "marketCapSats"),
+  ]);
+
+  const indexFields: Partial<Record<string, string | number>> = {};
+  if (canonicalPrice !== null) indexFields.currentPriceSats = canonicalPrice;
+  if (canonicalVolume !== null) indexFields.volume24h = canonicalVolume;
+  if (canonicalMarketCap !== null) indexFields.marketCapSats = canonicalMarketCap;
+
+  await refreshTokenIndexes(contractAddress, canonicalStatus || "active", indexFields);
+  return "ok";
+}
+
 async function refreshTokenIndexes(contractAddress: string, status: string, fields: Partial<Record<string, string | number>>): Promise<void> {
   const redis = getRedis();
   const pipe = redis.pipeline();
@@ -359,21 +468,47 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
   const redis = getRedis();
   const key = TRADE_KEY(trade._id);
 
-  // Preserve original fields from the pending version when the indexer confirms
-  const existing = await redis.hmget<Record<string, string | null>>(key, "createdAt", "traderAddress");
-  const existingCreatedAt = existing?.createdAt ?? null;
-  const existingTraderAddress = existing?.traderAddress ?? null;
+  // Check if a pending or confirmed version already exists
+  const [existingCreatedAt, existingTraderAddress, existingStatus] = await Promise.all([
+    redis.hget<string>(key, "createdAt"),
+    redis.hget<string>(key, "traderAddress"),
+    redis.hget<string>(key, "status"),
+  ]);
   const isNew = !existingCreatedAt;
-  if (existingCreatedAt) {
-    trade = {
+
+  if (!isNew) {
+    // Never allow a late pending write to downgrade an already confirmed trade.
+    if (existingStatus === "confirmed" && trade.status !== "confirmed") {
+      return { isNew: false };
+    }
+
+    // Preserve the original createdAt for ordering and keep the original
+    // traderAddress so holder balances are not moved on confirmation.
+    const mergedTrade: TradeDocument = {
       ...trade,
+      traderAddress: existingTraderAddress || trade.traderAddress,
       createdAt: new Date(existingCreatedAt),
-      // Keep the wallet address submitted by the frontend (opt1p...) rather than
-      // overwriting with the hashed ML-DSA key address (opt1s...) from on-chain events
-      ...(existingTraderAddress ? { traderAddress: existingTraderAddress } : {}),
     };
+
+    await redis.hset(key, flattenTrade(mergedTrade));
+
+    // Re-apply the original createdAt string to avoid Date serialization drift
+    await redis.hset(key, { createdAt: existingCreatedAt });
+
+    // Keep position in the sorted indexes using the original timestamp
+    const createdAtMs = new Date(existingCreatedAt).getTime();
+    const pipe = redis.pipeline();
+    pipe.zadd(TRADE_TOKEN_INDEX(mergedTrade.tokenAddress), { score: createdAtMs, member: mergedTrade._id });
+    pipe.zadd(TRADE_TRADER_INDEX(mergedTrade.traderAddress), { score: createdAtMs, member: mergedTrade._id });
+    if (existingTraderAddress && existingTraderAddress !== mergedTrade.traderAddress) {
+      pipe.zrem(TRADE_TRADER_INDEX(existingTraderAddress), mergedTrade._id);
+    }
+    await pipe.exec();
+
+    return { isNew: false };
   }
 
+  // Brand-new trade (not seen in mempool) — write the full record
   const flat = flattenTrade(trade);
   const createdAtMs = trade.createdAt instanceof Date ? trade.createdAt.getTime() : Date.now();
 
@@ -384,11 +519,9 @@ export async function saveTrade(trade: TradeDocument): Promise<{ isNew: boolean 
   await pipe.exec();
 
   // Update per-holder balance tracking (handles both buy and sell)
-  if (isNew) {
-    await updateHolderBalance(trade.tokenAddress, trade.traderAddress, trade.tokenAmount, trade.type);
-  }
+  await updateHolderBalance(trade.tokenAddress, trade.traderAddress, trade.tokenAmount, trade.type);
 
-  return { isNew };
+  return { isNew: true };
 }
 
 /**
@@ -642,6 +775,7 @@ function flattenToken(token: TokenDocument): Record<string, string> {
     volumeTotal: token.volumeTotal,
     marketCapSats: token.marketCapSats,
     tradeCount: String(token.tradeCount),
+    tradeCount24h: token.tradeCount24h !== undefined ? String(token.tradeCount24h) : "",
     holderCount: String(token.holderCount),
     deployBlock: String(token.deployBlock),
     deployTxHash: token.deployTxHash,
@@ -650,6 +784,7 @@ function flattenToken(token: TokenDocument): Record<string, string> {
     migrationLiquidityTokens: token.migrationLiquidityTokens || "",
     migrationTxHashes: JSON.stringify(token.migrationTxHashes || {}),
     nativeSwapPoolToken: token.nativeSwapPoolToken || "",
+    reserveVersion: String(token.reserveVersion ?? 0),
     createdAt: token.createdAt instanceof Date ? token.createdAt.toISOString() : String(token.createdAt),
     updatedAt: token.updatedAt instanceof Date ? token.updatedAt.toISOString() : String(token.updatedAt),
   };
@@ -686,6 +821,7 @@ function unflattenToken(raw: Record<string, unknown>): TokenDocument {
     volumeTotal: String(raw.volumeTotal || "0"),
     marketCapSats: String(raw.marketCapSats || "0"),
     tradeCount: parseInt(String(raw.tradeCount || "0")),
+    tradeCount24h: raw.tradeCount24h ? parseInt(String(raw.tradeCount24h)) : undefined,
     holderCount: parseInt(String(raw.holderCount || "0")),
     deployBlock: parseInt(String(raw.deployBlock || "0")),
     deployTxHash: String(raw.deployTxHash || ""),
@@ -694,6 +830,7 @@ function unflattenToken(raw: Record<string, unknown>): TokenDocument {
     migrationLiquidityTokens: raw.migrationLiquidityTokens ? String(raw.migrationLiquidityTokens) : undefined,
     migrationTxHashes: raw.migrationTxHashes ? safeJsonParse(raw.migrationTxHashes as string | object | undefined, undefined) : undefined,
     nativeSwapPoolToken: raw.nativeSwapPoolToken ? String(raw.nativeSwapPoolToken) : undefined,
+    reserveVersion: parseInt(String(raw.reserveVersion || "0")),
     createdAt: new Date(String(raw.createdAt)),
     updatedAt: new Date(String(raw.updatedAt)),
   };
