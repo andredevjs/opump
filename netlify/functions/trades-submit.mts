@@ -10,7 +10,7 @@
 
 import type { Config, Context } from "@netlify/functions";
 import { json, error, corsHeaders } from "./_shared/response.mts";
-import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount, graduateToken, compareAndSwapReserves, stageTrade, getStagedTrade, clearStagedTrade } from "./_shared/redis-queries.mts";
+import { saveTrade, updateOHLCV, updateToken, getToken, getHolderCount, graduateToken, compareAndSwapReserves, stageTrade, getStagedTrade, clearStagedTrade, claimSideEffects, completeSideEffects, isOhlcvApplied, ohlcvMarkerKey, isStatsApplied, statsMarkerKey, isReferralCredited, referralMarkerKey } from "./_shared/redis-queries.mts";
 import type { TradeDocument } from "./_shared/constants.mts";
 import {
   PRICE_PRECISION,
@@ -84,10 +84,16 @@ export default async (req: Request, _context: Context) => {
     return error("Missing required fields: txHash, tokenAddress, type, traderAddress, plus btcAmount for buys or tokenAmount for sells", 400);
   }
 
-  // Reject trades for tokens that have graduated or are migrating
+  // Reject trades for tokens that have graduated or are migrating,
+  // UNLESS this is a retry of the trade that caused graduation (its
+  // staged data still exists, meaning CAS applied but side effects
+  // may not have finished).
   const preCheck = await getToken(body.tokenAddress);
   if (preCheck && (preCheck.status === "graduated" || preCheck.status === "migrating" || preCheck.status === "migrated")) {
-    return error("Token has graduated — bonding curve trading is closed", 400, "TokenGraduated");
+    const staged = await getStagedTrade(body.txHash);
+    if (!staged) {
+      return error("Token has graduated — bonding curve trading is closed", 400, "TokenGraduated");
+    }
   }
   // Reject trades for tokens not yet confirmed on-chain
   if (preCheck && (!preCheck.deployBlock || preCheck.deployBlock === 0)) {
@@ -111,9 +117,10 @@ export default async (req: Request, _context: Context) => {
       if (attempt > 0) {
         const fresh = await getToken(body.tokenAddress);
         if (!fresh) return error("Token not found", 404, "NotFound");
-        if (fresh.status === "graduated" || fresh.status === "migrating" || fresh.status === "migrated") {
-          return error("Token has graduated — bonding curve trading is closed", 400, "TokenGraduated");
-        }
+        // On CAS retries, allow graduated tokens through — the trade
+        // that triggered graduation may still need its CAS applied.
+        // The dedup check inside CAS will return trade_already_applied
+        // if the reserves were already written.
         token = fresh;
       }
 
@@ -239,52 +246,76 @@ export default async (req: Request, _context: Context) => {
       return error("Trade could not be applied — too much contention. Please retry.", 409, "Conflict");
     }
 
-    const { isNew } = await saveTrade(trade);
+    await saveTrade(trade);
 
-    if (isNew) {
-      // Read canonical price from the hash (CAS already wrote it) for OHLCV
-      const canonicalToken = await getToken(trade.tokenAddress);
-      const priceSats = Number(canonicalToken?.currentPriceSats || trade.pricePerToken);
-      const volumeSats = Number(trade.btcAmount);
-      const timestampSec = Math.floor(Date.now() / 1000);
-      await updateOHLCV(trade.tokenAddress, priceSats, volumeSats, timestampSec);
+    // Atomically claim the right to run side effects.
+    const fxClaim = await claimSideEffects(body.txHash);
 
-      // Aggregate stats (trade counts, volume) are additive counters that
-      // the indexer reconciles from trade history every cycle. No need for
-      // CAS — slight drift from concurrent trades is acceptable.
-      await updateToken(trade.tokenAddress, {
-        tradeCount: (token.tradeCount || 0) + 1,
-        tradeCount24h: (token.tradeCount24h || 0) + 1,
-        volume24h: (BigInt(token.volume24h || "0") + volumeDelta).toString(),
-        volumeTotal: (BigInt(token.volumeTotal || "0") + volumeDelta).toString(),
-        holderCount: await getHolderCount(trade.tokenAddress),
-      });
+    if (fxClaim === "claimed") {
+      // ── OHLCV (marker in same pipeline = atomic) ──
+      const ohlcvDone = await isOhlcvApplied(body.txHash);
+      if (!ohlcvDone) {
+        const canonicalToken = await getToken(trade.tokenAddress);
+        const priceSats = Number(canonicalToken?.currentPriceSats || trade.pricePerToken);
+        const volumeSats = Number(trade.btcAmount);
+        const timestampSec = Math.floor(Date.now() / 1000);
+        await updateOHLCV(trade.tokenAddress, priceSats, volumeSats, timestampSec, ohlcvMarkerKey(body.txHash));
+      }
 
-      // Move token to graduated indexes if status just changed
-      if (newStatus === "graduated" && token.status === "active") {
+      // ── Optimistic stats (marker in same pipeline = atomic) ──
+      const statsDone = await isStatsApplied(body.txHash);
+      if (!statsDone) {
+        await updateToken(trade.tokenAddress, {
+          tradeCount: (token.tradeCount || 0) + 1,
+          tradeCount24h: (token.tradeCount24h || 0) + 1,
+          volume24h: (BigInt(token.volume24h || "0") + volumeDelta).toString(),
+          volumeTotal: (BigInt(token.volumeTotal || "0") + volumeDelta).toString(),
+          holderCount: await getHolderCount(trade.tokenAddress),
+        }, statsMarkerKey(body.txHash));
+      }
+
+      // Move token to graduated indexes.  graduateToken is idempotent
+      // (ZREM + ZADD pipeline) so we check the canonical status from
+      // Redis rather than the stale local `token` snapshot — CAS may
+      // have already written "graduated" on a prior attempt.
+      if (newStatus === "graduated") {
         await graduateToken(trade.tokenAddress, 0);
       }
-    }
 
-    // --- Referral earnings (fire-and-forget) ---
-    if (isNew) {
+      // ── Referral earnings (marker in same pipeline = atomic) ──
+      let referralFailed = false;
       try {
-        const { getReferrer, creditReferralEarnings } = await import("./_shared/referral-queries.mts");
-        const referrer = await getReferrer(body.traderAddress);
-        if (referrer) {
-          const platformFee = BigInt(trade.fees.platform);
-          const referralReward = (platformFee * 10n) / 100n;
-          if (referralReward > 0n) {
-            await creditReferralEarnings(referrer, referralReward.toString());
+        const alreadyCredited = await isReferralCredited(body.txHash);
+        if (!alreadyCredited) {
+          const { getReferrer, creditReferralEarnings } = await import("./_shared/referral-queries.mts");
+          const referrer = await getReferrer(body.traderAddress);
+          if (referrer) {
+            const platformFee = BigInt(trade.fees.platform);
+            const referralReward = (platformFee * 10n) / 100n;
+            if (referralReward > 0n) {
+              await creditReferralEarnings(referrer, referralReward.toString(), referralMarkerKey(body.txHash));
+            }
           }
         }
       } catch (refErr) {
-        console.warn("[trades-submit] Referral credit failed (non-fatal):", refErr instanceof Error ? refErr.message : refErr);
+        referralFailed = true;
+        console.warn("[trades-submit] Referral credit failed, leaving lease for retry:", refErr instanceof Error ? refErr.message : refErr);
       }
-    }
 
-    // All side effects complete — clean up staging key
-    await clearStagedTrade(body.txHash);
+      // Only mark fully complete and clean up staging data when every
+      // effect succeeded.  If any effect failed, the 30 s lease expires
+      // and a retrier can re-acquire — per-effect markers ensure only
+      // the missing work is replayed.
+      if (!referralFailed) {
+        await completeSideEffects(body.txHash);
+        await clearStagedTrade(body.txHash);
+      }
+    } else if (fxClaim === "done") {
+      // All side effects durably completed — safe to clean up staged data.
+      await clearStagedTrade(body.txHash);
+    }
+    // fxClaim === "pending": another caller is mid-flight.
+    // Leave staged data intact so it survives if that caller crashes.
 
     return json({ ok: true, txHash: body.txHash });
   } catch (err) {

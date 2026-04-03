@@ -30,8 +30,12 @@ const TIMEFRAME_TTL: Record<string, number> = {
 
 /**
  * Update OHLCV candles for a trade across all timeframes.
+ *
+ * @param completionKey  Optional Redis key to SET atomically in the
+ *   same pipeline.  Used as a per-trade completion marker so that
+ *   crash-recovery retriers can skip an effect that already landed.
  */
-export async function updateOHLCV(tokenAddress: string, priceSats: number, volumeSats: number, timestampSec: number): Promise<void> {
+export async function updateOHLCV(tokenAddress: string, priceSats: number, volumeSats: number, timestampSec: number, completionKey?: string): Promise<void> {
   const redis = getRedis();
 
   // Lua script for atomic OHLCV update
@@ -70,6 +74,11 @@ export async function updateOHLCV(tokenAddress: string, priceSats: number, volum
 
     // Add to candle index
     pipe.zadd(indexKey, { score: bucket, member: String(bucket) });
+  }
+  // Completion marker in the same pipeline — either the whole batch
+  // (including the marker) reaches the server, or none of it does.
+  if (completionKey) {
+    pipe.set(completionKey, "1", { ex: 3600 });
   }
   await pipe.exec();
 }

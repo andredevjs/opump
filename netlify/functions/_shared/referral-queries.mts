@@ -78,13 +78,19 @@ export async function getReferrer(wallet: string): Promise<string | null> {
 
 /**
  * Credit referral earnings atomically. Called on every trade by a referred user.
+ *
+ * @param completionKey  Optional Redis key to SET in the same pipeline,
+ *   used as a per-trade dedup marker so crash-recovery never double-pays.
  */
-export async function creditReferralEarnings(referrerWallet: string, satAmount: string): Promise<void> {
+export async function creditReferralEarnings(referrerWallet: string, satAmount: string, completionKey?: string): Promise<void> {
   const redis = getRedis();
-  await redis.pipeline()
+  const pipe = redis.pipeline()
     .hincrby(REF_EARNINGS_KEY(referrerWallet), "totalSats", Number(satAmount))
-    .hincrby(REF_EARNINGS_KEY(referrerWallet), "tradeCount", 1)
-    .exec();
+    .hincrby(REF_EARNINGS_KEY(referrerWallet), "tradeCount", 1);
+  if (completionKey) {
+    pipe.set(completionKey, "1", { ex: 3600 });
+  }
+  await pipe.exec();
 }
 
 export async function getReferralEarnings(wallet: string): Promise<{ totalSats: string; tradeCount: number; referralCount: number }> {

@@ -11,7 +11,6 @@ import {
   saveTrade,
   updateToken,
   updateOHLCV,
-  getStats,
   updateStats,
   getLastBlockIndexed,
   setLastBlockIndexed,
@@ -19,21 +18,28 @@ import {
   releaseIndexerLock,
   graduateToken,
   migrateToken,
-  getHolderCount,
+  compareAndSwapReserves,
+  claimSideEffects,
+  completeSideEffects,
+  isOhlcvApplied,
+  ohlcvMarkerKey,
+  isReferralCredited,
+  referralMarkerKey,
   TRADE_KEY,
 } from "./redis-queries.mts";
 import {
   PRICE_PRECISION,
   PRICE_DISPLAY_DIVISOR,
-  DEFAULT_MAX_SUPPLY,
-  TOKEN_UNITS_PER_TOKEN,
   PLATFORM_FEE_BPS,
   CREATOR_FEE_BPS,
   FEE_DENOMINATOR,
+  GRADUATION_THRESHOLD_SATS,
+  DEFAULT_MAX_SUPPLY,
+  TOKEN_UNITS_PER_TOKEN,
 } from "./constants.mts";
-import { calculatePrice } from "./bonding-curve.mts";
 import type { TradeDocument } from "./constants.mts";
-import type { LaunchTokenContract, OPNetEvent } from "./contracts.mts";
+import { calculateBuyCost, calculatePrice } from "./bonding-curve.mts";
+import type { OPNetEvent } from "./contracts.mts";
 import { decodeBuyEvent, decodeSellEvent, decodeMigrationEvent, getEventData, readAddressFromEventData, hexAddressToBech32m } from "./event-decoders.mts";
 import type { BuyEventData, SellEventData } from "./event-decoders.mts";
 
@@ -94,7 +100,7 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
       console.warn('[Indexer] FACTORY_ADDRESS not set — token discovery disabled');
     }
 
-    const { JSONRpcProvider, OPNetTransactionTypes, getContract, ABIDataTypes, BitcoinAbiTypes } = await import("opnet");
+    const { JSONRpcProvider, OPNetTransactionTypes } = await import("opnet");
     const { networks } = await import("@btc-vision/bitcoin");
     const network = networkName === "mainnet" ? networks.bitcoin : networks.opnetTestnet;
     const provider = new JSONRpcProvider({ url: opnetRpcUrl, network });
@@ -297,12 +303,9 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
         }
       }
 
-      // Sync on-chain reserves for affected tokens
-      for (const tokenAddr of affectedTokens) {
-        await syncTokenReserves(tokenAddr, provider, getContract, ABIDataTypes, BitcoinAbiTypes, network);
-      }
-
-      // Update per-token stats for affected tokens
+      // Reserves/price are updated optimistically by trades-submit (mempool-first).
+      // For confirmed-only trades (never staged), processBuyEvent/processSellEvent
+      // resync reserves via CAS. Stats are always reconciled from trade history.
       if (affectedTokens.size > 0) {
         await updateAffectedTokenStats(redis, [...affectedTokens]);
       }
@@ -321,6 +324,80 @@ export async function runIndexer(maxBlocks = 2): Promise<IndexerResult> {
   } finally {
     await releaseIndexerLock();
   }
+}
+
+// ─── Reserve resync for confirmed-only trades ───────────────
+
+/**
+ * When the indexer discovers a confirmed trade that was never seen by
+ * trades-submit (isNew=true), the token's reserve/price/supply fields
+ * are stale. This function recalculates them from the curve integral
+ * and applies via CAS so concurrent pending trades are not clobbered.
+ *
+ * The key insight: realBtcReserve = ∫₀ˢ a·e^(bx) dx = calculateBuyCost(a,b,0,S).
+ * Since supply changes are additive (order-independent), applying the
+ * delta to the current supply and recomputing the integral gives the
+ * correct reserve regardless of trade ordering.
+ *
+ * Price and market cap are recomputed from newSupply via calculatePrice()
+ * rather than taken from the event, because Redis supply may already
+ * include later optimistic trades — using the event's historical price
+ * would regress the live spot price.
+ */
+async function resyncReservesForTrade(
+  tokenAddress: string,
+  txId: string,
+  supplyDelta: bigint,
+  blockNumber: number,
+): Promise<void> {
+  const MAX_RETRIES = 3;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const token = await getToken(tokenAddress);
+    if (!token) return;
+
+    const currentSupply = BigInt(token.currentSupplyOnCurve);
+    const aScaled = BigInt(token.aScaled);
+    const bScaled = BigInt(token.bScaled);
+
+    const newSupply = currentSupply + supplyDelta;
+    if (newSupply < 0n) {
+      console.warn(`[Indexer] Reserve resync: newSupply would be negative for ${tokenAddress}, skipping`);
+      return;
+    }
+
+    // Reserve = curve integral from 0 to newSupply
+    const newReserve = calculateBuyCost(aScaled, bScaled, 0n, newSupply);
+    // Recompute spot price from the merged supply so we never regress
+    // past later optimistic trades already reflected in Redis.
+    const priceScaled = calculatePrice(aScaled, bScaled, newSupply);
+    const newPriceSats = spotPriceToDisplay(priceScaled);
+    const marketCapSats = (priceScaled * DEFAULT_MAX_SUPPLY / (PRICE_PRECISION * TOKEN_UNITS_PER_TOKEN)).toString();
+
+    let newStatus = token.status;
+    if (token.status === "active" && newReserve >= GRADUATION_THRESHOLD_SATS) {
+      newStatus = "graduated";
+    }
+
+    const casResult = await compareAndSwapReserves(tokenAddress, token.reserveVersion, txId, {
+      currentPriceSats: newPriceSats,
+      currentSupplyOnCurve: newSupply.toString(),
+      realBtcReserve: newReserve.toString(),
+      marketCapSats,
+      status: newStatus,
+    });
+
+    if (casResult === "ok") {
+      if (newStatus === "graduated" && token.status === "active") {
+        await graduateToken(tokenAddress, blockNumber);
+      }
+      return;
+    }
+    if (casResult === "trade_already_applied") return;
+    // version_mismatch → re-read and retry
+    console.warn(`[Indexer] Reserve resync CAS retry ${attempt + 1}/${MAX_RETRIES} for ${tokenAddress}`);
+  }
+  console.warn(`[Indexer] Reserve resync failed after ${MAX_RETRIES} retries for ${tokenAddress}`);
 }
 
 // ─── Event processing ───────────────────────────────────────
@@ -364,14 +441,49 @@ async function processBuyEvent(
 
   const { isNew } = await saveTrade(trade);
 
-  // Only write OHLCV if this is a brand-new trade (no pending version existed).
-  // When isNew=false, the pending trade from trades-submit already wrote OHLCV.
+  // Confirmed-only trade (never seen by trades-submit) — resync reserves
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
-    const priceSats = Number(spotPrice);
-    const volumeSats = Number(data.btcIn);
-    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    await resyncReservesForTrade(tokenAddress, txId, data.tokensOut, blockNumber);
+  }
+
+  // Acquire short-lived lease. If trades-submit crashed after CAS but
+  // before claiming, we take over. If it crashed mid-flight, its 30 s
+  // lease will have expired and we re-acquire here.
+  const fxClaim = await claimSideEffects(txId);
+  if (fxClaim === "claimed") {
+    // ── OHLCV (marker in same pipeline = atomic) ──
+    const ohlcvDone = await isOhlcvApplied(txId);
+    if (!ohlcvDone) {
+      const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
+      const priceSats = Number(spotPrice);
+      const volumeSats = Number(data.btcIn);
+      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime, ohlcvMarkerKey(txId));
+    }
+
+    // ── Referral credit (marker in same pipeline = atomic) ──
+    let referralFailed = false;
+    try {
+      const alreadyCredited = await isReferralCredited(txId);
+      if (!alreadyCredited) {
+        const { getReferrer, creditReferralEarnings } = await import("./referral-queries.mts");
+        const referrer = await getReferrer(trade.traderAddress);
+        if (referrer) {
+          const platformFee = BigInt(trade.fees.platform);
+          const referralReward = (platformFee * 10n) / 100n;
+          if (referralReward > 0n) {
+            await creditReferralEarnings(referrer, referralReward.toString(), referralMarkerKey(txId));
+          }
+        }
+      }
+    } catch (refErr) {
+      referralFailed = true;
+      console.warn("[Indexer] Referral credit failed, leaving lease for retry:", refErr instanceof Error ? refErr.message : refErr);
+    }
+
+    if (!referralFailed) {
+      await completeSideEffects(txId);
+    }
   }
 }
 
@@ -413,12 +525,46 @@ async function processSellEvent(
 
   const { isNew } = await saveTrade(trade);
 
+  // Confirmed-only trade — resync reserves (negative delta for sells)
   if (isNew) {
-    const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
-    const priceSats = Number(spotPrice);
-    const volumeSats = Number(data.btcOut);
-    const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
-    await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime);
+    await resyncReservesForTrade(tokenAddress, txId, -data.tokensIn, blockNumber);
+  }
+
+  const fxClaim = await claimSideEffects(txId);
+  if (fxClaim === "claimed") {
+    // ── OHLCV (marker in same pipeline = atomic) ──
+    const ohlcvDone = await isOhlcvApplied(txId);
+    if (!ohlcvDone) {
+      const spotPrice = data.newPrice > 0n ? spotPriceToDisplay(data.newPrice) : pricePerToken;
+      const priceSats = Number(spotPrice);
+      const volumeSats = Number(data.btcOut);
+      const ohlcvTime = Math.floor(normalizeBlockTime(blockTime).getTime() / 1000);
+      await updateOHLCV(tokenAddress, priceSats, volumeSats, ohlcvTime, ohlcvMarkerKey(txId));
+    }
+
+    // ── Referral credit (marker in same pipeline = atomic) ──
+    let referralFailed = false;
+    try {
+      const alreadyCredited = await isReferralCredited(txId);
+      if (!alreadyCredited) {
+        const { getReferrer, creditReferralEarnings } = await import("./referral-queries.mts");
+        const referrer = await getReferrer(trade.traderAddress);
+        if (referrer) {
+          const platformFee = BigInt(trade.fees.platform);
+          const referralReward = (platformFee * 10n) / 100n;
+          if (referralReward > 0n) {
+            await creditReferralEarnings(referrer, referralReward.toString(), referralMarkerKey(txId));
+          }
+        }
+      }
+    } catch (refErr) {
+      referralFailed = true;
+      console.warn("[Indexer] Referral credit failed, leaving lease for retry:", refErr instanceof Error ? refErr.message : refErr);
+    }
+
+    if (!referralFailed) {
+      await completeSideEffects(txId);
+    }
   }
 }
 
@@ -441,80 +587,28 @@ function calculateFeeBreakdown(amount: bigint): { platform: bigint; creator: big
   };
 }
 
-// ─── Reserve sync ───────────────────────────────────────────
-
-async function syncTokenReserves(
-  tokenAddress: string,
-  provider: import("opnet").JSONRpcProvider,
-  getContractFn: typeof import("opnet").getContract,
-  ABIDataTypes: typeof import("opnet").ABIDataTypes,
-  BitcoinAbiTypes: typeof import("opnet").BitcoinAbiTypes,
-  network: import("@btc-vision/bitcoin").Network,
-): Promise<void> {
-  try {
-    const abi: import("opnet").BitcoinInterfaceAbi = [
-      {
-        name: "getReserves",
-        type: BitcoinAbiTypes.Function,
-        constant: true,
-        inputs: [],
-        outputs: [
-          { name: "currentSupplyOnCurve", type: ABIDataTypes.UINT256 },
-          { name: "realBtc", type: ABIDataTypes.UINT256 },
-          { name: "aScaled", type: ABIDataTypes.UINT256 },
-          { name: "bScaled", type: ABIDataTypes.UINT256 },
-        ],
-      },
-    ];
-
-    const contract = getContractFn(tokenAddress, abi, provider, network);
-    const result = await (contract as unknown as LaunchTokenContract).getReserves();
-
-    if (result && result.properties) {
-      const { currentSupplyOnCurve, realBtc, aScaled, bScaled } = result.properties;
-      const currentPriceScaled = calculatePrice(aScaled, bScaled, currentSupplyOnCurve);
-      const marketCap = currentPriceScaled * DEFAULT_MAX_SUPPLY / (PRICE_PRECISION * TOKEN_UNITS_PER_TOKEN);
-
-      await updateToken(tokenAddress, {
-        currentSupplyOnCurve: currentSupplyOnCurve.toString(),
-        aScaled: aScaled.toString(),
-        bScaled: bScaled.toString(),
-        realBtcReserve: realBtc.toString(),
-        currentPriceSats: spotPriceToDisplay(currentPriceScaled),
-        marketCapSats: marketCap.toString(),
-      });
-    }
-  } catch (err) {
-    console.error(`[Indexer] Failed to sync reserves for ${tokenAddress}:`, err instanceof Error ? err.message : err);
-  }
-}
-
 // ─── Stats updates ──────────────────────────────────────────
 
 async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, tokenAddresses: string[]): Promise<void> {
   for (const tokenAddress of tokenAddresses) {
     try {
       const tradeCount = await redis.zcard(`op:idx:trade:token:${tokenAddress}`);
-
-      // Holders set is maintained incrementally by saveTrade() (adds buyers on buy events)
-      const holderCount = await getHolderCount(tokenAddress);
-
-      // Calculate 24h and total volume from trades
+      const holderCount = await redis.scard(`op:holders:${tokenAddress}`);
       const volume24h = await calculateVolume24h(redis, tokenAddress);
       const volumeTotal = await calculateVolumeTotal(redis, tokenAddress);
       const tradeCount24h = await calculateTradeCount24h(redis, tokenAddress);
 
       const token = await getToken(tokenAddress);
-      if (token) {
-        await updateToken(tokenAddress, {
-          tradeCount,
-          tradeCount24h,
-          holderCount,
-          volume24h,
-          volumeTotal,
-          status: token.status,
-        });
-      }
+      if (!token) continue;
+
+      await updateToken(tokenAddress, {
+        tradeCount,
+        tradeCount24h,
+        holderCount,
+        volume24h,
+        volumeTotal,
+        status: token.status,
+      });
     } catch (err) {
       console.error(`[Indexer] Failed to update stats for ${tokenAddress}:`, err instanceof Error ? err.message : err);
     }
@@ -523,7 +617,6 @@ async function updateAffectedTokenStats(redis: import("@upstash/redis").Redis, t
 
 async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAddress: string): Promise<string> {
   const oneDayAgoMs = Date.now() - 24 * 60 * 60 * 1000;
-  // Trade index is scored by createdAtMs — use zrange with byScore for Upstash compatibility
   const txHashes: string[] = await redis.zrange(
     `op:idx:trade:token:${tokenAddress}`,
     oneDayAgoMs,
@@ -542,7 +635,6 @@ async function calculateVolume24h(redis: import("@upstash/redis").Redis, tokenAd
   for (const raw of results) {
     if (raw) totalSats += BigInt(String(raw));
   }
-  console.log(`[Indexer] volume24h for ${tokenAddress}: ${totalSats} sats from ${txHashes.length} trades`);
   return totalSats.toString();
 }
 

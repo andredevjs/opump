@@ -23,6 +23,10 @@ const TOKEN_HOLDERS_SET = (tokenAddr: string) => `op:holders:${tokenAddr}`;
 const TOKEN_HOLDER_BALANCES = (tokenAddr: string) => `op:holders:bal:${tokenAddr}`;
 
 const STAGED_TRADE_KEY = (txHash: string) => `op:staged-trade:${txHash}`;
+const TRADE_FX_KEY = (txHash: string) => `op:trade-fx:${txHash}`;
+const TRADE_OHLCV_KEY = (txHash: string) => `op:trade-ohlcv:${txHash}`;
+const TRADE_STATS_KEY = (txHash: string) => `op:trade-stats:${txHash}`;
+const TRADE_REF_KEY = (txHash: string) => `op:trade-ref:${txHash}`;
 
 const STATS_KEY = "op:stats";
 const INDEXER_LAST_BLOCK = "op:indexer:lastBlock";
@@ -205,19 +209,74 @@ export async function getTokensBatch(redis: Redis, addresses: string[]): Promise
 /**
  * Update specific fields on a token hash and refresh indexes.
  */
-export async function updateToken(contractAddress: string, fields: Partial<Record<string, string | number>>): Promise<void> {
+/**
+ * @param completionKey  Optional Redis key to SET atomically with the
+ *   hash update and index refresh, all in one pipeline round-trip.
+ *   This ensures a crash cannot leave the stats written but the marker
+ *   unset (which would cause double-apply on recovery).
+ */
+export async function updateToken(contractAddress: string, fields: Partial<Record<string, string | number>>, completionKey?: string): Promise<void> {
   const redis = getRedis();
-  const pipe = redis.pipeline();
 
-  pipe.hset(TOKEN_KEY(contractAddress), { ...fields, updatedAt: new Date().toISOString() });
+  if (completionKey) {
+    // ── Atomic path: HSET + index ZADDs + marker in ONE pipeline ──
+    // Read dependent values first, then build a single pipeline so
+    // nothing can land without the marker.
+    const status = (fields.status as string) || null;
+    const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
+    const resolvedStatus = existingStatus || "active";
+    const createdAtRaw = await redis.hget(TOKEN_KEY(contractAddress), "createdAt") as string | null;
+    const createdAtMs = createdAtRaw ? new Date(createdAtRaw).getTime() : Date.now();
 
-  // Execute hset first before refreshing indexes
-  await pipe.exec();
+    const pipe = redis.pipeline();
 
-  // Always refresh sort indexes — "newest" depends on createdAt which must stay in sync
-  const status = (fields.status as string) || null;
-  const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
-  await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
+    // Hash update
+    pipe.hset(TOKEN_KEY(contractAddress), { ...fields, updatedAt: new Date().toISOString() });
+
+    // Index refresh (inlined from refreshTokenIndexes)
+    const statuses = [resolvedStatus, "all"];
+    for (const s of statuses) {
+      if (fields.volume24h !== undefined) {
+        pipe.zadd(TOKEN_INDEX(s, "volume24h"), { score: parseFloat(String(fields.volume24h)), member: contractAddress });
+      }
+      if (fields.marketCapSats !== undefined) {
+        pipe.zadd(TOKEN_INDEX(s, "marketCap"), { score: parseFloat(String(fields.marketCapSats)), member: contractAddress });
+      }
+      if (fields.currentPriceSats !== undefined) {
+        pipe.zadd(TOKEN_INDEX(s, "price"), { score: parseFloat(String(fields.currentPriceSats)), member: contractAddress });
+      }
+      pipe.zadd(TOKEN_INDEX(s, "newest"), { score: createdAtMs, member: contractAddress });
+    }
+
+    // Completion marker — only set when everything above lands
+    pipe.set(completionKey, "1", { ex: 3600 });
+
+    await pipe.exec();
+
+    // Compensate for concurrent graduation: if another trade graduated
+    // this token between our status read and pipeline exec, we just
+    // re-added the token to active indexes.  Clean up the stale entries
+    // so the token doesn't appear in both active and graduated feeds.
+    if (resolvedStatus === "active") {
+      const currentStatus = await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null;
+      if (currentStatus && currentStatus !== "active") {
+        const cleanPipe = redis.pipeline();
+        for (const field of ["volume24h", "marketCap", "price", "newest"]) {
+          cleanPipe.zrem(TOKEN_INDEX("active", field), contractAddress);
+        }
+        await cleanPipe.exec();
+      }
+    }
+  } else {
+    // ── Default path: original two-step for callers without a marker ──
+    const pipe = redis.pipeline();
+    pipe.hset(TOKEN_KEY(contractAddress), { ...fields, updatedAt: new Date().toISOString() });
+    await pipe.exec();
+
+    const status = (fields.status as string) || null;
+    const existingStatus = status || (await redis.hget(TOKEN_KEY(contractAddress), "status") as string | null);
+    await refreshTokenIndexes(contractAddress, existingStatus || 'active', fields);
+  }
 }
 
 /**
@@ -256,6 +315,70 @@ export async function getStagedTrade(txHash: string): Promise<string | null> {
 export async function clearStagedTrade(txHash: string): Promise<void> {
   const redis = getRedis();
   await redis.del(STAGED_TRADE_KEY(txHash));
+}
+
+/**
+ * Acquire a short-lived lease to run side effects for a trade.
+ *
+ * Returns:
+ *   "claimed"  — this caller won the lease and should run effects
+ *   "done"     — all effects already completed; safe to clean up
+ *   "pending"  — another caller currently holds the lease; do NOT
+ *                touch recovery state (staged trade data)
+ *
+ * The lease expires after 30 s so a crashed claimer does not block
+ * retries permanently. After all effects succeed the caller MUST
+ * call completeSideEffects() to set the durable "done" marker.
+ */
+export type SideEffectClaim = "claimed" | "done" | "pending";
+
+export async function claimSideEffects(txHash: string): Promise<SideEffectClaim> {
+  const redis = getRedis();
+  // Already completed — no work to do.
+  const existing = await redis.get(TRADE_FX_KEY(txHash));
+  if (existing === "done") return "done";
+  // Acquire lease. If a previous claimer crashed, its 30 s lease will
+  // have expired and this NX succeeds, enabling recovery.
+  const result = await redis.set(TRADE_FX_KEY(txHash), "pending", { nx: true, ex: 30 });
+  return result === "OK" ? "claimed" : "pending";
+}
+
+/**
+ * Mark side effects as durably completed.  Called after OHLCV, stats,
+ * and referral credit have all been applied.  Overwrites the short-lived
+ * lease with a "done" marker (1 h TTL for automatic cleanup).
+ */
+export async function completeSideEffects(txHash: string): Promise<void> {
+  const redis = getRedis();
+  await redis.set(TRADE_FX_KEY(txHash), "done", { ex: 3600 });
+}
+
+// ─── Per-effect completion markers ─────────────────────────
+//
+// Each marker key is passed to the corresponding effect function
+// (updateOHLCV, updateToken, creditReferralEarnings) via its
+// `completionKey` parameter so the marker SET lands in the same
+// Redis pipeline as the effect — making them atomic in one HTTP
+// request.  The `is*Applied` helpers let callers skip effects
+// whose markers already exist.
+
+export function ohlcvMarkerKey(txHash: string): string { return TRADE_OHLCV_KEY(txHash); }
+export function statsMarkerKey(txHash: string): string { return TRADE_STATS_KEY(txHash); }
+export function referralMarkerKey(txHash: string): string { return TRADE_REF_KEY(txHash); }
+
+export async function isOhlcvApplied(txHash: string): Promise<boolean> {
+  const redis = getRedis();
+  return (await redis.get(TRADE_OHLCV_KEY(txHash))) !== null;
+}
+
+export async function isStatsApplied(txHash: string): Promise<boolean> {
+  const redis = getRedis();
+  return (await redis.get(TRADE_STATS_KEY(txHash))) !== null;
+}
+
+export async function isReferralCredited(txHash: string): Promise<boolean> {
+  const redis = getRedis();
+  return (await redis.get(TRADE_REF_KEY(txHash))) !== null;
 }
 
 export async function compareAndSwapReserves(
@@ -354,25 +477,25 @@ async function refreshTokenIndexes(contractAddress: string, status: string, fiel
 
 /**
  * Move a token from active to graduated status in indexes.
+ *
+ * Reads canonical scores from the token hash (already updated by CAS
+ * with post-trade values) rather than from the stale `active` sorted
+ * sets, which may still hold pre-trade scores.
  */
 export async function graduateToken(contractAddress: string, blockNumber: number): Promise<void> {
   const redis = getRedis();
 
-  // Step 1: Read all scores first (parallel reads)
-  const [score1, score2, score3, score4] = await Promise.all([
-    redis.zscore(TOKEN_INDEX("active", "volume24h"), contractAddress),
-    redis.zscore(TOKEN_INDEX("active", "marketCap"), contractAddress),
-    redis.zscore(TOKEN_INDEX("active", "price"), contractAddress),
-    redis.zscore(TOKEN_INDEX("active", "newest"), contractAddress),
-  ]);
+  // Read canonical values from the token hash — CAS has already
+  // written post-trade price/marketCap/volume here.
+  const tokenData = await redis.hgetall<Record<string, string>>(TOKEN_KEY(contractAddress));
+
   const scores = [
-    { field: "volume24h", score: score1 },
-    { field: "marketCap", score: score2 },
-    { field: "price", score: score3 },
-    { field: "newest", score: score4 },
+    { field: "volume24h", score: tokenData?.volume24h ? parseFloat(tokenData.volume24h) : null },
+    { field: "marketCap", score: tokenData?.marketCapSats ? parseFloat(tokenData.marketCapSats) : null },
+    { field: "price", score: tokenData?.currentPriceSats ? parseFloat(tokenData.currentPriceSats) : null },
+    { field: "newest", score: tokenData?.createdAt ? new Date(tokenData.createdAt).getTime() : null },
   ];
 
-  // Step 2: Single pipeline for all writes
   const pipe = redis.pipeline();
 
   pipe.hset(TOKEN_KEY(contractAddress), {
@@ -381,7 +504,7 @@ export async function graduateToken(contractAddress: string, blockNumber: number
     updatedAt: new Date().toISOString(),
   });
 
-  // Remove from active indexes, add to graduated indexes
+  // Remove from active indexes, add to graduated indexes with fresh scores
   for (const { field, score } of scores) {
     pipe.zrem(TOKEN_INDEX("active", field), contractAddress);
     if (score !== null) {

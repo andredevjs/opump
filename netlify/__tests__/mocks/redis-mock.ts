@@ -5,7 +5,7 @@
 import { vi } from 'vitest';
 
 // Internal storage types
-type RedisValue = string | number | Map<string, string> | Set<string> | SortedSet;
+export type RedisValue = string | number | Map<string, string> | Set<string> | SortedSet;
 
 interface SortedSetEntry {
   score: number;
@@ -231,7 +231,7 @@ class MockPipeline {
     return this;
   }
 
-  eval(script: string, keys: string[], args: string[]): this {
+  eval(script: string, keys: string[], args: (string | number)[]): this {
     this.commands.push(async () => mockRedis.eval(script, keys, args));
     return this;
   }
@@ -416,11 +416,50 @@ export const mockRedis = {
     return count;
   },
 
-  // ─── Lua eval (OHLCV candle update) ───
-  async eval(_script: string, keys: string[], args: string[]): Promise<number> {
+  // ─── Lua eval ───
+  async eval(script: string, keys: string[], args: (string | number)[]): Promise<number> {
     const key = keys[0];
-    const price = parseFloat(args[0]);
-    const volume = parseFloat(args[1]);
+
+    // Detect CAS (compareAndSwapReserves) script by checking for reserveVersion
+    if (script.includes('reserveVersion')) {
+      const tokenKey = keys[0];
+      const appliedKey = keys[1];
+      const expectedVersion = parseInt(String(args[0]));
+      const txHash = String(args[1]);
+
+      // Gate 1: dedup — check applied-trades set
+      const appliedSet = store.get(appliedKey);
+      if (appliedSet instanceof Set && appliedSet.has(txHash)) return -1;
+
+      // Gate 2: optimistic lock on reserveVersion
+      const h = store.get(tokenKey);
+      const hMap = h instanceof Map ? h : new Map<string, string>();
+      const currentVersion = parseInt(hMap.get('reserveVersion') || '0');
+      if (currentVersion !== expectedVersion) return 0;
+
+      // Apply fields: args layout is [expectedVersion, txHash, field1, val1, ..., updatedAt]
+      const newVersion = currentVersion + 1;
+      for (let i = 2; i < args.length - 2; i += 2) {
+        hMap.set(String(args[i]), String(args[i + 1]));
+      }
+      hMap.set('reserveVersion', String(newVersion));
+      hMap.set('updatedAt', String(args[args.length - 1]));
+      store.set(tokenKey, hMap);
+
+      // Record this trade as applied
+      let set = store.get(appliedKey);
+      if (!(set instanceof Set)) {
+        set = new Set<string>();
+        store.set(appliedKey, set);
+      }
+      (set as Set<string>).add(txHash);
+
+      return 1;
+    }
+
+    // OHLCV candle update
+    const price = parseFloat(String(args[0]));
+    const volume = parseFloat(String(args[1]));
 
     const h = store.get(key);
     if (!h || !(h instanceof Map) || h.size === 0) {
@@ -465,6 +504,12 @@ export const mockRedis = {
 export function resetMockRedis(): void {
   store.clear();
   ttls.clear();
+}
+
+/** Direct access to the backing store — use in tests to simulate
+ *  crashes (delete a key to mimic TTL expiry) or inspect state. */
+export function getStore(): Map<string, RedisValue> {
+  return store;
 }
 
 // Register the mock — replaces getRedis() in all modules
