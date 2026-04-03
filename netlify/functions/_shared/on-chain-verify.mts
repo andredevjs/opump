@@ -40,14 +40,23 @@ export async function verifyTokenOnChain(
       let deployerAddress: string;
       if (typeof rawDeployer === "string") {
         deployerAddress = rawDeployer;
-      } else if (typeof rawDeployer === "object" && "p2tr" in rawDeployer && typeof rawDeployer.p2tr === "function") {
-        deployerAddress = rawDeployer.p2tr(network);
+      } else if (typeof rawDeployer === "object") {
+        // creatorAddress is 0x OP_20 hex — use toHex() to compare in the same format
+        if (creatorAddress.startsWith("0x") && "toHex" in rawDeployer && typeof rawDeployer.toHex === "function") {
+          const hex = rawDeployer.toHex();
+          deployerAddress = hex.startsWith("0x") ? hex : `0x${hex}`;
+        } else if ("p2tr" in rawDeployer && typeof rawDeployer.p2tr === "function") {
+          deployerAddress = rawDeployer.p2tr(network);
+        } else {
+          console.error("[Verify] Unexpected deployer address type:", typeof rawDeployer);
+          return { valid: false, error: "Unable to extract deployer address from deployment transaction." };
+        }
       } else {
         console.error("[Verify] Unexpected deployer address type:", typeof rawDeployer);
         return { valid: false, error: "Unable to extract deployer address from deployment transaction." };
       }
 
-      if (deployerAddress !== creatorAddress) {
+      if (deployerAddress.toLowerCase() !== creatorAddress.toLowerCase()) {
         return {
           valid: false,
           error: `Creator address mismatch: deployer is ${deployerAddress}, but ${creatorAddress} was submitted`,
