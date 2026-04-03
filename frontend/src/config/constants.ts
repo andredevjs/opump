@@ -1,27 +1,28 @@
 import BigNumber from 'bignumber.js';
+import {
+  GRADUATION_THRESHOLD_SATS as GRADUATION_THRESHOLD_SATS_BI,
+  DEFAULT_MAX_SUPPLY as DEFAULT_MAX_SUPPLY_BI,
+  TOKEN_UNITS_PER_TOKEN as TOKEN_UNITS_BI,
+} from '@shared/constants/bonding-curve';
 
 BigNumber.config({ DECIMAL_PLACES: 18, ROUNDING_MODE: BigNumber.ROUND_DOWN });
 
 export const SATS_PER_BTC = 100_000_000;
-export const TOKEN_UNITS_PER_TOKEN = 10 ** 8; // 100_000_000
+export const TOKEN_UNITS_PER_TOKEN = Number(TOKEN_UNITS_BI); // 100_000_000
 
-// ── Exponential bonding curve ───────────────────────────
-// Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
-// Default supply: 1B tokens * 10^8 decimals
-export const DEFAULT_MAX_SUPPLY = new BigNumber('100000000000000000');
-
-// Graduation threshold
-export const GRADUATION_THRESHOLD_SATS = 69_000_000; // 69M sats (0.69 BTC)
+// Re-export curve constants as display-friendly JS numbers / BigNumber
+export const DEFAULT_MAX_SUPPLY = new BigNumber(DEFAULT_MAX_SUPPLY_BI.toString());
+export const GRADUATION_THRESHOLD_SATS = Number(GRADUATION_THRESHOLD_SATS_BI); // 69M sats (0.69 BTC)
 
 // Total supply in whole tokens (for price → mcap conversion)
 export const TOTAL_SUPPLY_WHOLE_TOKENS = 1_000_000_000; // 1B tokens
 
-// Fee structure (percentages — matches shared TOTAL_FEE_BPS=125, i.e. 1.25%)
+// Fee structure (display percentages — canonical bps live in shared/constants)
 export const TOTAL_FEE_PERCENT = 1.25;      // 125 bps
 export const PLATFORM_FEE_PERCENT = 1.0;    // 100 bps
 export const CREATOR_FEE_PERCENT = 0.25;    //  25 bps
 
-// Launch limits
+// Launch limits (display percentages)
 export const MAX_CREATOR_ALLOCATION_PERCENT = 70;
 export const MAX_AIRDROP_PERCENT = 70;
 export const MAX_COMBINED_ALLOCATION_PERCENT = 70;

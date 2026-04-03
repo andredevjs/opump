@@ -19,9 +19,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@shared/*": ["../shared/*"]
+      "@shared/*": ["../shared/*"],
+      "@contracts/abis/*": ["../contracts/abis/*"]
     }
   },
-  "include": ["src", "../shared"],
+  "include": ["src", "../shared", "../contracts/abis"],
   "exclude": ["../shared/__tests__"]
 }

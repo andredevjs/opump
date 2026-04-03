@@ -1,20 +1,44 @@
+/**
+ * Frontend bonding curve wrappers.
+ *
+ * Delegates to the canonical shared BigInt implementation for all math.
+ * Preserves the existing TradeSimulation API shape so callers don't change.
+ */
 import BigNumber from 'bignumber.js';
-import { TOTAL_FEE_PERCENT, GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN } from '@/config/constants';
-import { safeExp, safeLn } from '@/lib/exp-math';
+import {
+  BondingCurveSimulator,
+  calculatePrice as sharedCalculatePrice,
+} from '@shared/lib/bonding-curve';
+import {
+  GRADUATION_THRESHOLD_SATS as GRADUATION_THRESHOLD_SATS_BI,
+  TOKEN_UNITS_PER_TOKEN as TOKEN_UNITS_BI,
+} from '@shared/constants/bonding-curve';
+import { GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TradeSimulation } from '@/types/trade';
 
-/**
- * Exponential bonding curve: Price(x) = a * e^(b*x)
- * Buy cost:   (a/b) * [e^(b*(x+dt)) - e^(b*x)]
- * Sell payout: (a/b) * [e^(b*x) - e^(b*(x-dt))]
- *
- * Frontend uses native Math.exp()/Math.log() for display-only calculations.
- * The contract and backend use fixed-point bigint for authoritative values.
- */
+const simulator = new BondingCurveSimulator();
 
-/** Convert token units (bigint-string) to whole tokens (float). */
-function unitsToWhole(units: BigNumber): number {
-  return units.div(TOKEN_UNITS_PER_TOKEN).toNumber();
+/**
+ * Convert PRICE_PRECISION-scaled bigint price to sats per whole token (number).
+ * calculatePrice() returns spotPrice * 10^18; dividing by 10^18 gives sats/wholeToken.
+ */
+function scaledToSatsPerWholeToken(priceScaled: bigint): number {
+  return Number(priceScaled) / 1e18;
+}
+
+function toReserves(
+  currentSupplyOnCurve: BigNumber,
+  aScaled: BigNumber,
+  bScaled: BigNumber,
+  realBtcReserve?: BigNumber,
+) {
+  return {
+    currentSupplyOnCurve: BigInt(currentSupplyOnCurve.toFixed(0)),
+    realBtcReserve: realBtcReserve ? BigInt(realBtcReserve.toFixed(0)) : 0n,
+    aScaled: BigInt(aScaled.toFixed(0)),
+    bScaled: BigInt(bScaled.toFixed(0)),
+    graduationThreshold: GRADUATION_THRESHOLD_SATS_BI,
+  };
 }
 
 export function calculateBuy(
@@ -24,58 +48,32 @@ export function calculateBuy(
   btcInputSats: string,
   realBtcReserve?: BigNumber,
 ): TradeSimulation | null {
-  const input = new BigNumber(btcInputSats);
-  if (input.isNaN() || !input.isFinite() || input.isLessThanOrEqualTo(0)) return null;
+  try {
+    const input = BigInt(btcInputSats);
+    if (input <= 0n) return null;
 
-  // Fee rounds UP (protocol's favor)
-  const fee = input.times(TOTAL_FEE_PERCENT).div(100).integerValue(BigNumber.ROUND_CEIL);
-  const netBtc = input.minus(fee);
+    const reserves = toReserves(currentSupplyOnCurve, aScaled, bScaled, realBtcReserve);
+    const result = simulator.simulateBuy(reserves, input);
 
-  // Prevent buying beyond graduation threshold
-  if (realBtcReserve) {
-    const newRealBtc = realBtcReserve.plus(netBtc);
-    if (newRealBtc.isGreaterThan(GRADUATION_THRESHOLD_SATS)) return null;
+    // Effective price: net BTC per whole token (use Number to avoid integer truncation)
+    const netBtc = input - result.fees.total;
+    const pricePerToken = result.tokensOut > 0n
+      ? Number(netBtc) * Number(TOKEN_UNITS_BI) / Number(result.tokensOut)
+      : 0;
+
+    return {
+      type: 'buy',
+      inputAmount: input.toString(),
+      outputAmount: result.tokensOut.toString(),
+      pricePerToken,
+      priceImpactPercent: result.priceImpactBps / 100,
+      fee: Number(result.fees.total),
+      newPriceSats: scaledToSatsPerWholeToken(result.newPriceSats),
+      newSupplyOnCurve: result.newReserves.currentSupplyOnCurve.toString(),
+    };
+  } catch {
+    return null;
   }
-
-  // Convert params to floats for native Math
-  const a = aScaled.div(1e18).toNumber();
-  const b = bScaled.div(1e18).toNumber();
-  const x = unitsToWhole(currentSupplyOnCurve);
-  const budget = netBtc.toNumber();
-
-  if (a <= 0 || b <= 0) return null;
-
-  // Inverse formula: dt = (1/b) * ln(b*budget/a + e^(bx)) - x
-  const ebx = safeExp(b * x);
-  const inner = (b / a) * budget + ebx;
-  if (inner <= 0) return null;
-  const dtWhole = (1 / b) * safeLn(inner) - x;
-  if (dtWhole <= 0) return null;
-
-  const tokensOutUnits = new BigNumber(Math.floor(dtWhole * TOKEN_UNITS_PER_TOKEN)).integerValue();
-
-  const dtW = tokensOutUnits.div(TOKEN_UNITS_PER_TOKEN).toNumber();
-
-  const spotPriceBefore = a * ebx;
-  const spotPriceAfter = a * safeExp(b * (x + dtW));
-  const priceImpact = spotPriceBefore > 0
-    ? ((spotPriceAfter - spotPriceBefore) / spotPriceBefore) * 100
-    : 0;
-
-  const pricePerToken = tokensOutUnits.isGreaterThan(0)
-    ? netBtc.times(TOKEN_UNITS_PER_TOKEN).div(tokensOutUnits).toNumber()
-    : 0;
-
-  return {
-    type: 'buy',
-    inputAmount: input.toFixed(0),
-    outputAmount: tokensOutUnits.toFixed(0),
-    pricePerToken,
-    priceImpactPercent: priceImpact,
-    fee: fee.toNumber(),
-    newPriceSats: spotPriceAfter,
-    newSupplyOnCurve: currentSupplyOnCurve.plus(tokensOutUnits).toFixed(0),
-  };
 }
 
 export function calculateSell(
@@ -84,45 +82,35 @@ export function calculateSell(
   bScaled: BigNumber,
   tokenInputUnits: string,
 ): TradeSimulation | null {
-  const input = new BigNumber(tokenInputUnits);
-  if (input.isNaN() || !input.isFinite() || input.isLessThanOrEqualTo(0)) return null;
-  if (input.isGreaterThan(currentSupplyOnCurve)) return null;
+  try {
+    const input = BigInt(tokenInputUnits);
+    if (input <= 0n) return null;
 
-  const a = aScaled.div(1e18).toNumber();
-  const b = bScaled.div(1e18).toNumber();
-  const x = unitsToWhole(currentSupplyOnCurve);
-  const dtW = input.div(TOKEN_UNITS_PER_TOKEN).toNumber();
+    const reserves = toReserves(currentSupplyOnCurve, aScaled, bScaled);
+    // For sell, realBtcReserve must be at least the payout. The simulator checks this.
+    // Set to graduation threshold since frontend doesn't always have exact realBtc.
+    reserves.realBtcReserve = GRADUATION_THRESHOLD_SATS_BI;
 
-  if (a <= 0 || b <= 0) return null;
-  if (dtW > x) return null;
+    const result = simulator.simulateSell(reserves, input);
 
-  const btcOutBeforeFee = (a / b) * (safeExp(b * x) - safeExp(b * (x - dtW)));
+    // Effective price: net BTC out per whole token (use Number to avoid truncation)
+    const pricePerToken = input > 0n
+      ? Number(result.btcOut) * Number(TOKEN_UNITS_BI) / Number(input)
+      : 0;
 
-  // Fee rounds UP (protocol's favor)
-  const btcOutBN = new BigNumber(Math.floor(btcOutBeforeFee));
-  const fee = btcOutBN.times(TOTAL_FEE_PERCENT).div(100).integerValue(BigNumber.ROUND_CEIL);
-  const btcOut = btcOutBN.minus(fee);
-
-  const pricePerToken = input.isGreaterThan(0)
-    ? btcOut.times(TOKEN_UNITS_PER_TOKEN).div(input).toNumber()
-    : 0;
-
-  const spotPriceBefore = a * safeExp(b * x);
-  const spotPriceAfter = a * safeExp(b * (x - dtW));
-  const priceImpact = spotPriceBefore > 0
-    ? ((spotPriceAfter - spotPriceBefore) / spotPriceBefore) * 100
-    : 0;
-
-  return {
-    type: 'sell',
-    inputAmount: input.toFixed(0),
-    outputAmount: BigNumber.max(0, btcOut).toFixed(0),
-    pricePerToken,
-    priceImpactPercent: priceImpact,
-    fee: fee.toNumber(),
-    newPriceSats: spotPriceAfter,
-    newSupplyOnCurve: currentSupplyOnCurve.minus(input).toFixed(0),
-  };
+    return {
+      type: 'sell',
+      inputAmount: input.toString(),
+      outputAmount: result.btcOut.toString(),
+      pricePerToken,
+      priceImpactPercent: -(result.priceImpactBps / 100),
+      fee: Number(result.fees.total),
+      newPriceSats: scaledToSatsPerWholeToken(result.newPriceSats),
+      newSupplyOnCurve: result.newReserves.currentSupplyOnCurve.toString(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -134,10 +122,12 @@ export function getCurrentPrice(
   aScaled: BigNumber,
   bScaled: BigNumber,
 ): number {
-  const a = aScaled.div(1e18).toNumber();
-  const b = bScaled.div(1e18).toNumber();
-  const x = unitsToWhole(currentSupplyOnCurve);
-  return a * safeExp(b * x);
+  const priceScaled = sharedCalculatePrice(
+    BigInt(aScaled.toFixed(0)),
+    BigInt(bScaled.toFixed(0)),
+    BigInt(currentSupplyOnCurve.toFixed(0)),
+  );
+  return scaledToSatsPerWholeToken(priceScaled);
 }
 
 export function getGraduationProgress(
@@ -151,4 +141,3 @@ export function getGraduationProgress(
 export function getMarketCap(priceSats: number, totalSupplyUnits: string): string {
   return new BigNumber(totalSupplyUnits).times(priceSats).toFixed(0);
 }
-

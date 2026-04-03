@@ -9,8 +9,9 @@
     "lint:fix": "eslint src --fix",
     "build": "asc src/index.ts --config asconfig.json --target debug",
     "build:factory": "asc src/factory-index.ts --config asconfig.json --target factory",
-    "build:all": "npm run build && npm run build:factory && npm run copy:wasm",
-    "copy:wasm": "cp build/LaunchToken.wasm ../frontend/public/contracts/LaunchToken.wasm",
+    "build:all": "npm run build && npm run build:factory && npm run manifest && npm run copy:wasm",
+    "manifest": "node scripts/generate-manifest.mjs",
+    "copy:wasm": "mkdir -p ../frontend/public/contracts && cp build/LaunchToken.wasm build/wasm-manifest.json ../frontend/public/contracts/",
     "clean": "rm -rf build/*"
   },
   "dependencies": {

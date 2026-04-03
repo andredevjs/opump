@@ -3,7 +3,8 @@ import BigNumber from 'bignumber.js';
 import { cn } from '@/lib/cn';
 import { GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN, SATS_PER_BTC } from '@/config/constants';
 import { formatUsd } from '@/lib/format';
-import { safeExp } from '@/lib/exp-math';
+// Visualization-only float exp — not used for authoritative pricing
+const safeExp = (x: number) => Math.exp(Math.min(709, Math.max(-745, x)));
 
 interface BondingCurveVisualProps {
   currentSupplyOnCurve: string;

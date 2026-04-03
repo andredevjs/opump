@@ -1,29 +1,23 @@
 /**
- * Bonding curve constants — mirrored from shared/constants/bonding-curve.ts.
- * Duplicated here to avoid cross-directory imports that break Netlify's esbuild bundler.
- * Keep in sync with shared/constants/bonding-curve.ts.
+ * Re-exports curve constants from canonical shared source.
+ * Local types remain here (function-layer-specific fields).
  */
+export {
+  GRADUATION_THRESHOLD_SATS,
+  MIN_TRADE_SATS,
+  PLATFORM_FEE_BPS,
+  CREATOR_FEE_BPS,
+  TOTAL_FEE_BPS,
+  FEE_DENOMINATOR,
+  TOKEN_DECIMALS,
+  TOKEN_UNITS_PER_TOKEN,
+  PRICE_PRECISION,
+  PRICE_DISPLAY_DIVISOR,
+  DEFAULT_MAX_SUPPLY,
+  GRAD_SUPPLY_FRACTION_BPS,
+} from "../../../shared/constants/bonding-curve.ts";
 
-// ── Exponential bonding curve ───────────────────────────
-// Price(x) = a * e^(b*x), params derived at deployment from curveSupply + graduationThreshold.
-
-export const GRADUATION_THRESHOLD_SATS = 69_000_000n;
-export const MIN_TRADE_SATS = 10_000n;
-export const PLATFORM_FEE_BPS = 100n;
-export const CREATOR_FEE_BPS = 25n;
-export const TOTAL_FEE_BPS = 125n;
-export const FEE_DENOMINATOR = 10_000n;
-export const TOKEN_DECIMALS = 8;
-export const TOKEN_UNITS_PER_TOKEN = 10n ** BigInt(TOKEN_DECIMALS); // 10^8
-export const PRICE_PRECISION = 10n ** 18n;
-export const PRICE_DISPLAY_DIVISOR = 1e10; // PRICE_PRECISION / 10^TOKEN_DECIMALS
-export const DEFAULT_MAX_SUPPLY = 100_000_000_000_000_000n; // 1B tokens * 10^8
-
-// Graduation at 80% of curve supply sold (basis points)
-export const GRAD_SUPPLY_FRACTION_BPS = 8_000n;
-
-// IMPORTANT: Keep in sync with shared/types/ and shared/constants/
-// Shared type definitions (mirrored from shared/types/)
+// Function-layer-local type definitions
 
 export interface TokenSocials {
   website?: string;

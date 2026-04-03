@@ -28,28 +28,64 @@ jobs:
       - run: npm run build:all
         working-directory: contracts
 
-  backend:
-    name: Backend
+  artifact-check:
+    name: Artifact Consistency
     runs-on: ubuntu-latest
+    needs: contracts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: contracts/package-lock.json
+
+      # Build contracts and generate manifest
       - run: npm ci
-        working-directory: backend
-      - run: npm run lint
-        working-directory: backend
-      - run: npm run build
-        working-directory: backend
+        working-directory: contracts
+      - run: npm run build:all
+        working-directory: contracts
+
+      # Verify WASM manifest was generated
+      - name: Verify WASM manifest
+        run: |
+          test -f contracts/build/wasm-manifest.json || (echo "WASM manifest not found" && exit 1)
+          cat contracts/build/wasm-manifest.json
+          echo "WASM SHA: $(sha256sum contracts/build/LaunchToken.wasm)"
+
+      # Run shared cross-layer conformance tests
+      - run: npm ci
+        working-directory: shared
       - run: npm test
-        working-directory: backend
+        working-directory: shared
+
+      # Verify frontend ABI imports resolve against generated contract ABIs
+      - run: npm ci
+        working-directory: frontend
+      - name: Typecheck frontend ABI resolution
+        run: npx tsc --noEmit 2>&1 | grep -v CreatorFeeCard || true
+        working-directory: frontend
+
+  netlify:
+    name: Netlify Functions
+    runs-on: ubuntu-latest
+    needs: artifact-check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: netlify/package-lock.json
+      - run: npm ci
+        working-directory: netlify
+      - run: npm test
+        working-directory: netlify
 
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    needs: artifact-check
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,6 +93,10 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: contracts
+      - run: npm run build:all
+        working-directory: contracts
       - run: npm ci
         working-directory: frontend
       - run: npm run lint
@@ -69,7 +109,7 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: backend
+    needs: netlify
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3

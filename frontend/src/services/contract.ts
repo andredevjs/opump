@@ -303,10 +303,29 @@ export async function deployLaunchToken(
     throw new Error('OPWallet not found or does not support contract deployment. Make sure OPWallet extension is installed.');
   }
 
-  // Fetch pre-compiled WASM bytecode
-  const response = await fetch(bytecodeUrl);
-  if (!response.ok) throw new Error('Failed to fetch contract bytecode');
-  const bytecode = new Uint8Array(await response.arrayBuffer());
+  // Fetch WASM bytecode and validate checksum against manifest
+  const [wasmResp, manifestResp] = await Promise.all([
+    fetch(bytecodeUrl, { cache: 'no-store' }),
+    fetch('/contracts/wasm-manifest.json', { cache: 'no-store' }).catch(() => null),
+  ]);
+  if (!wasmResp.ok) throw new Error('Failed to fetch contract bytecode');
+  const bytecode = new Uint8Array(await wasmResp.arrayBuffer());
+
+  // Checksum validation: reject stale/cached WASM if manifest is available
+  if (manifestResp?.ok) {
+    const manifest = await manifestResp.json() as { 'LaunchToken.wasm'?: { sha256: string } };
+    const expected = manifest['LaunchToken.wasm']?.sha256;
+    if (expected) {
+      const hashBuf = await crypto.subtle.digest('SHA-256', bytecode);
+      const actual = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (actual !== expected) {
+        throw new Error(
+          `WASM checksum mismatch: expected ${expected.slice(0, 12)}…, got ${actual.slice(0, 12)}…. ` +
+          'Clear browser cache and retry, or rebuild contracts.',
+        );
+      }
+    }
+  }
 
   // Get UTXOs for funding
   const provider = getProvider();

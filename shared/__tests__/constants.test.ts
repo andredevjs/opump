@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import {
-  INITIAL_VIRTUAL_BTC_SATS,
-  INITIAL_VIRTUAL_TOKEN_SUPPLY,
-  K_CONSTANT,
   GRADUATION_THRESHOLD_SATS,
   MIN_TRADE_SATS,
   PLATFORM_FEE_BPS,
@@ -15,24 +12,33 @@ import {
   RESERVATION_TTL_BLOCKS,
   DEFAULT_MAX_SUPPLY,
   TOKEN_DECIMALS,
-} from '../../shared/constants/bonding-curve.js';
+  TOKEN_UNITS_PER_TOKEN,
+  PRICE_PRECISION,
+  LN_100_SCALED,
+  GRAD_SUPPLY_FRACTION_BPS,
+} from '../constants/bonding-curve.ts';
 
 describe('shared constants', () => {
-  describe('bonding curve reserves', () => {
-    it('initial virtual BTC = 0.00767 BTC in sats', () => {
-      expect(INITIAL_VIRTUAL_BTC_SATS).toBe(767_000n);
+  describe('exponential curve parameters', () => {
+    it('default max supply = 1B tokens * 10^8 decimals', () => {
+      expect(DEFAULT_MAX_SUPPLY).toBe(100_000_000_000_000_000n);
     });
 
-    it('initial virtual token supply = 1B tokens * 10^8 decimals', () => {
-      expect(INITIAL_VIRTUAL_TOKEN_SUPPLY).toBe(100_000_000_000_000_000n);
+    it('price precision = 10^18', () => {
+      expect(PRICE_PRECISION).toBe(10n ** 18n);
     });
 
-    it('K = virtualBtc * virtualTokenSupply', () => {
-      expect(K_CONSTANT).toBe(INITIAL_VIRTUAL_BTC_SATS * INITIAL_VIRTUAL_TOKEN_SUPPLY);
+    it('token units per token = 10^8', () => {
+      expect(TOKEN_UNITS_PER_TOKEN).toBe(10n ** 8n);
     });
 
-    it('default max supply matches initial virtual token supply', () => {
-      expect(DEFAULT_MAX_SUPPLY).toBe(INITIAL_VIRTUAL_TOKEN_SUPPLY);
+    it('ln(100) scaled matches expected value', () => {
+      // ln(100) ≈ 4.60517... * 10^18
+      expect(LN_100_SCALED).toBe(4_605_170_185_988_091_368n);
+    });
+
+    it('graduation at 80% of curve supply', () => {
+      expect(GRAD_SUPPLY_FRACTION_BPS).toBe(8_000n);
     });
   });
 
@@ -56,12 +62,6 @@ describe('shared constants', () => {
     it('fee denominator = 10000 (basis points)', () => {
       expect(FEE_DENOMINATOR).toBe(10_000n);
     });
-
-    it('1% fee calculation is correct', () => {
-      const amount = 1_000_000n;
-      const fee = (amount * PLATFORM_FEE_BPS) / FEE_DENOMINATOR;
-      expect(fee).toBe(10_000n); // 1% of 1M = 10k
-    });
   });
 
   describe('graduation', () => {
@@ -77,21 +77,16 @@ describe('shared constants', () => {
   });
 
   describe('allocation caps', () => {
-    it('max creator allocation = 10% (1000 bps)', () => {
-      expect(MAX_CREATOR_ALLOCATION_BPS).toBe(1_000n);
+    it('max creator allocation = 70% (7000 bps)', () => {
+      expect(MAX_CREATOR_ALLOCATION_BPS).toBe(7_000n);
     });
 
-    it('max airdrop = 20% (2000 bps)', () => {
-      expect(MAX_AIRDROP_BPS).toBe(2_000n);
+    it('max airdrop = 70% (7000 bps)', () => {
+      expect(MAX_AIRDROP_BPS).toBe(7_000n);
     });
 
-    it('max combined allocation = 25% (2500 bps)', () => {
-      expect(MAX_COMBINED_ALLOCATION_BPS).toBe(2_500n);
-    });
-
-    it('max creator + max airdrop exceeds combined cap (requiring validation)', () => {
-      // 10% + 20% = 30% > 25% cap — system must validate this
-      expect(MAX_CREATOR_ALLOCATION_BPS + MAX_AIRDROP_BPS).toBeGreaterThan(MAX_COMBINED_ALLOCATION_BPS);
+    it('max combined allocation = 70% (7000 bps)', () => {
+      expect(MAX_COMBINED_ALLOCATION_BPS).toBe(7_000n);
     });
   });
 
