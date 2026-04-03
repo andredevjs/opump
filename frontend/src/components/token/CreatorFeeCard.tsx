@@ -30,8 +30,8 @@ export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardP
   const nothingToClaim = loaded && claimableSats === 0;
 
   const handleClaim = () => {
-    if (!walletAddress) return;
-    claim(tokenAddress, walletAddress);
+    if (!opAddress) return;
+    claim(tokenAddress, opAddress);
   };
 
   return (
