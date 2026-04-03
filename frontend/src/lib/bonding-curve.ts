@@ -151,3 +151,4 @@ export function getGraduationProgress(
 export function getMarketCap(priceSats: number, totalSupplyUnits: string): string {
   return new BigNumber(totalSupplyUnits).times(priceSats).toFixed(0);
 }
+

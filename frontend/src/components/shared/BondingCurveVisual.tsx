@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import BigNumber from 'bignumber.js';
 import { cn } from '@/lib/cn';
-import { GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN, TOTAL_SUPPLY_WHOLE_TOKENS, SATS_PER_BTC } from '@/config/constants';
-import { formatMcapUsd } from '@/lib/format';
+import { GRADUATION_THRESHOLD_SATS, TOKEN_UNITS_PER_TOKEN, SATS_PER_BTC } from '@/config/constants';
+import { formatUsd } from '@/lib/format';
 import { safeExp } from '@/lib/exp-math';
 
 interface BondingCurveVisualProps {
@@ -25,14 +25,15 @@ export function BondingCurveVisual({
   const a = useMemo(() => new BigNumber(aScaledStr).div(1e18).toNumber(), [aScaledStr]);
   const b = useMemo(() => new BigNumber(bScaledStr).div(1e18).toNumber(), [bScaledStr]);
 
-  const { points, maxMcap, graduationMcap } = useMemo(() => {
+  const graduationUsd = GRADUATION_THRESHOLD_SATS / SATS_PER_BTC * btcPrice;
+
+  const { points, maxReserveUsd } = useMemo(() => {
     const pts: { x: number; y: number }[] = [];
 
     if (a <= 0 || b <= 0) {
-      return { points: pts, maxMcap: 0, graduationMcap: 0 };
+      return { points: pts, maxReserveUsd: 0 };
     }
 
-    // The curve goes from supply=0 to the graduation supply.
     // Graduation supply: where accumulated cost = GRADUATION_THRESHOLD_SATS.
     // cost(0, S) = (a/b)*(e^(b*S) - 1) = threshold
     // => S = ln(b*threshold/a + 1) / b
@@ -42,17 +43,14 @@ export function BondingCurveVisual({
 
     for (let i = 0; i <= steps; i++) {
       const supplyWhole = maxSupplyWhole * (i / steps);
-      const pricePerToken = a * safeExp(b * supplyWhole);
-      const mcapUsd = (pricePerToken * TOTAL_SUPPLY_WHOLE_TOKENS) / SATS_PER_BTC * btcPrice;
-      pts.push({ x: i / steps, y: mcapUsd });
+      // Accumulated reserve: cost(0, S) = (a/b)*(e^(b*S) - 1), converted to USD
+      const reserveSats = (a / b) * (safeExp(b * supplyWhole) - 1);
+      const reserveUsd = reserveSats / SATS_PER_BTC * btcPrice;
+      pts.push({ x: i / steps, y: reserveUsd });
     }
 
-    // Graduation price
-    const gradPrice = a * safeExp(b * gradSupplyWhole);
-    const gradMcap = (gradPrice * TOTAL_SUPPLY_WHOLE_TOKENS) / SATS_PER_BTC * btcPrice;
-
     const max = Math.max(...pts.map((p) => p.y));
-    return { points: pts, maxMcap: max, graduationMcap: gradMcap };
+    return { points: pts, maxReserveUsd: max };
   }, [a, b, btcPrice]);
 
   const currentX = useMemo(() => {
@@ -75,7 +73,7 @@ export function BondingCurveVisual({
   const pathD = points
     .map((p, i) => {
       const x = padLeft + p.x * chartW;
-      const y = h - padY - (maxMcap > 0 ? (p.y / maxMcap) * chartH : 0);
+      const y = h - padY - (maxReserveUsd > 0 ? (p.y / maxReserveUsd) * chartH : 0);
       return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
     })
     .join(' ');
@@ -83,13 +81,13 @@ export function BondingCurveVisual({
   const dotX = padLeft + currentX * chartW;
   const currentPoint = points.find((p) => Math.abs(p.x - currentX) < 0.02) ?? points[0];
   const dotY = currentPoint
-    ? h - padY - (maxMcap > 0 ? (currentPoint.y / maxMcap) * chartH : 0)
+    ? h - padY - (maxReserveUsd > 0 ? (currentPoint.y / maxReserveUsd) * chartH : 0)
     : h - padY;
 
-  const gradY = maxMcap > 0 ? h - padY - (graduationMcap / maxMcap) * chartH : h - padY;
+  const gradY = maxReserveUsd > 0 ? h - padY - (graduationUsd / maxReserveUsd) * chartH : h - padY;
 
-  const midMcap = graduationMcap / 2;
-  const midY = maxMcap > 0 ? h - padY - (midMcap / maxMcap) * chartH : h - padY;
+  const midUsd = graduationUsd / 2;
+  const midY = maxReserveUsd > 0 ? h - padY - (midUsd / maxReserveUsd) * chartH : h - padY;
 
   return (
     <div className={cn('', className)}>
@@ -102,8 +100,8 @@ export function BondingCurveVisual({
         </defs>
         {/* Y-axis labels */}
         <text x={padLeft - 4} y={h - padY + 1} textAnchor="end" fill="#8888a0" fontSize="6" fontFamily="JetBrains Mono, monospace">$0</text>
-        <text x={padLeft - 4} y={midY + 2} textAnchor="end" fill="#8888a0" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(midMcap)}</text>
-        <text x={padLeft - 4} y={gradY + 2} textAnchor="end" fill="#22c55e" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatMcapUsd(graduationMcap)}</text>
+        <text x={padLeft - 4} y={midY + 2} textAnchor="end" fill="#8888a0" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatUsd(GRADUATION_THRESHOLD_SATS / 2, btcPrice)}</text>
+        <text x={padLeft - 4} y={gradY + 2} textAnchor="end" fill="#22c55e" fontSize="6" fontFamily="JetBrains Mono, monospace">{formatUsd(GRADUATION_THRESHOLD_SATS, btcPrice)}</text>
         {/* Graduation target line */}
         <line x1={padLeft} y1={gradY} x2={w - padRight} y2={gradY} stroke="#22c55e" strokeWidth="1" strokeDasharray="4 3" opacity="0.5" />
         {/* Fill area */}

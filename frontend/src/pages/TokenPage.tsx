@@ -234,7 +234,6 @@ export function TokenPage() {
                     realBtcSats={Number(token.realBtcReserve)}
                     status={token.status}
                     btcPrice={btcPrice}
-                    currentPriceSats={token.currentPriceSats}
                   />
                 </div>
               </TabsContent>
@@ -270,7 +269,6 @@ export function TokenPage() {
               realBtcSats={Number(token.realBtcReserve)}
               status={token.status}
               btcPrice={btcPrice}
-              currentPriceSats={token.currentPriceSats}
             />
           </Card>
 

@@ -1,6 +1,6 @@
 import * as Progress from '@radix-ui/react-progress';
 import { cn } from '@/lib/cn';
-import { formatBtc, formatMcapUsd, formatUsd, priceSatsToMcapUsd } from '@/lib/format';
+import { formatBtc, formatUsd } from '@/lib/format';
 import { GRADUATION_THRESHOLD_SATS } from '@/config/constants';
 import type { TokenStatus } from '@/types/token';
 
@@ -11,7 +11,6 @@ interface GraduationProgressProps {
   compact?: boolean;
   status?: TokenStatus;
   btcPrice?: number;
-  currentPriceSats?: number;
 }
 
 function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): string {
@@ -21,13 +20,12 @@ function getStatusLabel(status: TokenStatus | undefined, isGraduated: boolean): 
   return 'Graduation Progress';
 }
 
-export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice, currentPriceSats }: GraduationProgressProps) {
+export function GraduationProgress({ progress, realBtcSats, className, compact, status, btcPrice }: GraduationProgressProps) {
   const isGraduated = progress >= 100;
   const isMigrating = status === 'migrating';
   const isMigrated = status === 'migrated';
 
   const showUsd = btcPrice != null && btcPrice > 0;
-  const currentMcapUsd = showUsd ? priceSatsToMcapUsd(currentPriceSats ?? 0, btcPrice!) : 0;
 
   return (
     <div className={cn('space-y-1.5', className)}>
@@ -55,7 +53,7 @@ export function GraduationProgress({ progress, realBtcSats, className, compact, 
       </Progress.Root>
       {!compact && (
         <div className="flex items-center justify-between text-xs text-text-muted">
-          <span>{showUsd ? formatMcapUsd(currentMcapUsd) : formatBtc(realBtcSats)}</span>
+          <span>{showUsd ? formatUsd(realBtcSats, btcPrice!) : formatBtc(realBtcSats)}</span>
           <span>{showUsd ? formatUsd(GRADUATION_THRESHOLD_SATS, btcPrice!) : formatBtc(GRADUATION_THRESHOLD_SATS)}</span>
         </div>
       )}
