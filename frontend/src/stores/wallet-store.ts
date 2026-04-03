@@ -26,6 +26,10 @@ interface WalletSyncData {
 interface WalletStore {
   connected: boolean;
   address: string | null;
+  /** The 0x-prefixed OP_20 address (SHA256 of ML-DSA key). This is the
+   *  canonical OPNet identity shown in on-chain events, token balances,
+   *  and trade history. Derived from hashedMLDSAKey. */
+  opAddress: string | null;
   /** Hashed ML-DSA public key (hex) — first param for Address.fromString() */
   hashedMLDSAKey: string | null;
   /** Classical public key (hex) — second param for Address.fromString() */
@@ -42,6 +46,7 @@ interface WalletStore {
 export const useWalletStore = create<WalletStore>((set, get) => ({
   connected: false,
   address: null,
+  opAddress: null,
   hashedMLDSAKey: null,
   publicKey: null,
   balanceSats: 0,
@@ -66,10 +71,17 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
   },
 
   syncWallet: (data) => {
+    // hashedMLDSAKey is already the 0x-prefixed SHA256 of the ML-DSA key,
+    // which is the canonical OP_20 identity used on-chain.
+    const mldsaKey = data.hashedMLDSAKey ?? null;
+    const opAddr = mldsaKey
+      ? (mldsaKey.startsWith('0x') ? mldsaKey : `0x${mldsaKey}`)
+      : null;
     set({
       connected: data.connected,
       address: data.address,
-      hashedMLDSAKey: data.hashedMLDSAKey ?? null,
+      opAddress: opAddr,
+      hashedMLDSAKey: mldsaKey,
       publicKey: data.publicKey ?? null,
       balanceSats: Math.max(0, Math.floor(data.balanceSats)),
       network: data.network,
@@ -77,11 +89,11 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
     });
 
     // Fire-and-forget: link referral code if one was captured from URL
-    if (data.connected && data.address) {
+    if (data.connected && opAddr) {
       const refCode = localStorage.getItem('opump_ref');
       if (refCode) {
         import('@/stores/referral-store').then(({ useReferralStore }) => {
-          useReferralStore.getState().linkReferral(data.address!, refCode).finally(() => {
+          useReferralStore.getState().linkReferral(opAddr!, refCode).finally(() => {
             localStorage.removeItem('opump_ref');
           });
         }).catch(() => {
@@ -96,6 +108,7 @@ export const useWalletStore = create<WalletStore>((set, get) => ({
     set({
       connected: false,
       address: null,
+      opAddress: null,
       hashedMLDSAKey: null,
       publicKey: null,
       balanceSats: 0,

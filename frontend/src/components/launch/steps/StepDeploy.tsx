@@ -54,7 +54,7 @@ function PhaseIcon({ status }: { status: string }) {
 
 export function StepDeploy() {
   const navigate = useNavigate();
-  const { connected, address: walletAddress } = useWalletStore();
+  const { connected, opAddress: walletAddress } = useWalletStore();
   const {
     formData,
     deployPhases,

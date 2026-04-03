@@ -6,15 +6,15 @@ import { submitMigration, triggerIndexer } from '@/services/api';
 import toast from 'react-hot-toast';
 
 export function useMigration(token: Token | null) {
-  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { connected, address: walletAddress, opAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const bumpTradeVersion = useUIStore((s) => s.bumpTradeVersion);
   const [migrating, setMigrating] = useState(false);
   const migratingRef = useRef(false);
 
   const isCreator = !!(
     token &&
-    walletAddress &&
-    token.creatorAddress.toLowerCase() === walletAddress.toLowerCase()
+    opAddress &&
+    token.creatorAddress.toLowerCase() === opAddress.toLowerCase()
   );
 
   const executeMigrate = useCallback(async () => {

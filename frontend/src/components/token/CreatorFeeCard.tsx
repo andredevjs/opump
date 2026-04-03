@@ -12,9 +12,9 @@ interface CreatorFeeCardProps {
 }
 
 export function CreatorFeeCard({ tokenAddress, creatorAddress }: CreatorFeeCardProps) {
-  const { connected, address: walletAddress } = useWalletStore();
+  const { connected, opAddress } = useWalletStore();
   const { btcPrice } = useBtcPrice();
-  const isCreator = connected && walletAddress === creatorAddress;
+  const isCreator = connected && opAddress === creatorAddress;
 
   const { fees, claim } = useCreatorFees([tokenAddress], isCreator);
   const feeState = fees.get(tokenAddress);

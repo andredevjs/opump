@@ -10,16 +10,16 @@ import { AddressDisplay } from '@/components/shared/AddressDisplay';
 import { formatUsd } from '@/lib/format';
 
 export function ReferralDashboard() {
-  const { connected, address, connect } = useWalletStore();
+  const { connected, opAddress, connect } = useWalletStore();
   const { code, earnings, referredBy, loading, fetchReferralInfo } = useReferralStore();
   const { btcPrice } = useBtcPrice();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    if (connected && address) {
-      fetchReferralInfo(address);
+    if (connected && opAddress) {
+      fetchReferralInfo(opAddress);
     }
-  }, [connected, address, fetchReferralInfo]);
+  }, [connected, opAddress, fetchReferralInfo]);
 
   if (!connected) {
     return (

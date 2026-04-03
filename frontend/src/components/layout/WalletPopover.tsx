@@ -23,7 +23,7 @@ interface WalletPopoverContentProps {
 
 export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
   const navigate = useNavigate();
-  const { address, balanceSats, disconnect, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { address, opAddress, balanceSats, disconnect, hashedMLDSAKey, publicKey } = useWalletStore();
   const { btcPrice } = useBtcPrice();
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -65,8 +65,8 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
   }, [hashedMLDSAKey, publicKey]);
 
   const handleCopy = useCallback(async () => {
-    if (!address) return;
-    await navigator.clipboard.writeText(address);
+    if (!opAddress) return;
+    await navigator.clipboard.writeText(opAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [address]);
@@ -95,7 +95,7 @@ export function WalletPopoverContent({ onClose }: WalletPopoverContentProps) {
             onClick={handleCopy}
             className="flex items-center gap-1.5 text-sm font-mono text-text-secondary hover:text-text-primary transition-colors"
           >
-            {shortenAddress(address ?? '', 6)}
+            {shortenAddress(opAddress ?? '', 6)}
             {copied ? <Check size={14} className="text-green" /> : <Copy size={14} />}
           </button>
         </div>

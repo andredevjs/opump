@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 
 export function useTradeSimulation(token: Token | null) {
   const { simulateBuy: localSimBuy, simulateSell: localSimSell } = useBondingCurve(token);
-  const { connected, address: walletAddress, hashedMLDSAKey, publicKey } = useWalletStore();
+  const { connected, address: walletAddress, opAddress, hashedMLDSAKey, publicKey } = useWalletStore();
   const bumpTradeVersion = useUIStore((s) => s.bumpTradeVersion);
   const [executing, setExecuting] = useState(false);
   const executingRef = useRef(false);
@@ -77,7 +77,7 @@ export function useTradeSimulation(token: Token | null) {
           txHash: result.txHash,
           tokenAddress,
           type: 'buy',
-          traderAddress: walletAddress,
+          traderAddress: opAddress!,
           btcAmount: btcSats,
           tokenAmount: sim.outputAmount,
           pricePerToken: String(sim.newPriceSats),
@@ -136,7 +136,7 @@ export function useTradeSimulation(token: Token | null) {
           txHash: result.txHash,
           tokenAddress,
           type: 'sell',
-          traderAddress: walletAddress,
+          traderAddress: opAddress!,
           btcAmount: sim.outputAmount,
           tokenAmount: tokenUnits,
           pricePerToken: String(sim.newPriceSats),

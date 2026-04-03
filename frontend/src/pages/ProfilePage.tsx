@@ -18,13 +18,13 @@ const PROFILE_POLL_INTERVAL_MS = 20_000;
 
 export function ProfilePage() {
   const { address } = useParams<{ address: string }>();
-  const { connected, address: walletAddress } = useWalletStore();
+  const { connected, opAddress } = useWalletStore();
   const [createdTokens, setCreatedTokens] = useState<Token[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('created');
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
-  const isOwnProfile = connected && walletAddress === address;
+  const isOwnProfile = connected && opAddress === address;
   const showEarnings = isOwnProfile && createdTokens.length > 0;
 
   // Reset loading when address changes (render-time adjustment, avoids synchronous setState in effect)

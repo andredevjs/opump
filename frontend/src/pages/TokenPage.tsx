@@ -40,7 +40,7 @@ export function TokenPage() {
   const chartType = usePriceStore((s) => s.chartType);
   const setChartType = usePriceStore((s) => s.setChartType);
   const { btcPrice } = useBtcPrice();
-  const walletAddress = useWalletStore((s) => s.address);
+  const walletAddress = useWalletStore((s) => s.opAddress);
   const { executeMigrate, migrating, isCreator } = useMigration(token);
 
   const mcapCandles = useMemo(() => {

@@ -17,8 +17,8 @@ const NAV_LINKS = [
 export function Header() {
   const location = useLocation();
   const { mobileMenuOpen, toggleMobileMenu, closeMobileMenu } = useUIStore();
-  const address = useWalletStore((s) => s.address);
-  const portfolioPath = address ? `/profile/${address}` : null;
+  const opAddress = useWalletStore((s) => s.opAddress);
+  const portfolioPath = opAddress ? `/profile/${opAddress}` : null;
 
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-md">
