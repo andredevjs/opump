@@ -54,7 +54,7 @@ function PhaseIcon({ status }: { status: string }) {
 
 export function StepDeploy() {
   const navigate = useNavigate();
-  const { connected, opAddress: walletAddress } = useWalletStore();
+  const { connected, address: walletAddress, opAddress } = useWalletStore();
   const {
     formData,
     deployPhases,
@@ -185,7 +185,7 @@ export function StepDeploy() {
           discord: formData.discord || undefined,
           github: formData.github || undefined,
         },
-        creatorAddress: walletAddress,
+        creatorAddress: opAddress!,
         contractAddress,
         config: {
           creatorAllocationBps: Math.round(formData.creatorAllocationPercent * 100),
