@@ -24,5 +24,5 @@
     }
   },
   "include": ["src", "../shared", "../contracts/abis"],
-  "exclude": ["../shared/__tests__"]
+  "exclude": ["../shared/__tests__", "../shared/vitest.config.ts"]
 }

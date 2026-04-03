@@ -22,7 +22,6 @@ function fileToBase64(file: File): Promise<string> {
     reader.readAsDataURL(file);
   });
 }
-const LAUNCH_TOKEN_MANIFEST_URL = '/contracts/wasm-manifest.json';
 const LAUNCH_TOKEN_WASM_URL = '/contracts/LaunchToken.wasm';
 
 const flywheelDestMap: Record<TaxDestination, number> = {
