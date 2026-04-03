@@ -5,8 +5,10 @@ node_modules/
 dist/
 build/
 *.wasm
-# Keep pre-compiled contract bytecode for frontend deployment
-!frontend/public/contracts/*.wasm
+
+# Generated deploy artifacts (built from contracts/, not checked in)
+frontend/public/contracts/LaunchToken.wasm
+frontend/public/contracts/wasm-manifest.json
 
 # Environment
 .env

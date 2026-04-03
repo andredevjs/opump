@@ -1,6 +1,6 @@
 [build]
   base = "frontend"
-  command = "cd ../netlify && npm ci && cd ../frontend && npm run build"
+  command = "cd ../contracts && npm ci && npm run build:all && cd ../netlify && npm ci && cd ../frontend && npm run build"
   publish = "dist"
   functions = "../netlify/functions"
 

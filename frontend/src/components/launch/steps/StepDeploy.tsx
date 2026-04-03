@@ -67,8 +67,9 @@ export function StepDeploy() {
     abortDeploy,
   } = useLaunchStore();
 
-  // Track the contract address during Phase 4 (before confirmation)
+  // Track the contract address and tx hash during Phase 4 (before confirmation)
   const [pendingContractAddress, setPendingContractAddress] = useState<string | null>(null);
+  const [pendingTxHash, setPendingTxHash] = useState<string | null>(null);
   const isWaitingForConfirmation = deployPhases[3]?.status === 'active' && !deployedAddress;
 
   const previewUrl = useMemo(
@@ -84,6 +85,10 @@ export function StepDeploy() {
   const handleDeploy = useCallback(async () => {
     if (!connected || !walletAddress) {
       toast.error('Connect your wallet first');
+      return;
+    }
+    if (!opAddress) {
+      toast.error('Wallet ML-DSA key not available. Reconnect your wallet.');
       return;
     }
 
@@ -200,6 +205,7 @@ export function StepDeploy() {
       // Phase 4: Wait for on-chain confirmation
       advanceDeployPhase(3);
       setPendingContractAddress(contractAddress);
+      setPendingTxHash(deployTxHash);
 
       const { waitForConfirmation } = await import('@/services/contract');
       await waitForConfirmation(deployTxHash);
@@ -214,7 +220,7 @@ export function StepDeploy() {
       toast.error(getDeployErrorMessage(err));
       abortDeploy();
     }
-  }, [connected, walletAddress, formData, abortDeploy, advanceDeployPhase, setDeployedAddress, startDeploy]);
+  }, [connected, walletAddress, opAddress, formData, abortDeploy, advanceDeployPhase, setDeployedAddress, startDeploy]);
 
   return (
     <div className="space-y-6 max-w-md mx-auto">
@@ -352,6 +358,21 @@ export function StepDeploy() {
             )}
           </Button>
         </div>
+      )}
+
+      {/* OPScan transaction link */}
+      {pendingTxHash && !deployedAddress && (
+        <a
+          href={`https://opscan.org/transactions/${pendingTxHash}?network=${
+            (import.meta.env.VITE_OPNET_NETWORK || 'testnet') === 'mainnet' ? 'op_mainnet' : 'op_testnet'
+          }`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 text-sm text-accent hover:text-accent/80 transition-colors"
+        >
+          <ExternalLink size={14} />
+          View transaction on OPScan
+        </a>
       )}
     </div>
   );

@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "cd ../contracts && npm run build:all",
     "dev": "vite",
+    "prebuild": "cd ../contracts && npm run build:all",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
