@@ -1,5 +1,6 @@
 import type { TokenDetailResponse } from '@shared/types/api';
 import type { Token } from '@/types/token';
+import { storedToDisplayUrl } from '@/lib/url';
 
 /**
  * Map an API token response to the frontend Token type.
@@ -31,11 +32,11 @@ export function mapApiTokenToToken(t: TokenDetailResponse & { priceChange24hBps?
     buyTaxPercent: (t.config.buyTaxBps || 0) / 100,
     sellTaxPercent: (t.config.sellTaxBps || 0) / 100,
     flywheelDestination: t.config.flywheelDestination,
-    website: t.socials?.website,
-    twitter: t.socials?.twitter,
-    telegram: t.socials?.telegram,
-    discord: t.socials?.discord,
-    github: t.socials?.github,
+    website: t.socials?.website ? storedToDisplayUrl(t.socials.website, 'website') : undefined,
+    twitter: t.socials?.twitter ? storedToDisplayUrl(t.socials.twitter, 'twitter') : undefined,
+    telegram: t.socials?.telegram ? storedToDisplayUrl(t.socials.telegram, 'telegram') : undefined,
+    discord: t.socials?.discord ? storedToDisplayUrl(t.socials.discord, 'discord') : undefined,
+    github: t.socials?.github ? storedToDisplayUrl(t.socials.github, 'github') : undefined,
     status: t.status,
     graduationProgress: threshold > 0
       ? (parseFloat(t.realBtcReserve) / threshold) * 100

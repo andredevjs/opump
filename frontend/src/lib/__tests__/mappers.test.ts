@@ -120,21 +120,21 @@ describe('mapApiTokenToToken', () => {
     expect(token.sellTaxPercent).toBe(5); // 500 bps = 5%
   });
 
-  it('maps social links', () => {
+  it('builds display URLs from canonical stored handles', () => {
     const token = mapApiTokenToToken(makeApiToken({
       socials: {
         website: 'https://example.com',
-        twitter: '@test',
-        telegram: 't.me/test',
-        discord: 'discord.gg/test',
-        github: 'github.com/test',
+        twitter: 'mytoken',
+        telegram: 'mygroup',
+        discord: 'myinvite',
+        github: 'myorg/myrepo',
       },
     }));
     expect(token.website).toBe('https://example.com');
-    expect(token.twitter).toBe('@test');
-    expect(token.telegram).toBe('t.me/test');
-    expect(token.discord).toBe('discord.gg/test');
-    expect(token.github).toBe('github.com/test');
+    expect(token.twitter).toBe('https://x.com/mytoken');
+    expect(token.telegram).toBe('https://t.me/mygroup');
+    expect(token.discord).toBe('https://discord.gg/myinvite');
+    expect(token.github).toBe('https://github.com/myorg/myrepo');
   });
 
   it('maps status', () => {

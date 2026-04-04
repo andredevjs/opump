@@ -3,6 +3,8 @@
  */
 
 import { json, error } from "./response.mts";
+import { normalizeWebsiteInput, normalizeHandleInput } from "./socials.mts";
+import type { Platform } from "./socials.mts";
 import { getToken, saveToken, TOKEN_HOLDERS_SET, TOKEN_HOLDER_BALANCES } from "./redis-queries.mts";
 import { getRedis } from "./redis.mts";
 import { checkCreateRateLimit } from "./rate-limit.mts";
@@ -42,7 +44,7 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     return error("deployTxHash must be a string", 400);
   }
 
-  // Validate socials object
+  // Validate and normalize socials
   if (body.socials) {
     if (typeof body.socials !== 'object' || Array.isArray(body.socials)) {
       return error('socials must be an object', 400);
@@ -50,6 +52,24 @@ export async function handleCreateToken(req: Request): Promise<Response> {
     for (const [key, value] of Object.entries(body.socials)) {
       if (typeof value !== 'string' || value.length > 256) {
         return error(`Social link "${key}" must be a string under 256 characters`, 400);
+      }
+    }
+
+    // Normalize website
+    if (body.socials.website) {
+      const result = normalizeWebsiteInput(body.socials.website);
+      if (!result.ok) return error(`Invalid website: ${result.reason}`, 400);
+      body.socials.website = result.stored || undefined;
+    }
+
+    // Normalize handle-based socials
+    const platforms: Platform[] = ['twitter', 'telegram', 'discord', 'github'];
+    for (const p of platforms) {
+      const val = body.socials[p];
+      if (val) {
+        const result = normalizeHandleInput(p, val);
+        if (!result.ok) return error(`Invalid ${p}: ${result.reason}`, 400);
+        body.socials[p] = result.stored || undefined;
       }
     }
   }
