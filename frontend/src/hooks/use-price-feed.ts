@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Token } from '@/types/token';
 import { useTokenStore } from '@/stores/token-store';
-import { usePriceStore } from '@/stores/price-store';
+import { getPriceCacheKey, usePriceStore } from '@/stores/price-store';
 import { useUIStore } from '@/stores/ui-store';
 import { PRICE_UPDATE_INTERVAL_MS, GRADUATION_THRESHOLD_SATS, TOTAL_SUPPLY_WHOLE_TOKENS } from '@/config/constants';
 import { getCurrentPrice } from '@/lib/bonding-curve';
@@ -18,8 +18,6 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
   const setLivePrice = usePriceStore((s) => s.setLivePrice);
   const setActiveTimeframe = usePriceStore((s) => s.setActiveTimeframe);
   const intervalRef = useRef<number>();
-  const timeframeRef = useRef(timeframe);
-  timeframeRef.current = timeframe;
 
   useEffect(() => {
     if (!token) return;
@@ -28,9 +26,9 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
     setActiveTimeframe(token.address, timeframe);
 
     // Only show loading if we have no candles yet (preserves optimistic data)
-    const existing = usePriceStore.getState().candles[token.address];
+    const existing = usePriceStore.getState().candles[getPriceCacheKey(token.address, timeframe)];
     if (!existing || existing.length === 0) {
-      setLoading(token.address, true);
+      setLoading(token.address, timeframe, true);
     }
 
     let cancelled = false;
@@ -41,13 +39,11 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
       if (!token) return;
       const addr = token.address;
       Promise.all([
-        api.getOHLCV(addr, timeframeRef.current),
+        api.getOHLCV(addr, timeframe),
         api.getTokenPrice(addr).catch(() => null),
       ]).then(([ohlcvResp, priceResp]) => {
         if (cancelled) return;
-        if (ohlcvResp.candles.length > 0) {
-          setCandles(addr, ohlcvResp.candles);
-        }
+        setCandles(addr, timeframe, ohlcvResp.candles);
         if (priceResp) {
           setLivePrice(addr, {
             currentPriceSats: priceResp.currentPriceSats,
@@ -78,10 +74,10 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
             updateTokenStats(token.address, statsUpdate);
           }
         }
-        setLoading(addr, false);
+        setLoading(addr, timeframe, false);
       }).catch(() => {
         if (!cancelled) {
-          setLoading(token.address, false);
+          setLoading(token.address, timeframe, false);
         }
       });
     }
@@ -138,17 +134,15 @@ export function usePriceFeed(token: Token | null, timeframe: TimeframeKey = '15m
         }
       });
 
-      api.getOHLCV(token.address, timeframeRef.current).then((ohlcvResp) => {
+      api.getOHLCV(token.address, timeframe).then((ohlcvResp) => {
         if (cancelled) return;
-        if (ohlcvResp.candles.length > 0) {
-          setCandles(token.address, ohlcvResp.candles);
-        }
+        setCandles(token.address, timeframe, ohlcvResp.candles);
       }).catch(() => { /* best-effort */ });
     }, PRICE_UPDATE_INTERVAL_MS);
 
     return () => {
       cancelled = true;
-      setLoading(token.address, false);
+      setLoading(token.address, timeframe, false);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run when token.address changes, not the full object

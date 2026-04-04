@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { usePriceStore, markTxCharted, isTxCharted } from '../price-store';
+import { getPriceCacheKey, usePriceStore, markTxCharted, isTxCharted } from '../price-store';
+
+const TIMEFRAME = '1m' as const;
+const ALT_TIMEFRAME = '1h' as const;
 
 function resetStore() {
   usePriceStore.setState({
@@ -39,25 +42,44 @@ describe('price-store', () => {
 
   describe('updateLastCandle', () => {
     it('replaces the last candle', () => {
-      usePriceStore.getState().setCandles(TOKEN, [
+      usePriceStore.getState().setActiveTimeframe(TOKEN, TIMEFRAME);
+      usePriceStore.getState().setCandles(TOKEN, TIMEFRAME, [
         { time: 1000, open: 0.1, high: 0.2, low: 0.1, close: 0.15, volume: 50000 },
       ]);
       usePriceStore.getState().updateLastCandle(TOKEN, {
         time: 1000, open: 0.1, high: 0.3, low: 0.1, close: 0.3, volume: 80000,
       });
 
-      const candles = usePriceStore.getState().candles[TOKEN];
+      const candles = usePriceStore.getState().candles[getPriceCacheKey(TOKEN, TIMEFRAME)];
       expect(candles).toHaveLength(1);
       expect(candles[0].close).toBe(0.3);
     });
 
     it('is a no-op when candles are empty', () => {
+      usePriceStore.getState().setActiveTimeframe(TOKEN, TIMEFRAME);
       usePriceStore.getState().updateLastCandle(TOKEN, {
         time: 1000, open: 0.1, high: 0.3, low: 0.1, close: 0.3, volume: 80000,
       });
 
-      const candles = usePriceStore.getState().candles[TOKEN];
+      const candles = usePriceStore.getState().candles[getPriceCacheKey(TOKEN, TIMEFRAME)];
       expect(candles).toBeUndefined();
+    });
+  });
+
+  describe('timeframe cache keys', () => {
+    it('keeps candle sets isolated per timeframe', () => {
+      usePriceStore.getState().setCandles(TOKEN, TIMEFRAME, [
+        { time: 1000, open: 0.1, high: 0.2, low: 0.1, close: 0.15, volume: 50000 },
+      ]);
+      usePriceStore.getState().setCandles(TOKEN, ALT_TIMEFRAME, [
+        { time: 2000, open: 1.1, high: 1.2, low: 1.0, close: 1.15, volume: 90000 },
+      ]);
+
+      const state = usePriceStore.getState();
+      expect(state.candles[getPriceCacheKey(TOKEN, TIMEFRAME)]).toHaveLength(1);
+      expect(state.candles[getPriceCacheKey(TOKEN, ALT_TIMEFRAME)]).toHaveLength(1);
+      expect(state.candles[getPriceCacheKey(TOKEN, TIMEFRAME)][0].time).toBe(1000);
+      expect(state.candles[getPriceCacheKey(TOKEN, ALT_TIMEFRAME)][0].time).toBe(2000);
     });
   });
 });

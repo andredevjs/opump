@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import type { OHLCVCandle, TimeframeKey } from '@/types/api';
 
 export type ChartType = 'line' | 'candlestick';
+export function getPriceCacheKey(address: string, timeframe: TimeframeKey): string {
+  return `${address}:${timeframe}`;
+}
 
 const CHART_TYPE_KEY = 'opump-chart-type';
 const storedChartType = (typeof window !== 'undefined'
@@ -18,9 +21,9 @@ interface LivePrice {
 }
 
 interface PriceStore {
-  // token address -> candles
+  // token address + timeframe -> candles
   candles: Record<string, OHLCVCandle[]>;
-  // token address -> loading state
+  // token address + timeframe -> loading state
   loading: Record<string, boolean>;
   // token address -> live price from polling
   livePrices: Record<string, LivePrice>;
@@ -28,8 +31,8 @@ interface PriceStore {
   activeTimeframes: Record<string, TimeframeKey>;
   // chart type preference (line or candlestick)
   chartType: ChartType;
-  setCandles: (address: string, candles: OHLCVCandle[]) => void;
-  setLoading: (address: string, loading: boolean) => void;
+  setCandles: (address: string, timeframe: TimeframeKey, candles: OHLCVCandle[]) => void;
+  setLoading: (address: string, timeframe: TimeframeKey, loading: boolean) => void;
   updateLastCandle: (address: string, candle: OHLCVCandle) => void;
   setLivePrice: (address: string, price: Partial<LivePrice>) => void;
   setActiveTimeframe: (address: string, timeframe: TimeframeKey) => void;
@@ -45,24 +48,30 @@ export const usePriceStore = create<PriceStore>((set) => ({
   activeTimeframes: {},
   chartType: storedChartType === 'line' ? 'line' : 'candlestick',
 
-  setCandles: (address, candles) =>
+  setCandles: (address, timeframe, candles) =>
     set((state) => ({
-      candles: { ...state.candles, [address]: candles.slice(-MAX_CANDLES) },
+      candles: {
+        ...state.candles,
+        [getPriceCacheKey(address, timeframe)]: candles.slice(-MAX_CANDLES),
+      },
     })),
 
-  setLoading: (address, loading) =>
+  setLoading: (address, timeframe, loading) =>
     set((state) => ({
-      loading: { ...state.loading, [address]: loading },
+      loading: { ...state.loading, [getPriceCacheKey(address, timeframe)]: loading },
     })),
 
   updateLastCandle: (address, candle) =>
     set((state) => {
-      const existing = state.candles[address] ?? [];
+      const timeframe = state.activeTimeframes[address];
+      if (!timeframe) return state;
+      const key = getPriceCacheKey(address, timeframe);
+      const existing = state.candles[key] ?? [];
       if (existing.length === 0) return state;
       return {
         candles: {
           ...state.candles,
-          [address]: [...existing.slice(0, -1), candle],
+          [key]: [...existing.slice(0, -1), candle],
         },
       };
     }),

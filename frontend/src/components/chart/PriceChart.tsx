@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, type IChartApi, type ISeriesApi, type UTCTimestamp, ColorType, CrosshairMode, LineType } from 'lightweight-charts';
-import type { OHLCVCandle } from '@/types/api';
+import type { OHLCVCandle, TimeframeKey } from '@/types/api';
 import type { ChartType } from '@/stores/price-store';
 import { cn } from '@/lib/cn';
 import { CHART_THEME } from '@/config/constants';
 
 interface PriceChartProps {
   candles: OHLCVCandle[];
+  sourceCandles?: OHLCVCandle[];
   loading?: boolean;
   className?: string;
   priceFormatter?: (value: number) => string;
   chartType?: ChartType;
+  tokenAddress?: string;
+  timeframe?: TimeframeKey;
 }
 
 const defaultFormatter = (price: number) => {
@@ -25,41 +28,39 @@ const defaultFormatter = (price: number) => {
 
 type PriceSeries = ISeriesApi<'Line'> | ISeriesApi<'Candlestick'>;
 
-export function PriceChart({ candles, loading, className, priceFormatter, chartType = 'line' }: PriceChartProps) {
+export function PriceChart({
+  candles,
+  sourceCandles = candles,
+  loading,
+  className,
+  priceFormatter,
+  chartType = 'line',
+  tokenAddress,
+  timeframe,
+}: PriceChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const priceSeriesRef = useRef<PriceSeries | null>(null);
 
   const chartTypeRef = useRef<ChartType>(chartType);
+  // Auto-fit state: tracks when the chart should call fitContent().
+  // 'immediate'        — fit now (initial render, chart-type switch)
+  // 'on-source-change' — fit once sourceCandles reference changes (token/timeframe switch)
+  // false              — viewport is user-controlled, don't fit
+  const needsFitRef = useRef<'immediate' | 'on-source-change' | false>('immediate');
+  const prevContextRef = useRef<{
+    tokenAddress?: string;
+    timeframe?: TimeframeKey;
+    chartType: ChartType;
+  } | null>(null);
+  const lastRenderedSourceCandlesRef = useRef<OHLCVCandle[] | null>(null);
   const [hoveredOhlcv, setHoveredOhlcv] = useState<OHLCVCandle | null>(null);
-
-  chartTypeRef.current = chartType;
 
   const formatter = priceFormatter ?? defaultFormatter;
 
-  const autoscaleProvider = (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
-    const res = original();
-    if (res !== null) {
-      const range = res.priceRange.maxValue - res.priceRange.minValue;
-      const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
-      if (range < mid * 0.001) {
-        const margin = mid * 0.05 || (priceFormatter ? 1 : 0.00000001);
-        res.priceRange.minValue -= margin;
-        res.priceRange.maxValue += margin;
-      }
-      // Prices and market caps can never be negative
-      if (res.priceRange.minValue < 0) {
-        res.priceRange.minValue = 0;
-      }
-    }
-    return res;
-  };
-
-  const priceFormat = {
-    type: 'custom' as const,
-    formatter,
-    minMove: priceFormatter ? 0.01 : 0.00000001,
-  };
+  useEffect(() => {
+    chartTypeRef.current = chartType;
+  }, [chartType]);
 
   // Create chart instance + volume series (mount only)
   useEffect(() => {
@@ -135,13 +136,36 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
       priceSeriesRef.current = null;
       chart.remove();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Create/swap price series when chartType changes (also runs on mount)
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
+
+    const autoscaleProvider = (original: () => { priceRange: { minValue: number; maxValue: number } } | null) => {
+      const res = original();
+      if (res !== null) {
+        const range = res.priceRange.maxValue - res.priceRange.minValue;
+        const mid = (res.priceRange.maxValue + res.priceRange.minValue) / 2;
+        if (range < mid * 0.001) {
+          const margin = mid * 0.05 || (priceFormatter ? 1 : 0.00000001);
+          res.priceRange.minValue -= margin;
+          res.priceRange.maxValue += margin;
+        }
+        // Prices and market caps can never be negative
+        if (res.priceRange.minValue < 0) {
+          res.priceRange.minValue = 0;
+        }
+      }
+      return res;
+    };
+
+    const priceFormat = {
+      type: 'custom' as const,
+      formatter,
+      minMove: priceFormatter ? 0.01 : 0.00000001,
+    };
 
     // Remove existing price series
     if (priceSeriesRef.current) {
@@ -173,16 +197,33 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
         autoscaleInfoProvider: autoscaleProvider,
       });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartType]);
+  }, [chartType, formatter, priceFormatter]);
 
-  // Set data on price series when candles or chartType changes
+  // Set data + auto-fit decision (consolidated to avoid implicit coupling across effects)
   useEffect(() => {
     const priceSeries = priceSeriesRef.current;
     if (!priceSeries) return;
 
+    // Detect context changes and decide fit strategy
+    const prev = prevContextRef.current;
+    if (prev) {
+      const dataContextChanged = prev.tokenAddress !== tokenAddress || prev.timeframe !== timeframe;
+      const presentationChanged = prev.chartType !== chartType;
+
+      if (presentationChanged) {
+        needsFitRef.current = 'immediate';
+      } else if (dataContextChanged && !needsFitRef.current) {
+        needsFitRef.current = sourceCandles !== lastRenderedSourceCandlesRef.current
+          ? 'immediate'
+          : 'on-source-change';
+      }
+    }
+    prevContextRef.current = { tokenAddress, timeframe, chartType };
+
     if (candles.length === 0) {
       priceSeries.setData([]);
+      if (!needsFitRef.current) needsFitRef.current = 'immediate';
+      lastRenderedSourceCandlesRef.current = sourceCandles;
       return;
     }
 
@@ -209,10 +250,17 @@ export function PriceChart({ candles, loading, className, priceFormatter, chartT
       (priceSeries as ISeriesApi<'Line'>).setData(lineData);
     }
 
-    if (chartRef.current) {
-      chartRef.current.timeScale().fitContent();
+    const chart = chartRef.current;
+    const fitMode = needsFitRef.current;
+    if (chart && fitMode) {
+      if (fitMode === 'immediate' || sourceCandles !== lastRenderedSourceCandlesRef.current) {
+        chart.timeScale().fitContent();
+        needsFitRef.current = false;
+      }
     }
-  }, [candles, chartType]);
+
+    lastRenderedSourceCandlesRef.current = sourceCandles;
+  }, [candles, chartType, sourceCandles, tokenAddress, timeframe]);
 
   return (
     <div className={cn('relative w-full h-[500px]', className)}>

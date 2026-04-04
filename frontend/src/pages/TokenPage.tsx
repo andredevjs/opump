@@ -18,7 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { TabsRoot, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useTokenStore } from '@/stores/token-store';
-import { usePriceStore } from '@/stores/price-store';
+import { getPriceCacheKey, usePriceStore } from '@/stores/price-store';
 import { usePriceFeed } from '@/hooks/use-price-feed';
 import { formatUsd, formatNumber, timeAgo, priceSatsToMcapUsd, formatMcapUsd } from '@/lib/format';
 import { useBtcPrice } from '@/stores/btc-price-store';
@@ -32,10 +32,11 @@ const EMPTY_CANDLES: OHLCVCandle[] = [];
 export function TokenPage() {
   const { address } = useParams<{ address: string }>();
   const [timeframe, setTimeframe] = useState<TimeframeKey>('1m');
+  const priceCacheKey = address ? getPriceCacheKey(address, timeframe) : null;
   const token = useTokenStore((s) => s.selectedToken?.address === address ? s.selectedToken : s.tokens.find((t) => t.address === address) ?? null);
   const fetchToken = useTokenStore((s) => s.fetchToken);
-  const candles = usePriceStore((s) => (address ? s.candles[address] : undefined)) ?? EMPTY_CANDLES;
-  const chartLoading = usePriceStore((s) => (address ? s.loading[address] : false)) ?? false;
+  const candles = usePriceStore((s) => (priceCacheKey ? s.candles[priceCacheKey] : undefined)) ?? EMPTY_CANDLES;
+  const chartLoading = usePriceStore((s) => (priceCacheKey ? s.loading[priceCacheKey] : false)) ?? false;
   const livePrice = usePriceStore((s) => (address ? s.livePrices[address] : undefined));
   const chartType = usePriceStore((s) => s.chartType);
   const setChartType = usePriceStore((s) => s.setChartType);
@@ -146,7 +147,15 @@ export function TokenPage() {
               <span className="text-sm font-medium text-text-secondary">Market Cap</span>
               <ChartControls timeframe={timeframe} onTimeframeChange={setTimeframe} chartType={chartType} onChartTypeChange={setChartType} />
             </div>
-            <PriceChart candles={mcapCandles} loading={chartLoading} chartType={chartType} priceFormatter={formatMcapUsd} />
+            <PriceChart
+              candles={mcapCandles}
+              sourceCandles={candles}
+              loading={chartLoading}
+              chartType={chartType}
+              priceFormatter={formatMcapUsd}
+              tokenAddress={address}
+              timeframe={timeframe}
+            />
           </Card>
 
           {/* Stats row */}
